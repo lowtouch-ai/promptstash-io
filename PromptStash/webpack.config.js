@@ -22,7 +22,8 @@ module.exports = {
         { from: "src/styles.css" },
         { from: "src/icon16.png" },
         { from: "src/icon48.png" },
-        { from: "src/icon128.png" }
+        { from: "src/icon128.png" },
+        { from: "src/icon.png" }
       ]
     })
   ]
