@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>PromptStash by lowtouch.ai</title>
+  <!-- Bootstrap CSS for structure and styling -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons for button icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+  <!-- Custom styles for theme and specific adjustments -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body style="width: 700px;">
+  <!-- Header with icon and title -->
+  <header class="d-flex  mb-4">
+    <img src="icon.png" alt="lowtouch.ai" class="me-2" style=" height: 28px;">
+    <h1 class="h3 mb-0">PromptStash by lowtouch.ai</h1>
+  </header>
+
+  <!-- Search and filter section -->
+  <div class="search-select mb-4 w-100">
+    <div class="input-group">
+      <!-- Single search field for both searching and selecting templates -->
+      <input type="text" id="searchBox" class="form-control rounded-pill" placeholder="Search or select a template..." data-bs-toggle="tooltip" data-bs-placement="top" title="Search or select a template">
+      <!-- Type filter dropdown attached to the right -->
+      <select id="typeSelect" class="form-select rounded-pill" style="max-width: 120px;" data-bs-toggle="tooltip" data-bs-placement="top" title="Filter templates by type">
+        <option value="all">All Templates</option>
+        <option value="pre-built">Pre-Built</option>
+        <option value="custom">Custom</option>
+      </select>
+    </div>
+    <!-- Dropdown for search/select results -->
+    <div id="dropdownResults" class="dropdown-results"></div>
+  </div>
+
+  <!-- Prompt template section with clear visual distinction -->
+  <div id="prompt-template" class="p-3 rounded bg-dark shadow position-relative">
+    <!-- Template metadata (name and tags) -->
+    <div class="template-meta mb-3">
+      <div class="row g-2">
+        <div class="col-12">
+          <input type="text" id="templateName" class="form-control rounded-pill" placeholder="Template Name">
+        </div>
+        <!--*************************************************  newcode  *******************************************-->
+        <div class="col-12">
+          <div class="tags-wrapper position-relative">
+            <span class="tags-label">Tags: </span>
+            <input type="text" id="templateTags" class="form-control rounded-pill" placeholder="comma-separated">
+          </div>
+        </div>
+        <!--**********************************************************************************************-->
+      </div>
+    </div>
+    <!-- Prompt textarea with adjustable height -->
+    <textarea id="promptArea" class="form-control rounded-3" placeholder="Edit your prompt here..." style="resize: vertical;"></textarea>
+    <!-- Clear button inside promptArea -->
+    <button id="clearBtn" class="btn btn-secondary btn-sm rounded-pill position-absolute top-0 end-0 m-2" data-bs-toggle="tooltip" data-bs-placement="top" title="Clear prompt text">
+      <i class="bi bi-x-lg"></i>
+    </button>
+  </div>
+
+  <!-- Action buttons -->
+  <div id="buttons" class="d-flex gap-2 justify-content-center mt-4 flex-wrap">
+    <button id="fetchBtn" class="btn btn-secondary rounded-pill" data-bs-toggle="tooltip" data-bs-placement="top" title="Fetch prompt from website">
+      <i class="bi bi-download"></i>
+    </button>
+    <button id="saveBtn" class="btn btn-secondary rounded-pill" data-bs-toggle="tooltip" data-bs-placement="top" title="Save changes to template">
+      <i class="bi bi-save"></i>
+    </button>
+    <button id="saveAsBtn" class="btn btn-secondary rounded-pill" data-bs-toggle="tooltip" data-bs-placement="top" title="Save as new template">
+      <i class="bi bi-save2"></i>
+    </button>
+    <button id="deleteBtn" class="btn btn-secondary rounded-pill" data-bs-toggle="tooltip" data-bs-placement="top" title="Delete selected template">
+      <i class="bi bi-trash"></i>
+    </button>
+    <button id="sendBtn" class="btn btn-primary rounded-pill" data-bs-toggle="tooltip" data-bs-placement="top" title="Send prompt to website">
+      <i class="bi bi-arrow-right"></i>
+    </button>
+  </div>
+
+  <!-- Bootstrap JS for interactivity -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Custom script for functionality -->
+  <script src="popup.js"></script>
+</body>
+</html>

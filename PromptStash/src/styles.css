@@ -1,0 +1,227 @@
+body {
+  width: 1000px; /* Widened popup */
+  font-family: Arial, sans-serif;
+  padding: 20px;
+  background: #171717;
+  color: #ececec;
+  box-sizing: border-box;
+  min-height: 450px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1000px) {
+  body {
+    width: 100%;
+    padding: 15px;
+  }
+
+  .search-select .input-group {
+    flex-direction: row; /* Keep search and typeSelect inline */
+  }
+
+  #searchBox {
+    width: 70% ;/* Ensure searchBox is wider */
+  }
+
+  #typeSelect {
+    width: 30% ;
+    max-width: 120px;
+  }
+
+  #prompt-template .row {
+    flex-direction: column; /* Keep templateName, tags, promptArea in different lines */
+  }
+
+  #templateName, .tags-wrapper {
+    width: 100%;
+  }
+
+  #buttons {
+    flex-direction: row; /* Keep buttons inline */
+  }
+
+  #buttons .btn {
+    width: auto;
+  }
+}
+
+/* Header styling */
+header {
+  text-align: center;
+}
+
+/* Search and filter section */
+.search-select {
+  position: relative;
+}
+
+.input-group {
+  align-items: center;
+  flex-wrap: nowrap; /* Ensure searchBox and typeSelect stay inline */
+}
+
+#searchBox {
+  background-color: #1f1f1f;
+  border: none;
+  color: #ececec;
+  padding: 10px 20px;
+  transition: background-color 0.3s;
+}
+
+#searchBox:hover {
+  background-color: #262626;
+}
+
+#searchBox::placeholder {
+  color: #888888;
+}
+
+#typeSelect {
+  background-color: #1f1f1f;
+  border: none;
+  color: #ececec;
+  padding: 10px;
+  transition: background-color 0.3s;
+}
+
+#typeSelect:hover {
+  background-color: #262626;
+}
+
+/* Style for typeSelect options */
+#typeSelect option {
+  background-color: #1f1f1f;
+  color: #ececec;
+}
+
+/* Dropdown results styling */
+.dropdown-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  background-color: #2a2a2a;
+  border-radius: 10px;
+  z-index: 1000;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.dropdown-results div {
+  padding: 10px 20px;
+  cursor: pointer;
+  color: #ececec;
+  border-bottom: 1px solid #333333;
+}
+
+.dropdown-results div:hover {
+  background-color: #333333;
+}
+
+/* Prompt template section with visual distinction */
+#prompt-template {
+  background-color: #1f1f1f;
+  border-radius: 15px;
+}
+
+#templateName {
+  background-color: #2a2a2a;
+  border: none;
+  color: #ececec;
+  transition: background-color 0.3s;
+}
+
+#templateName:hover {
+  background-color: #333333;
+}
+
+#templateName::placeholder {
+  color: #888888;
+}
+
+/* Tags field styling */
+.tags-wrapper {
+  position: relative;
+}
+
+.tags-label {
+  position: absolute;
+  left: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #888888; /* Same as placeholder */
+  pointer-events: none;
+}
+
+#templateTags {
+  background-color: #2a2a2a;
+  border: none;
+  color: #ececec;
+  padding-left: 60px; /* Space for "Tags: " label */
+  transition: background-color 0.3s;
+}
+
+#templateTags:hover {
+  background-color: #333333;
+}
+
+#templateTags::placeholder {
+  color: #888888;
+}
+
+#promptArea {
+  background-color: #2a2a2a;
+  border: none;
+  color: #ececec;
+  min-height: 120px;
+  transition: background-color 0.3s;
+}
+
+#promptArea:hover {
+  background-color: #333333;
+}
+
+#promptArea::placeholder {
+  color: #888888;
+}
+
+/* Buttons styling */
+#buttons .btn {
+  padding: 10px 20px;
+}
+
+.btn-secondary {
+  background-color: #414141;
+  border: none;
+}
+
+.btn-secondary:hover {
+  background-color: #515151;
+}
+
+.btn-primary {
+  background-color: #414141;
+  border: none;
+}
+
+.btn-primary:hover {
+  background-color: #515151;
+}
+
+/* Clear button inside promptArea */
+#clearBtn {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+/* Tooltip styling */
+.tooltip-inner {
+  background-color: #ffffff;
+  color: #ececec;
+  border-radius: 5px;
+}
+
+.tooltip-arrow::before {
+  border-top-color: #ffffff;
+}
