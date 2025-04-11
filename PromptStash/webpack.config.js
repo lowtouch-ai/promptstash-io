@@ -17,13 +17,10 @@ module.exports = {
     new CleanWebpackPlugin(),
     new CopyWebpackPlugin({
       patterns: [
-        { from: "src/manifest.json" },
-        { from: "src/popup.html" },
-        { from: "src/styles.css" },
-        { from: "src/icon16.png" },
-        { from: "src/icon48.png" },
-        { from: "src/icon128.png" },
-        { from: "src/icon.png" }
+        { from: "./src/manifest.json" },
+        { from: "./src/popup.html" },
+        { from: "./src/styles.css" },
+        { from: "./src/*.{png,svg}", to: "[name][ext]"}
       ]
     })
   ]

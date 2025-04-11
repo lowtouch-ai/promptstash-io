@@ -1,26 +1,61 @@
+// Default templates for initial setup
 const defaultTemplates = [
   {
     name: "Business Analyst Report",
     tags: "analysis, report, business",
     type: "pre-built",
-    content: `# Your Role\nBusiness Analyst\n\n# Your Task\nAnalyze the provided data and generate a concise report.\n\n# Relevant Background Information\nUse formal tone, focus on key metrics.\n\n# Output Format\nExecutive summary (200 words), followed by bullet points.`
+    content: 
+`# Your Role
+Business Analyst
+
+# Your Task
+Analyze the provided data and generate a concise report.
+
+# Relevant Background Information
+Use formal tone, focus on key metrics.
+
+# Output Format
+Executive summary (200 words), followed by bullet points.`
   },
   {
     name: "Code Debugging Assistant",
     tags: "coding, debug, tech",
     type: "pre-built",
-    content: `# Your Role\nSenior Developer\n\n# Your Task\nIdentify and fix bugs in the provided code snippet.\n\n# Relevant Background Information\nCode is in Python, prioritize efficiency.\n\n# Output Format\nExplanation of issue, corrected code block.`
+    content: 
+`# Your Role
+Senior Developer
+
+# Your Task
+Identify and fix bugs in the provided code snippet.
+
+# Relevant Background Information
+Code is in Python, prioritize efficiency.
+
+# Output Format
+Explanation of issue, corrected code block.`
   },
   {
     name: "Content Generator",
     tags: "marketing, content, quick",
     type: "pre-built",
-    content: `# Your Role\nContent Writer\n\n# Your Task\nWrite a 500-word blog post on the given topic.\n\n# Relevant Background Information\nCasual tone, SEO-friendly.\n\n# Output Format\nTitle, intro, 3 sections, conclusion.`
+    content:
+`# Your Role
+Content Writer
+
+# Your Task
+Write a 500-word blog post on the given topic.
+
+# Relevant Background Information
+Casual tone, SEO-friendly.
+
+# Output Format
+Title, intro, 3 sections, conclusion.`
   }
 ];
 
-// DOM elements
+// DOM initialization
 document.addEventListener("DOMContentLoaded", () => {
+  // DOM elements
   const searchBox = document.getElementById("searchBox");
   const typeSelect = document.getElementById("typeSelect");
   const dropdownResults = document.getElementById("dropdownResults");
@@ -34,21 +69,45 @@ document.addEventListener("DOMContentLoaded", () => {
   const clearBtn = document.getElementById("clearBtn");
   const sendBtn = document.getElementById("sendBtn");
 
-  let selectedTemplateIndex = null;
+  let selectedTemplateName = null; // Track selected template by name
 
-  // Load templates into the search dropdown
+  // Load sidebar state from storage
+  chrome.storage.local.get(["sidebarState"], (result) => {
+    const state = result.sidebarState || {};
+    templateName.value = state.name || "";
+    templateTags.value = state.tags || "";
+    promptArea.value = state.content || "";
+    selectedTemplateName = state.selectedName || null;
+  });
+
+  // Save sidebar state to storage
+  function saveState() {
+    chrome.storage.local.set({
+      sidebarState: {
+        name: templateName.value,
+        tags: templateTags.value,
+        content: promptArea.value,
+        selectedName: selectedTemplateName
+      }
+    });
+  }
+
+  // Add input listeners to save state
+  [templateName, templateTags, promptArea].forEach(el => {
+    el.addEventListener("input", saveState);
+  });
+
+  // Load and filter templates into dropdown
   function loadTemplates(filter, query = "") {
     chrome.storage.sync.get(["templates"], (result) => {
       const templates = result.templates || defaultTemplates;
       dropdownResults.innerHTML = "";
       let filteredTemplates = templates.filter(tmpl => filter === "all" || tmpl.type === filter);
 
-      // Filter by query if provided
       if (query) {
         filteredTemplates = filteredTemplates.filter(t =>
           t.name.toLowerCase().includes(query) || t.tags.toLowerCase().includes(query)
         );
-        // Sort by position of query in name/tags, then alphabetically
         filteredTemplates.sort((a, b) => {
           const aMatch = a.name.toLowerCase().indexOf(query) + a.tags.toLowerCase().indexOf(query);
           const bMatch = b.name.toLowerCase().indexOf(query) + b.tags.toLowerCase().indexOf(query);
@@ -57,24 +116,26 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       }
 
-      filteredTemplates.forEach((tmpl, index) => {
+      filteredTemplates.forEach((tmpl) => {
         const div = document.createElement("div");
         div.textContent = `${tmpl.name} (${tmpl.tags})`;
         div.addEventListener("click", () => {
-          selectedTemplateIndex = templates.indexOf(tmpl);
+          selectedTemplateName = tmpl.name;
           templateName.value = tmpl.name;
           templateTags.value = tmpl.tags;
           promptArea.value = tmpl.content;
           searchBox.value = tmpl.name;
           dropdownResults.innerHTML = "";
+          saveState();
         });
         dropdownResults.appendChild(div);
       });
     });
   }
 
-  // Show dropdown when search box is clicked, even if not empty
-  searchBox.addEventListener("click", () => {
+  // Show dropdown on search box click
+  searchBox.addEventListener("click", (event) => {
+    event.stopPropagation();
     const query = searchBox.value.toLowerCase();
     loadTemplates(typeSelect.value, query);
   });
@@ -85,7 +146,7 @@ document.addEventListener("DOMContentLoaded", () => {
     loadTemplates(typeSelect.value, query);
   });
 
-  // Filter templates by type
+  // Filter by type
   typeSelect.addEventListener("change", () => {
     loadTemplates(typeSelect.value, searchBox.value.toLowerCase());
   });
@@ -97,16 +158,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // // Auto-add commas to tags and handle "Tags: " prefix
-  // templateTags.addEventListener("input", () => {
-  //   let value = templateTags.value.replace(/,\s*/g, ", ");
-  //   if (value.endsWith(", ")) value = value.slice(0, -2);
-  //   templateTags.value = value;
-  // });
-
   // Save changes to existing template
   saveBtn.addEventListener("click", () => {
-    if (selectedTemplateIndex === null) {
+    if (!selectedTemplateName) {
       alert("Please select a template to save changes.");
       return;
     }
@@ -115,16 +169,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
     chrome.storage.sync.get(["templates"], (result) => {
       const templates = result.templates || defaultTemplates;
-      templates[selectedTemplateIndex] = {
-        name: templateName.value,
-        tags: templateTags.value,
-        content: promptArea.value,
-        type: templates[selectedTemplateIndex].type || "custom"
-      };
-      chrome.storage.sync.set({ templates }, () => {
-        alert("Template saved successfully.");
-        loadTemplates(typeSelect.value);
-      });
+      const templateIndex = templates.findIndex(t => t.name === selectedTemplateName);
+      if (templateIndex !== -1) {
+        templates[templateIndex] = {
+          name: templateName.value,
+          tags: templateTags.value,
+          content: promptArea.value,
+          type: templates[templateIndex].type || "custom"
+        };
+        chrome.storage.sync.set({ templates }, () => {
+          alert("Template saved successfully.");
+          loadTemplates(typeSelect.value);
+          saveState();
+        });
+      } else {
+        alert("Selected template not found.");
+      }
     });
   });
 
@@ -133,16 +193,14 @@ document.addEventListener("DOMContentLoaded", () => {
     let name = templateName.value.trim();
     let tags = templateTags.value.trim();
 
-    // Check for missing name or tags
     if (!name || !tags) {
       if (!name) name = prompt("Please provide a template name:");
       if (!tags) tags = prompt("Please provide tags (comma-separated):") || "";
-      if (!name) return; // Cancel if no name provided
+      if (!name) return;
       templateName.value = name;
       templateTags.value = tags;
     }
 
-    // Check for duplicate name
     chrome.storage.sync.get(["templates"], (result) => {
       const templates = result.templates || defaultTemplates;
       if (templates.some(tmpl => tmpl.name === name)) {
@@ -163,6 +221,7 @@ document.addEventListener("DOMContentLoaded", () => {
       chrome.storage.sync.set({ templates }, () => {
         alert("Template saved successfully.");
         loadTemplates(typeSelect.value);
+        saveState();
       });
     });
   });
@@ -173,24 +232,28 @@ document.addEventListener("DOMContentLoaded", () => {
       chrome.tabs.sendMessage(tabs[0].id, { action: "getPrompt" }, (response) => {
         if (response && response.prompt) {
           promptArea.value = response.prompt;
+          saveState();
         }
       });
     });
   });
 
-  // Send prompt to website
+  // Send prompt to website and close sidebar
   sendBtn.addEventListener("click", () => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       chrome.tabs.sendMessage(tabs[0].id, {
         action: "sendPrompt",
         prompt: promptArea.value
+      }, () => {
+        // Close sidebar by messaging the parent window
+        window.parent.postMessage({ action: "closeSidebar" }, "*");
       });
     });
   });
 
   // Delete selected template
   deleteBtn.addEventListener("click", () => {
-    if (selectedTemplateIndex === null) {
+    if (!selectedTemplateName) {
       alert("Please select a template to delete.");
       return;
     }
@@ -199,22 +262,29 @@ document.addEventListener("DOMContentLoaded", () => {
 
     chrome.storage.sync.get(["templates"], (result) => {
       const templates = result.templates || defaultTemplates;
-      templates.splice(selectedTemplateIndex, 1);
-      chrome.storage.sync.set({ templates }, () => {
-        alert("Template deleted successfully.");
-        selectedTemplateIndex = null;
-        templateName.value = "";
-        templateTags.value = "";
-        promptArea.value = "";
-        searchBox.value = "";
-        loadTemplates(typeSelect.value);
-      });
+      const templateIndex = templates.findIndex(t => t.name === selectedTemplateName);
+      if (templateIndex !== -1) {
+        templates.splice(templateIndex, 1);
+        chrome.storage.sync.set({ templates }, () => {
+          alert("Template deleted successfully.");
+          selectedTemplateName = null;
+          templateName.value = "";
+          templateTags.value = "";
+          promptArea.value = "";
+          searchBox.value = "";
+          loadTemplates(typeSelect.value);
+          saveState();
+        });
+      } else {
+        alert("Selected template not found.");
+      }
     });
   });
 
   // Clear prompt area
   clearBtn.addEventListener("click", () => {
     promptArea.value = "";
+    saveState();
   });
 
   // Initialize Bootstrap tooltips

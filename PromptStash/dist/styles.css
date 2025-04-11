@@ -1,35 +1,32 @@
+/* Base styles for sidebar body */
 body {
-  width: 1000px; /* Widened popup */
   font-family: Arial, sans-serif;
-  padding: 20px;
-  background: #171717;
-  color: #ececec;
+  padding: 20px 20px;
+  background: #000;
+  color: #fff;
   box-sizing: border-box;
-  min-height: 450px;
 }
 
 /* Responsive adjustments */
-@media (max-width: 1000px) {
+@media (min-width: 300px) {
   body {
-    width: 100%;
-    padding: 15px;
+    padding: 20px 30px;
   }
 
   .search-select .input-group {
-    flex-direction: row; /* Keep search and typeSelect inline */
+    flex-direction: row;
   }
 
   #searchBox {
-    width: 70% ;/* Ensure searchBox is wider */
+    width: 70%;
   }
 
   #typeSelect {
-    width: 30% ;
     max-width: 120px;
   }
 
   #prompt-template .row {
-    flex-direction: column; /* Keep templateName, tags, promptArea in different lines */
+    flex-direction: column;
   }
 
   #templateName, .tags-wrapper {
@@ -37,7 +34,7 @@ body {
   }
 
   #buttons {
-    flex-direction: row; /* Keep buttons inline */
+    flex-direction: row;
   }
 
   #buttons .btn {
@@ -45,31 +42,30 @@ body {
   }
 }
 
-/* Header styling */
-header {
-  text-align: center;
-}
-
 /* Search and filter section */
-.search-select {
-  position: relative;
-}
-
 .input-group {
   align-items: center;
-  flex-wrap: nowrap; /* Ensure searchBox and typeSelect stay inline */
+}
+
+#searchIcon {
+  fill: #cccccc
+}
+
+#searchIcon:hover {
+  fill: #eeeeee;
 }
 
 #searchBox {
-  background-color: #1f1f1f;
-  border: none;
-  color: #ececec;
-  padding: 10px 20px;
-  transition: background-color 0.3s;
+  background-color: #212121;
+  border: 1px solid #353535;
+  border-radius: 20px;
+  color: #eeeeee;
+  padding: 10px 20px 10px 50px; /* Space for icon */
+  transition: border-color 0.2s;
 }
 
 #searchBox:hover {
-  background-color: #262626;
+  border-color: #ccc;
 }
 
 #searchBox::placeholder {
@@ -77,24 +73,23 @@ header {
 }
 
 #typeSelect {
-  background-color: #1f1f1f;
-  border: none;
-  color: #ececec;
-  padding: 10px;
-  transition: background-color 0.3s;
+  background-color: transparent;
+  font-size: smaller;
+  border: 1px solid #292929;
+  color: #777;
+  padding: 12px;
 }
 
 #typeSelect:hover {
-  background-color: #262626;
+  border-color: #aaa;
 }
 
-/* Style for typeSelect options */
 #typeSelect option {
-  background-color: #1f1f1f;
-  color: #ececec;
+  font-size: smaller;
+  background-color: black;
+  color: #eeeeee;
 }
 
-/* Dropdown results styling */
 .dropdown-results {
   position: absolute;
   top: 100%;
@@ -102,45 +97,46 @@ header {
   right: 0;
   max-height: 200px;
   overflow-y: auto;
-  background-color: #2a2a2a;
+  background-color: #000000;
+  border-left: 1px solid #333;
+  border-right: 1px solid #333;
   border-radius: 10px;
   z-index: 1000;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
 .dropdown-results div {
   padding: 10px 20px;
   cursor: pointer;
-  color: #ececec;
-  border-bottom: 1px solid #333333;
+  color: #eeeeee;
+  border-bottom: 2px solid #555555;
 }
 
 .dropdown-results div:hover {
-  background-color: #333333;
+  background-color: #666666;
+} 
+
+/* Template section */
+.prompt-template {
+  align-items: center;
+  flex-wrap: nowrap;
 }
 
-/* Prompt template section with visual distinction */
-#prompt-template {
-  background-color: #1f1f1f;
-  border-radius: 15px;
-}
-
-#templateName {
-  background-color: #2a2a2a;
+.prompt-template [id] {
+  background-color: #252525;
+  margin: 10px;
   border: none;
-  color: #ececec;
-  transition: background-color 0.3s;
+  color: #eeeeee;
+  transition: background-color 0.2s;
 }
 
-#templateName:hover {
-  background-color: #333333;
-}
+.prompt-template [id]:hover {
+  background-color: #292929;
+} 
 
-#templateName::placeholder {
+#prompt-template [id]::placeholder {
   color: #888888;
 }
 
-/* Tags field styling */
 .tags-wrapper {
   position: relative;
 }
@@ -150,78 +146,49 @@ header {
   left: 15px;
   top: 50%;
   transform: translateY(-50%);
-  color: #888888; /* Same as placeholder */
+  color: #888888;
   pointer-events: none;
 }
 
 #templateTags {
-  background-color: #2a2a2a;
-  border: none;
-  color: #ececec;
-  padding-left: 60px; /* Space for "Tags: " label */
-  transition: background-color 0.3s;
-}
-
-#templateTags:hover {
-  background-color: #333333;
-}
-
-#templateTags::placeholder {
-  color: #888888;
+  padding-left: 60px;
 }
 
 #promptArea {
-  background-color: #2a2a2a;
-  border: none;
-  color: #ececec;
-  min-height: 120px;
-  transition: background-color 0.3s;
+  min-height: 280px;
 }
 
-#promptArea:hover {
-  background-color: #333333;
-}
-
-#promptArea::placeholder {
-  color: #888888;
-}
-
-/* Buttons styling */
+/* Buttons */
 #buttons .btn {
-  padding: 10px 20px;
+  padding: 12px 15px;
+  background-color: transparent;
+  border-radius: 20%;
+  fill: #cecece;
+  border: 1px solid transparent;
 }
 
-.btn-secondary {
-  background-color: #414141;
-  border: none;
+#buttons .btn:hover {
+  border: 1px solid #777;
 }
 
-.btn-secondary:hover {
-  background-color: #515151;
-}
-
-.btn-primary {
-  background-color: #414141;
-  border: none;
-}
-
-.btn-primary:hover {
-  background-color: #515151;
-}
-
-/* Clear button inside promptArea */
 #clearBtn {
-  padding: 5px 10px;
-  font-size: 12px;
+  background-color: #414141;
+  padding: none;
+  fill: #888;
+  border: none;
+}
+
+#clearBtn:hover {
+  fill: #ddd
 }
 
 /* Tooltip styling */
 .tooltip-inner {
-  background-color: #ffffff;
+  background-color: #000000;
   color: #ececec;
   border-radius: 5px;
 }
 
 .tooltip-arrow::before {
-  border-top-color: #ffffff;
+  border-top-color: #cccccc;
 }

@@ -32,3 +32,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ selectedText });
   }
 });
+
+// Listen for sidebar close messages from iframe
+window.addEventListener("message", (event) => {
+  if (event.data.action === "closeSidebar") {
+    const sidebar = document.getElementById("promptstash-sidebar");
+    if (sidebar) {
+      sidebar.remove();
+    }
+  }
+});
