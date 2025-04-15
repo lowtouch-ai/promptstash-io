@@ -2,76 +2,82 @@
 <html lang="en">
 <head>
   <title>PromptStash by lowtouch.ai</title>
-  <!-- Bootstrap CSS for structure and styling -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <!-- Custom styles for theme and adjustments -->
-  <link rel="stylesheet" href="styles.css">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">  <!-- Bootstrap CSS for structure and styling -->
+  <link rel="stylesheet" href="styles.css">  <!-- Custom styles for theme and adjustments -->
 </head>
 <body>
-  <!-- Header with logo and title -->
-  <header class="d-flex justify-content-center align-items-center mb-4">
-    <a href="https://www.lowtouch.ai/" target="_blank">
-      <img src="icon.png" alt="Lowtouch AI Logo" class="me-4 rounded-pill" style="width: 50px; height: 50px; padding: 3%; border: 1px solid #444;">
-    </a>
-    <a href="https://promptstash.io/" target="_blank" class="me-2 mt-2 text-decoration-none text-white">
-      <span class="h2 mt-1">PromptStash</span>
-    </a>
-    <h2 class="h2 me-2 mt-1 mb-0">by</h2>
-    <a href="https://www.lowtouch.ai/" target="_blank" class="me-2 mt-2 text-decoration-none text-white">
-      <span class="h2 mb-0">lowtouch.ai</span>
-    </a>
+  <!-- Header -->
+  <header class="d-flex justify-content-sm-center align-items-center mb-4">
+    <!-- Logo -->
+    <a href="https://www.lowtouch.ai/" target="_blank"><img src="icon.png" alt=".ai" class="logo me-2 shadow rounded-pill" style="width: 50px; height: 50px;" data-bs-toggle="tooltip" data-bs-placement="top" title="https://www.lowtouch.ai/"></a>
+    <!-- Title -->
+    <div class="h2 mt-3 mx-2 d-flex">
+      <a href="https://promptstash.io/" target="_blank" class="title text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="top" title="https://promptstash.io/"><span>PromptStash</span></a>
+      <span class="title">&nbsp;by&nbsp;</span>
+      <a href="https://www.lowtouch.ai/" target="_blank" class="title text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="top" title="https://www.lowtouch.ai/"><span>lowtouch.ai</span></a>
+    </div>
   </header>
 
   <!-- Search and filter section -->
-  <div class="search-select ms-2 mb-4 w-100 position-relative">
+  <div class="search-select w-100 position-relative">
     <div class="input-group position-relative">
       <!-- Search icon -->
-      <span id="searchIcon" class="position-absolute top-50 translate-middle-y ms-3" style="cursor: pointer; z-index: 10;">
+      <span id="searchIcon" class="position-absolute top-50 translate-middle-y mx-3" style="pointer-events: none; z-index: 10;" data-bs-toggle="tooltip" data-bs-placement="top" title="Search or select a template">
         <svg width="22" height="22"><use href="sprite.svg#search"></use></svg>
       </span>
       <!-- Search input for templates -->
-      <input type="text" id="searchBox" class="form-control me-3 rounded-2" placeholder="Search or select a template..." data-bs-toggle="tooltip" data-bs-placement="top" title="Search or select a template">
+      <input type="text" id="searchBox" class="form-control shadow rounded-1 p-2 ps-5" placeholder="Search or select a template..." data-bs-toggle="tooltip" data-bs-placement="top" title="Search or select a template">
       <!-- Type-select dropdown -->
-      <select id="typeSelect" class="form-select rounded-2" style="max-width: 120px;" data-bs-toggle="tooltip" data-bs-placement="top" title="Filter templates by type">
-        <option value="all">All Templates</option>
+      <svg id="filterIcon" class="position-absolute top-50 end-0 translate-middle-y me-3" style="pointer-events: none; z-index: 11;" width="15" height="15" aria-hidden="true">
+        <use href="sprite.svg#filter"></use>
+      </svg>
+      <select id="typeSelect" class="form-control position-absolute end-0 p-1 pe-3 m-2" style="font-size: x-small; z-index: 10;" data-bs-toggle="tooltip" data-bs-placement="top" title="Filter templates by type">
+        <option disabled style="background-color: #8884; font-size: xx-small; font-style: italic;">Filter templates</option>
+        <option value="all">All templates</option>
         <option value="pre-built">Pre-Built</option>
-        <option value="custom">Custom</option>
-      </select>
+        <option value="custom">User-made</option>
+      </select> 
     </div>
     <!-- Dropdown for search results -->
     <div id="dropdownResults" class="dropdown-results"></div>
   </div>
 
   <!-- Template editing section -->
-  <div class="prompt-template mb-4 w-100 position-relative">
-    <input type="text" id="templateName" class="form-control rounded-3" placeholder="Template Name">
-    <div class="tags-wrapper position-relative">
-      <span class="tags-label">Tags: </span>
-      <input type="text" id="templateTags" class="form-control rounded-3" placeholder="comma-separated">
+  <div class="template w-100 mt-3">
+    <div class="row g-2">
+      <div class="position-relative mt-2">
+        <input type="text" id="templateName" class="form-control shadow rounded-1 px-3" placeholder="Template Name" data-bs-toggle="tooltip" data-bs-placement="top" title="Template Name">
+      </div>
+      <div class="col-12 mt-2">
+        <div class="tags-wrapper position-relative">
+          <span id="tags-label" class="position-absolute translate-middle-y ms-3">Tags: </span>
+          <input type="text" id="templateTags" class="form-control shadow rounded-1" placeholder="comma-separated" data-bs-toggle="tooltip" data-bs-placement="top" title="Tags">
+        </div>
+      </div>
     </div>
-    <div class="position-relative">
-      <textarea id="promptArea" class="form-control rounded-2 ps-3" placeholder="Edit your prompt here..." style="resize: vertical;"></textarea>
-      <button id="clearBtn" class="btn btn-sm rounded-pill position-absolute top-0 end-0 m-2" data-bs-toggle="tooltip" data-bs-placement="top" title="Clear prompt text">
+    <div class="position-relative mt-2">
+      <textarea id="promptArea" class="form-control shadow rounded-1 px-3" placeholder="Edit your prompt here..." style="resize: vertical;" data-bs-toggle="tooltip" data-bs-placement="top" title="Prompt Text"></textarea>
+      <button id="clearPrompt" class="btn rounded-pill position-absolute top-0 end-0 m-1" data-bs-toggle="tooltip" data-bs-placement="top" title="Clear prompt text">
         <svg width="15" height="15"><use href="sprite.svg#clear"></use></svg>
       </button>
     </div>
   </div>
 
   <!-- Action buttons -->
-  <div id="buttons" class="d-flex gap-3 justify-content-center mt-4 flex-wrap">
-    <button id="fetchBtn" class="btn" data-bs-toggle="tooltip" data-bs-placement="top" title="Fetch prompt from website">
+  <div id="buttons" class="d-flex gap-sm-1 justify-content-center mt-4 flex-nowrap">
+    <button id="fetchBtn" class="btn btn-md rounded-pill" data-bs-toggle="tooltip" data-bs-placement="top" title="Copy text from website's input field">
       <svg width="20" height="20"><use href="sprite.svg#fetch"></use></svg>
     </button>
-    <button id="saveBtn" class="btn" data-bs-toggle="tooltip" data-bs-placement="top" title="Update changes to template (rename and/or edit)">
+    <button id="saveBtn" class="btn btn-md rounded-pill" data-bs-toggle="tooltip" data-bs-placement="top" title="Update template (rename/edit)">
       <svg width="20" height="20"><use href="sprite.svg#save"></use></svg>
     </button>
-    <button id="saveAsBtn" class="btn" data-bs-toggle="tooltip" data-bs-placement="top" title="Save as new template">
+    <button id="saveAsBtn" class="btn btn-md rounded-pill" data-bs-toggle="tooltip" data-bs-placement="top" title="Save as a new template">
       <svg width="20" height="20"><use href="sprite.svg#saveAs"></use></svg>
     </button>
-    <button id="deleteBtn" class="btn" data-bs-toggle="tooltip" data-bs-placement="top" title="Delete selected template">
+    <button id="deleteBtn" class="btn btn-md rounded-pill" data-bs-toggle="tooltip" data-bs-placement="top" title="Delete selected template">
       <svg width="20" height="20"><use href="sprite.svg#delete"></use></svg>
     </button>
-    <button id="sendBtn" class="btn" data-bs-toggle="tooltip" data-bs-placement="top" title="Send prompt to website">
+    <button id="sendBtn" class="btn btn-md rounded-pill" data-bs-toggle="tooltip" data-bs-placement="top" title="Send prompt to website">
       <svg width="20" height="20"><use href="sprite.svg#send"></use></svg>
     </button>
   </div>

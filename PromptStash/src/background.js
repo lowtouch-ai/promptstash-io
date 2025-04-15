@@ -38,7 +38,7 @@ function toggleSidebar() {
     sidebar.style.right = "0";
     sidebar.style.zIndex = "10000";
     sidebar.style.backgroundColor = "#171717";
-    sidebar.style.borderLeft = "2px solid #555555";
+    sidebar.style.borderLeft = "1px solid #888888";
     sidebar.style.resize = "horizontal"; // Allow width adjustment
     sidebar.style.overflow = "auto";
   }
