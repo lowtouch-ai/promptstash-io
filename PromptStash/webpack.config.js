@@ -19,8 +19,10 @@ module.exports = {
       patterns: [
         { from: "./src/manifest.json" },
         { from: "./src/popup.html" },
+        { from: "./src/fullscreen.html" },
         { from: "./src/styles.css" },
-        { from: "./src/*.{png,svg}", to: "[name][ext]"}
+        { from: "./src/*.{png,svg}", to: "[name][ext]"},
+        { from: "./src/*.mjs", to: "[name][ext]"}
       ]
     })
   ]
