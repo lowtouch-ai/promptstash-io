@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PromptStash by lowtouch.ai</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="light">
+  <button id="closeBtn" class="btn position-absolute top-0 end-0 m-2" style="z-index: 9999;" aria-label="Close sidebar" data-bs-toggle="tooltip" data-bs-placement="top" title="Close sidebar">
+    <svg width="10" height="10"><use href="sprite.svg#close"></use></svg>
+  </button>
+  <header class="d-flex justify-content-center align-items-center mb-4 position-relative fixed-top">
+    <a href="https://www.lowtouch.ai/" target="_blank" aria-label="Visit lowtouch.ai">
+      <img src="icon128.png" alt="lowtouch.ai logo" class="logo me-2 shadow rounded-pill" style="width: 48px; height: 48px;" data-bs-toggle="tooltip" data-bs-placement="top" title="Visit lowtouch.ai">
+    </a>
+    <div class="h2 mt-3 mx-2 d-flex">
+      <a href="https://promptstash.io/" target="_blank" class="title text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="top" title="Visit PromptStash">PromptStash</a>
+      <span class="title mx-1">by</span>
+      <a href="https://www.lowtouch.ai/" target="_blank" class="title text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="top" title="Visit lowtouch.ai">lowtouch.ai</a>
+    </div>
+    <button id="themeToggle" class="btn position-absolute top-0 end-0 m-2" aria-label="Toggle theme" data-bs-toggle="tooltip" data-bs-placement="top" title="Toggle light/dark theme">
+      <svg width="20" height="20"><use href="sprite.svg#theme"></use></svg>
+    </button>
+  </header>
+
+  <div class="content-area">
+    <div class="search-select w-100 position-relative">
+      <div class="input-group position-relative">
+        <span id="searchIcon" class="position-absolute top-50 translate-middle-y mx-3" style="pointer-events: none; z-index: 10;" aria-hidden="true" data-bs-toggle="tooltip" data-bs-placement="top" title="Search templates">
+          <svg width="22" height="22"><use href="sprite.svg#search"></use></svg>
+        </span>
+        <input type="text" id="searchBox" class="form-control rounded-1 ps-5" placeholder="Search templates..." aria-label="Search templates" data-bs-toggle="tooltip" data-bs-placement="top" title="Search templates">
+        <select id="typeSelect" class="form-control rounded-1 m-0 position-absolute end-0" aria-label="Filter templates by type" data-bs-toggle="tooltip" data-bs-placement="top" title="Filter templates by type">
+          <option value="all">All templates</option>
+          <option value="pre-built">Pre-built</option>
+          <option value="custom">User-made</option>
+        </select>
+        <svg id="filterIcon" class="position-absolute top-50 translate-middle-y me-1" style="pointer-events: none; z-index: 11; right: 10px;" width="15" height="15" aria-hidden="true">
+          <use href="sprite.svg#filter"></use>
+        </svg>
+      </div>
+      <div id="favoriteSuggestions" class="favorite-suggestions mt-1" role="list" aria-label="Favorite template suggestions"></div>
+      <div id="dropdownResults" class="dropdown mt-1" role="listbox" aria-label="Template search results"></div>
+    </div>
+
+    <div class="template w-100 mt-3">
+      <div class="row g-2">
+        <div class="position-relative mt-2">
+          <input type="text" id="templateName" class="form-control  rounded-1 px-3" placeholder="Template Name" aria-label="Template name" data-bs-toggle="tooltip" data-bs-placement="top" title="Template name">
+        </div>
+        <div class="col-12 mt-2">
+          <div class="tags-wrapper position-relative">
+            <span id="tags-label" class="position-absolute translate-middle-y ms-3" aria-hidden="true">Tags: </span>
+            <input type="text" id="templateTags" class="form-control  rounded-1 pe-3" placeholder="(comma-separated)" aria-label="Template tags" data-bs-toggle="tooltip" data-bs-placement="top" title="Comma-separated tags">
+            <button id="clearTags" class="btn rounded-pill position-absolute top-0 end-0 m-1 transform-middle-y" aria-label="Clear tags" data-bs-toggle="tooltip" data-bs-placement="top" title="Clear tags">
+              <svg width="15" height="15"><use href="sprite.svg#clear"></use></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="position-relative mt-2">
+        <textarea id="promptArea" class="form-control  rounded-1 px-3" placeholder="Edit your prompt here..." style="resize: none;" aria-label="Prompt text" data-bs-toggle="tooltip" data-bs-placement="top" title="Prompt text"></textarea>
+        <button id="clearPrompt" class="btn rounded-pill position-absolute top-0 end-0 m-1" aria-label="Clear prompt text" data-bs-toggle="tooltip" data-bs-placement="top" title="Clear prompt text">
+          <svg width="15" height="15"><use href="sprite.svg#clear"></use></svg>
+        </button>
+        <button id="fullscreenToggle" class="btn rounded-pill position-absolute bottom-0 end-0 m-1" aria-label="Enter fullscreen" data-bs-toggle="tooltip" data-bs-placement="top" title="Enter fullscreen">
+          <svg width="12" height="12"><use href="sprite.svg#fullscreen"></use></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="buttons" class="d-flex gap-1 justify-content-center mt-4 flex-wrap fixed-bottom">
+    <button id="fetchBtn" class="btn btn-md rounded-pill" aria-label="Fetch prompt from website" data-bs-toggle="tooltip" data-bs-placement="top" title="Fetch prompt from website">
+      <svg width="25" height="25"><use href="sprite.svg#fetch"></use></svg>
+    </button>
+    <button id="saveBtn" class="btn btn-md rounded-pill" aria-label="Save changes to template" data-bs-toggle="tooltip" data-bs-placement="top" title="Save changes to template">
+      <svg width="25" height="25"><use href="sprite.svg#save"></use></svg>
+    </button>
+    <button id="saveAsBtn" class="btn btn-md rounded-pill" aria-label="Save as new template" data-bs-toggle="tooltip" data-bs-placement="top" title="Save as new template">
+      <svg width="25" height="25"><use href="sprite.svg#saveAs"></use></svg>
+    </button>
+    <button id="deleteBtn" class="btn btn-md rounded-pill" aria-label="Delete selected template" data-bs-toggle="tooltip" data-bs-placement="top" title="Delete selected template">
+      <svg width="25" height="25"><use href="sprite.svg#delete"></use></svg>
+    </button>
+    <button id="sendBtn" class="btn btn-md rounded-pill" aria-label="Send prompt to website" data-bs-toggle="tooltip" data-bs-placement="top" title="Send prompt to website">
+      <svg width="25" height="25"><use href="sprite.svg#send"></use></svg>
+    </button>
+  </div>
+
+  <div id="toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
