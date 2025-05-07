@@ -1,3 +1,4 @@
+// Listen for extension icon click to toggle sidebar
 chrome.action.onClicked.addListener((tab) => {
   if (tab.url.startsWith("chrome://")) {
     console.error("Cannot inject into chrome:// URLs");
@@ -9,6 +10,7 @@ chrome.action.onClicked.addListener((tab) => {
   });
 });
 
+// Function to toggle sidebar visibility
 function toggleSidebar() {
   const sidebarId = "promptstash-sidebar";
   let sidebar = document.getElementById(sidebarId);
@@ -23,106 +25,31 @@ function toggleSidebar() {
     `;
     document.body.appendChild(sidebar);
 
-    const isSmallScreen = window.innerWidth <= 768;
-    const defaultWidth = isSmallScreen ? "100vw" : "48vw";
-    const defaultHeight = isSmallScreen ? "100vh" : "96vh";
-    const defaultLeft = isSmallScreen ? "0" : `${window.innerWidth - (window.innerWidth * 0.48) - 20}px`;
-    const defaultTop = isSmallScreen ? "0" : "20px";
+    // Check if fullscreen mode is active
+    chrome.storage.local.get(["isFullscreen"], (result) => {
+      const isFullscreen = result.isFullscreen || false;
+      const isSmallScreen = window.innerWidth <= 768;
+      const defaultWidth = isFullscreen ? "100vw" : isSmallScreen ? "100vw" : "48vw";
+      const defaultHeight = isFullscreen ? "100vh" : isSmallScreen ? "100vh" : "96vh";
+      const defaultLeft = isFullscreen ? "0" : isSmallScreen ? "0" : `${window.innerWidth - (window.innerWidth * 0.48) - 20}px`;
+      const defaultTop = isFullscreen ? "0" : isSmallScreen ? "0" : "20px";
 
-    Object.assign(sidebar.style, {
-      width: defaultWidth,
-      height: defaultHeight,
-      position: "fixed",
-      top: defaultTop,
-      left: defaultLeft,
-      zIndex: "10000",
-      backgroundColor: "#f5f5f5",
-      border: "1px solid #88888844",
-      borderRadius: "8px",
-      boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
-      overflow: "hidden" // Prevent sidebar scrollbars
-    });
-
-    // Add drag handle for moving
-    const dragHandle = document.createElement("div");
-    dragHandle.style.position = "absolute";
-    dragHandle.style.top = "0";
-    dragHandle.style.left = "0";
-    dragHandle.style.width = "100%";
-    dragHandle.style.height = "20px";
-    dragHandle.style.cursor = "move";
-    sidebar.appendChild(dragHandle);
-
-    // Add single resizer
-    const resizer = document.createElement("div");
-    resizer.style.position = "absolute";
-    resizer.style.bottom = "0";
-    resizer.style.right = "0";
-    resizer.style.width = "10px";
-    resizer.style.height = "10px";
-    resizer.style.cursor = "se-resize";
-    sidebar.appendChild(resizer);
-
-    // Drag-to-move functionality
-    let isDragging = false;
-    let startX, startY, initialLeft, initialTop;
-
-    dragHandle.addEventListener("mousedown", (e) => {
-      if (isSmallScreen) return;
-      isDragging = true;
-      startX = e.clientX;
-      startY = e.clientY;
-      initialLeft = parseFloat(sidebar.style.left) || 0;
-      initialTop = parseFloat(sidebar.style.top) || 0;
-    });
-
-    document.addEventListener("mousemove", (e) => {
-      if (!isDragging) return;
-      const deltaX = e.clientX - startX;
-      const deltaY = e.clientY - startY;
-      sidebar.style.left = `${Math.max(0, Math.min(initialLeft + deltaX, window.innerWidth - sidebar.offsetWidth))}px`;
-      sidebar.style.top = `${Math.max(0, Math.min(initialTop + deltaY, window.innerHeight - sidebar.offsetHeight))}px`;
-    });
-
-    document.addEventListener("mouseup", () => {
-      isDragging = false;
-    });
-
-    // Drag-resize functionality
-    let isResizing = false;
-    let initialWidth, initialHeight;
-
-    resizer.addEventListener("mousedown", (e) => {
-      if (isSmallScreen) return;
-      isResizing = true;
-      startX = e.clientX;
-      startY = e.clientY;
-      initialWidth = sidebar.offsetWidth;
-      initialHeight = sidebar.offsetHeight;
-      e.preventDefault(); // Prevent text selection
-    });
-
-    document.addEventListener("mousemove", (e) => {
-      if (!isResizing) return;
-      const deltaX = e.clientX - startX;
-      const deltaY = e.clientY - startY;
-      sidebar.style.width = `${Math.max(200, initialWidth + deltaX)}px`;
-      sidebar.style.height = `${Math.max(200, initialHeight + deltaY)}px`;
-    });
-
-    document.addEventListener("mouseup", () => {
-      isResizing = false;
-    });
-
-    // Handle window resize
-    window.addEventListener("resize", () => {
-      const isNowSmallScreen = window.innerWidth <= 768;
       Object.assign(sidebar.style, {
-        width: isNowSmallScreen ? "100vw" : "48vw",
-        height: isNowSmallScreen ? "100vh" : "96vh",
-        left: isNowSmallScreen ? "0" : `${window.innerWidth - (window.innerWidth * 0.48) - 20}px`,
-        top: isNowSmallScreen ? "0" : "20px"
+        width: defaultWidth,
+        height: defaultHeight,
+        position: "fixed",
+        top: defaultTop,
+        left: defaultLeft,
+        zIndex: "10000",
+        backgroundColor: "#f5f5f5",
+        border: "1px solid #88888844",
+        borderRadius: isFullscreen ? "0" : "8px",
+        boxShadow: isFullscreen ? "none" : "0 4px 12px rgba(0, 0, 0, 0.15)",
+        overflow: "hidden",
+        transition: "width 0.3s ease, height 0.3s ease, top 0.3s ease, left 0.3s ease" // Smooth transitions
       });
+
+
     });
 
     // Universal close functionality
@@ -183,7 +110,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
 });
 
-// Handle messages for closing sidebar
+// Handle messages for closing sidebar and fullscreen
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "closeSidebar") {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -193,6 +120,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const sidebar = document.getElementById("promptstash-sidebar");
           if (sidebar) sidebar.remove();
         }
+      });
+      // Reset fullscreen state
+      chrome.storage.local.set({ isFullscreen: false });
+    });
+  } else if (message.action === "toggleFullscreen") {
+    chrome.storage.local.get(["isFullscreen"], (result) => {
+      const isFullscreen = !result.isFullscreen;
+      chrome.storage.local.set({ isFullscreen }, () => {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          chrome.scripting.executeScript({
+            target: { tabId: tabs[0].id },
+            function: (isFullscreen) => {
+              const sidebar = document.getElementById("promptstash-sidebar");
+              if (sidebar) {
+                const isSmallScreen = window.innerWidth <= 768;
+                Object.assign(sidebar.style, {
+                  width: isFullscreen ? "100vw" : isSmallScreen ? "100vw" : "48vw",
+                  height: isFullscreen ? "100vh" : isSmallScreen ? "100vh" : "96vh",
+                  left: isFullscreen ? "0" : isSmallScreen ? "0" : `${window.innerWidth - (window.innerWidth * 0.48) - 20}px`,
+                  top: isFullscreen ? "0" : isSmallScreen ? "0" : "20px",
+                  borderRadius: isFullscreen ? "0" : "8px",
+                  boxShadow: isFullscreen ? "none" : "0 4px 12px rgba(0, 0, 0, 0.15)",
+                  transition: "width 0.3s ease, height 0.3s ease, top 0.3s ease, left 0.3s ease",
+                  transform: "none"
+                });
+              }
+            },
+            args: [isFullscreen]
+          });
+        });
       });
     });
   }

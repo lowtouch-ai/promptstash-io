@@ -18,11 +18,16 @@ document.addEventListener("DOMContentLoaded", () => {
     clearPrompt: document.getElementById("clearPrompt"),
     clearTags: document.getElementById("clearTags"),
     sendBtn: document.getElementById("sendBtn"),
+    clearSearch: document.getElementById("clearSearch"),
     themeToggle: document.getElementById("themeToggle"),
     favoriteSuggestions: document.getElementById("favoriteSuggestions"),
     fullscreenToggle: document.getElementById("fullscreenToggle"),
     closeBtn: document.getElementById("closeBtn"),
-    toast: document.getElementById("toast")
+    toast: document.getElementById("toast"),
+    renameBtn: document.getElementById("renameBtn"), // Button to initiate rename
+    confirmRename: document.getElementById("confirmRename"), // Confirm rename
+    cancelRename: document.getElementById("cancelRename"), // Cancel rename
+    favoriteStar: document.getElementById("favoriteStar") // Star symbol for favorites
   };
 
   // Check if all elements exist
@@ -87,8 +92,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const searchSelect = document.querySelector(".search-select");
     const template = document.querySelector(".template");
     const buttons = document.querySelector("#buttons");
-    const footerHeight = buttons.offsetHeight;
-    const availableHeight = window.innerHeight - header.offsetHeight - searchSelect.offsetHeight - template.offsetHeight - footerHeight - 40; // Padding
+    const availableHeight = window.innerHeight - header.offsetHeight - searchSelect.offsetHeight - buttons.offsetHeight - 40; // Padding
     elements.promptArea.style.height = `${Math.max(100, availableHeight)}px`;
   }
 
@@ -101,22 +105,26 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Toggle fullscreen
   elements.fullscreenToggle.addEventListener("click", () => {
-    const isFullscreen = document.body.classList.toggle("fullscreen");
-    elements.fullscreenToggle.setAttribute("aria-label", isFullscreen ? "Exit fullscreen" : "Enter fullscreen");
-    elements.fullscreenToggle.setAttribute("title", isFullscreen ? "Exit fullscreen" : "Enter fullscreen");
-    adjustPromptAreaHeight();
     saveState();
+    chrome.runtime.sendMessage({ action: "toggleFullscreen" });
   });
 
   // Close sidebar
   elements.closeBtn.addEventListener("click", () => {
-    window.parent.postMessage({ action: "closeSidebar" }, "*");
+    chrome.runtime.sendMessage({ action: "closeSidebar" });
+  });
+
+  // Clear search input
+  elements.clearSearch.addEventListener("click", () => {
+    elements.searchBox.value = "";
+    loadTemplates(elements.typeSelect.value);
+    elements.searchBox.focus();
   });
 
   // Handle ESC key to close sidebar
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
-      window.parent.postMessage({ action: "closeSidebar" }, "*");
+      chrome.runtime.sendMessage({ action: "closeSidebar" });
     }
   });
 
@@ -139,12 +147,14 @@ document.addEventListener("DOMContentLoaded", () => {
     saveState();
   });
 
-  // Normalize tags input
+  // Normalize tags input in real-time: strictly comma-separated with no internal whitespace
   elements.templateTags.addEventListener("input", () => {
     storeLastState();
     let value = elements.templateTags.value.trim();
     if (value) {
-      value = value.replace(/[^a-zA-Z0-9-_, ]/g, "").replace(/[, ]+/g, ", ").replace(/^[,\s]/g, "");
+      // Remove any internal whitespace in tags and ensure comma separation
+      const tags = value.split(",").map(tag => tag.trim().replace(/\s+/g, ""));
+      value = tags.filter(tag => tag).join(", ");
       elements.templateTags.value = value;
     }
     saveState();
@@ -156,6 +166,13 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.templateTags.value = "";
     saveState();
   });
+
+  // Sanitize tags to ensure strictly comma-separated format with no internal whitespace
+  function sanitizeTags(input) {
+    if (!input) return "";
+    const tags = input.split(",").map(tag => tag.trim().replace(/\s+/g, ""));
+    return tags.filter(tag => tag).join(", ");
+  }
 
   // Load templates and suggestions
   function loadTemplates(filter, query = "") {
@@ -193,9 +210,11 @@ document.addEventListener("DOMContentLoaded", () => {
             elements.templateName.value = tmpl.name;
             elements.templateTags.value = tmpl.tags;
             elements.promptArea.value = tmpl.content;
-            elements.searchBox.value = tmpl.name;
+            elements.searchBox.value = ""; // Clear search box after selection
             elements.dropdownResults.innerHTML = "";
+            resetRenameState(); // Reset rename state on selection
             saveState();
+            elements.promptArea.focus(); // Focus prompt area after selection
           }
         });
         div.innerHTML += `<button class="favorite-toggle ${tmpl.favorite ? 'favorited' : 'unfavorited'}" data-name="${tmpl.name}" aria-label="${tmpl.favorite ? 'Unfavorite' : 'Favorite'} template">${tmpl.favorite ? '★' : '☆'}</button>`;
@@ -204,27 +223,35 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Populate favorite suggestions
       const favorites = templates.filter(tmpl => tmpl.favorite);
-      favorites.forEach((tmpl) => {
-        const span = document.createElement("span");
-        span.textContent = tmpl.name;
-        span.className = "favorite-suggestion";
-        span.setAttribute("role", "button");
-        span.setAttribute("tabindex", "0");
-        span.addEventListener("click", () => {
-          selectedTemplateName = tmpl.name;
-          elements.templateName.value = tmpl.name;
-          elements.templateTags.value = tmpl.tags;
-          elements.promptArea.value = tmpl.content;
-          elements.searchBox.value = tmpl.name;
-          saveState();
+      if (favorites.length > 0) {
+        elements.favoriteStar.classList.remove("d-none");
+        elements.favoriteSuggestions.classList.remove("d-none");
+        favorites.forEach((tmpl) => {
+          const span = document.createElement("span");
+          span.textContent = tmpl.name;
+          span.className = "favorite-suggestion";
+          span.setAttribute("role", "button");
+          span.setAttribute("tabindex", "0");
+          span.addEventListener("click", () => {
+            selectedTemplateName = tmpl.name;
+            elements.templateName.value = tmpl.name;
+            elements.templateTags.value = tmpl.tags;
+            elements.promptArea.value = tmpl.content;
+            elements.searchBox.value = ""; // Clear search box after selection
+            saveState();
+            elements.promptArea.focus(); // Focus prompt area after selection
+          });
+          span.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              span.click();
+            }
+          });
+          elements.favoriteSuggestions.appendChild(span);
         });
-        span.addEventListener("keydown", (e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            span.click();
-          }
-        });
-        elements.favoriteSuggestions.appendChild(span);
-      });
+      } else {
+        elements.favoriteStar.classList.add("d-none");
+        elements.favoriteSuggestions.classList.add("d-none");
+      }
     });
   }
 
@@ -250,9 +277,56 @@ document.addEventListener("DOMContentLoaded", () => {
       elements.dropdownResults.innerHTML = "";
     }
     if (!elements.typeSelect.contains(event.target)) {
-      elements.typeSelect.blur();
+        elements.typeSelect.blur();
     }
   });
+
+  // Validate template size
+  function validateTemplateSize(template) {
+    // Stringify template to estimate size in bytes (UTF-8)
+    const serialized = JSON.stringify(template);
+    const sizeInBytes = new TextEncoder().encode(serialized).length;
+    // Chrome.storage.sync has 8KB per key-value pair limit
+    const maxSize = 8 * 1024; // 8KB
+    return { isValid: sizeInBytes <= maxSize, size: sizeInBytes };
+  }
+
+  // Save templates with error handling
+  function saveTemplates(templates, callback, isNewTemplate = false) {
+    const validation = validateTemplateSize({ templates });
+    if (!validation.isValid) {
+      // Prompt user to use chrome.storage.local for large templates
+      const useLocalStorage = confirm(
+        `Template size (${(validation.size / 1024).toFixed(2)} KB) exceeds sync storage limit (8 KB).\n` +
+        `Would you like to save it to local storage instead?`
+      );
+      if (useLocalStorage) {
+        chrome.storage.local.set({ templates }, () => {
+          if (chrome.runtime.lastError) {
+            showToast("Failed to save template to local storage: " + chrome.runtime.lastError.message);
+            console.error("Local storage error:", chrome.runtime.lastError);
+          } else {
+            showToast(isNewTemplate ? "Template saved to local storage. Press Ctrl+Z to undo." : "Template updated in local storage. Press Ctrl+Z to undo.");
+            callback();
+          }
+        });
+      } else {
+        showToast("Template too large to save. Consider removing less relevant parts or saving to local storage.");
+      }
+      return;
+    }
+
+    // Attempt to save to chrome.storage.sync
+    chrome.storage.sync.set({ templates }, () => {
+      if (chrome.runtime.lastError) {
+        showToast("Failed to save template: " + chrome.runtime.lastError.message);
+        console.error("Sync storage error:", chrome.runtime.lastError);
+      } else {
+        showToast(isNewTemplate ? "Template saved. Press Ctrl+Z to undo." : "Template updated. Press Ctrl+Z to undo.");
+        callback();
+      }
+    });
+  }
 
   // Save changes to existing template
   elements.saveBtn.addEventListener("click", () => {
@@ -261,104 +335,96 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     chrome.storage.sync.get(["templates"], (result) => {
-      const templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
+      let templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
       const template = templates.find(t => t.name === selectedTemplateName);
       if (!template) {
         alert("Selected template not found.");
         return;
       }
+      const isEdited = sanitizeTags(elements.templateTags.value) !== template.tags || elements.promptArea.value !== template.content;
+      if (!isEdited) {
+        showToast("No changes to save.");
+        return;
+      }
       storeLastState();
       lastState.templates = [...templates]; // Backup for undo
-      const isRenamed = elements.templateName.value !== selectedTemplateName;
-      const isEdited = elements.templateTags.value !== template.tags || elements.promptArea.value !== template.content;
       const isPreBuilt = template.type === "pre-built";
-      let message = "Are you sure you want to ";
-      if (isRenamed && isEdited) {
-        message += `rename "${selectedTemplateName}" to "${elements.templateName.value}" and edit its content/tags?`;
-      } else if (isRenamed) {
-        message += `rename "${selectedTemplateName}" to "${elements.templateName.value}"?`;
-      } else if (isEdited) {
-        message += `edit the content/tags of "${selectedTemplateName}"?`;
-      }
-      if (isPreBuilt) {
-        message += "\nThis is a pre-built template.";
-      }
+      const message = `Are you sure you want to edit the content/tags of "${selectedTemplateName}"?${isPreBuilt ? "\nThis is a pre-built template." : ""}`;
       const confirmSave = confirm(message);
       if (!confirmSave) return;
 
       const templateIndex = templates.findIndex(t => t.name === selectedTemplateName);
       templates[templateIndex] = {
-        name: elements.templateName.value,
-        tags: elements.templateTags.value.trim().replace(/,\s*$/, ""),
+        name: selectedTemplateName, // Preserve original name
+        tags: sanitizeTags(elements.templateTags.value), // Sanitize tags on save
         content: elements.promptArea.value,
         type: template.type,
         favorite: template.favorite || false,
         index: template.index // Preserve index
       };
-      chrome.storage.sync.set({ templates }, () => {
-        showToast("Template saved. Press Ctrl+Z to undo.");
-        selectedTemplateName = elements.templateName.value;
+
+      // Save with validation and error handling
+      saveTemplates(templates, () => {
         loadTemplates(elements.typeSelect.value);
         saveState();
       });
     });
   });
 
-  // Save as new template
+  // Save as new template with separate prompts
   elements.saveAsBtn.addEventListener("click", () => {
-    let name = elements.templateName.value.trim();
-    let tags = elements.templateTags.value.trim();
-
-    if (!name || !tags) {
-      chrome.storage.sync.get(["templates"], (result) => {
-        const templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
-        let defaultName = name;
-        let i = 0;
-        while (templates.some(t => t.name === defaultName)) {
-          defaultName = `${name} (${++i})`;
-        }
-        const details = prompt(`Enter template details:\nName (required):`, `${defaultName}\n${tags}`);
-        if (!details) return;
-        const [newName, newTags] = details.split("\n").map(s => s.trim());
-        if (!newName) return;
-        name = newName;
-        tags = newTags || "";
-        elements.templateName.value = name;
-        elements.templateTags.value = tags;
-        saveNewTemplate(name, tags);
-      });
-    } else {
+    chrome.storage.sync.get(["templates"], (result) => {
+      const templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
+      let defaultName = "New Template";
+      let i = 1;
+      while (templates.some(t => t.name === defaultName)) {
+        defaultName = `New Template ${i++}`;
+      }
+      let name = prompt("Enter template name (required):", defaultName);
+      if (name === null) return; // User cancelled
+      name = name.trim();
+      if (!name) {
+        showToast("Name is mandatory.");
+        return;
+      }
+      if (templates.some(t => t.name === name)) {
+        showToast("Name already exists.");
+        return;
+      }
+      let tagsInput = prompt("Enter tags (optional, comma-separated):", elements.templateTags.value);
+      if (tagsInput === null) tagsInput = ""; // Treat cancel as empty tags
+      const tags = sanitizeTags(tagsInput); // Sanitize tags input
       saveNewTemplate(name, tags);
-    }
+    });
   });
 
   // Helper function to save new template
   function saveNewTemplate(name, tags) {
     chrome.storage.sync.get(["templates"], (result) => {
       let templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
-      if (templates.some(tmpl => tmpl.name === name)) {
-        name = prompt("Template name already exists. Please provide a new name:");
-        if (!name) return;
-        elements.templateName.value = name;
-      }
       storeLastState();
-      lastState.templates = [...templates]; // Backup for undo
+      lastState.templates = [...templates];
       const confirmSave = confirm(`Save as new template "${name}"?`);
       if (!confirmSave) return;
 
-      templates.push({
+      const newTemplate = {
         name,
-        tags: tags.trim().replace(/,\s*$/, ""),
+        tags, // Already sanitized
         content: elements.promptArea.value,
         type: "custom",
         favorite: false,
-        index: nextIndex++ // Assign new index
-      });
-      chrome.storage.sync.set({ templates }, () => {
-        showToast("Template saved. Press Ctrl+Z to undo.");
+        index: nextIndex++
+      };
+
+      templates.push(newTemplate);
+
+      // Save with validation and error handling
+      saveTemplates(templates, () => {
+        selectedTemplateName = name;
+        elements.templateName.value = name;
         loadTemplates(elements.typeSelect.value);
         saveState();
-      });
+      }, true);
     });
   }
 
@@ -382,7 +448,7 @@ document.addEventListener("DOMContentLoaded", () => {
         action: "sendPrompt",
         prompt: elements.promptArea.value
       }, () => {
-        window.parent.postMessage({ action: "closeSidebar" }, "*");
+        chrome.runtime.sendMessage({ action: "closeSidebar" });
       });
     });
   });
@@ -402,7 +468,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!confirmDelete) return;
 
       storeLastState();
-      lastState.templates = [...templates]; // Backup for undo
+      lastState.templates = [...templates];
       const templateIndex = templates.findIndex(t => t.name === selectedTemplateName);
       templates.splice(templateIndex, 1);
       chrome.storage.sync.set({ templates }, () => {
@@ -431,7 +497,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       }
       showToast("Action undone.");
-      lastState = null; // Clear after undo
+      lastState = null;
       saveState();
     }
   });
@@ -458,6 +524,79 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       });
     }
+  });
+
+  // Reset rename state to default
+  function resetRenameState() {
+    elements.templateName.setAttribute("readonly", "true");
+    elements.renameBtn.classList.remove("d-none");
+    elements.confirmRename.classList.add("d-none");
+    elements.cancelRename.classList.add("d-none");
+  }
+
+  // Initiate rename process
+  elements.renameBtn.addEventListener("click", () => {
+    if (!selectedTemplateName) {
+      showToast("Please select a template to rename.");
+      return;
+    }
+    elements.templateName.removeAttribute("readonly");
+    elements.templateName.focus();
+    elements.renameBtn.classList.add("d-none"); // Hide rename button
+    elements.confirmRename.classList.remove("d-none"); // Show confirm button
+    elements.cancelRename.classList.remove("d-none"); // Show cancel button
+    elements.templateName.dataset.originalName = selectedTemplateName; // Store original name
+  });
+
+  // Cancel rename and revert
+  elements.cancelRename.addEventListener("click", () => {
+    const originalName = elements.templateName.dataset.originalName;
+    elements.templateName.value = originalName;
+    elements.templateName.setAttribute("readonly", "true");
+    elements.renameBtn.classList.remove("d-none");
+    elements.confirmRename.classList.add("d-none");
+    elements.cancelRename.classList.add("d-none");
+  });
+
+  // Confirm rename with validation
+  elements.confirmRename.addEventListener("click", () => {
+    const newName = elements.templateName.value.trim();
+    const originalName = elements.templateName.dataset.originalName;
+    if (newName === originalName) {
+      // If unchanged, cancel rename
+      elements.templateName.setAttribute("readonly", "true");
+      elements.renameBtn.classList.remove("d-none");
+      elements.confirmRename.classList.add("d-none");
+      elements.cancelRename.classList.add("d-none");
+      return;
+    }
+    if (!newName) {
+      showToast("Name is mandatory.");
+      return;
+    }
+    chrome.storage.sync.get(["templates"], (result) => {
+      const templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
+      if (templates.some(t => t.name === newName)) {
+        showToast("Name already exists.");
+        return;
+      }
+      const templateIndex = templates.findIndex(t => t.name === originalName);
+      if (templateIndex === -1) {
+        showToast("Template not found.");
+        return;
+      }
+      templates[templateIndex].name = newName;
+      chrome.storage.sync.set({ templates }, () => {
+        showToast("Template renamed.");
+        selectedTemplateName = newName;
+        elements.templateName.value = newName;
+        elements.templateName.setAttribute("readonly", "true");
+        elements.renameBtn.classList.remove("d-none");
+        elements.confirmRename.classList.add("d-none");
+        elements.cancelRename.classList.add("d-none");
+        loadTemplates(elements.typeSelect.value);
+      });
+    });
   });
 
   // Initialize tooltips
@@ -488,3 +627,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // Handle window resize for prompt area
   window.addEventListener("resize", adjustPromptAreaHeight);
 });
+
+  // Show the clear button only when the search box contains text
+  elements.searchBox.addEventListener("input", () => {
+    elements.clearSearch.style.display = elements.searchBox.value ? "block" : "none";
+    loadTemplates(elements.typeSelect.value, elements.searchBox.value.toLowerCase());
+  });

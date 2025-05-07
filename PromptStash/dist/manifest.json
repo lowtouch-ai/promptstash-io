@@ -17,13 +17,12 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content.js"],
-      "css": ["styles.css"]
+      "js": ["content.js"]
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["popup.html", "fullscreen.html", "styles.css", "popup.js", "sprite.svg"],
+      "resources": ["popup.html", "styles.css", "sprite.svg", "defaultTemplates.mjs"],
       "matches": ["<all_urls>"]
     }
   ],
