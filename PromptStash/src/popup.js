@@ -24,10 +24,10 @@ document.addEventListener("DOMContentLoaded", () => {
     fullscreenToggle: document.getElementById("fullscreenToggle"),
     closeBtn: document.getElementById("closeBtn"),
     toast: document.getElementById("toast"),
-    renameBtn: document.getElementById("renameBtn"), // Button to initiate rename
-    confirmRename: document.getElementById("confirmRename"), // Confirm rename
-    cancelRename: document.getElementById("cancelRename"), // Cancel rename
-    favoriteStar: document.getElementById("favoriteStar") // Star symbol for favorites
+    renameBtn: document.getElementById("renameBtn"),
+    confirmRename: document.getElementById("confirmRename"),
+    cancelRename: document.getElementById("cancelRename"),
+    favoriteStar: document.getElementById("favoriteStar")
   };
 
   // Check if all elements exist
@@ -40,6 +40,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentTheme = "light";
   let lastState = null; // Store last state for undo
   let nextIndex = 0; // Track next available index
+  let isFullscreen = false; // Track fullscreen state
 
   // Load sidebar state and initialize index
   chrome.storage.local.get(["sidebarState", "theme", "nextIndex"], (result) => {
@@ -51,6 +52,7 @@ document.addEventListener("DOMContentLoaded", () => {
     currentTheme = result.theme || "light";
     nextIndex = result.nextIndex || defaultTemplates.length; // Start after pre-built
     document.body.className = currentTheme;
+    loadTemplates(elements.typeSelect.value); // Load templates on popup open
     adjustPromptAreaHeight(); // Adjust prompt area height on load
   });
 
@@ -92,8 +94,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const searchSelect = document.querySelector(".search-select");
     const template = document.querySelector(".template");
     const buttons = document.querySelector("#buttons");
-    const availableHeight = window.innerHeight - header.offsetHeight - searchSelect.offsetHeight - buttons.offsetHeight - 40; // Padding
+    const templateRect = template.getBoundingClientRect();
+    const buttonsRect = buttons.getBoundingClientRect();
+    const availableHeight = window.innerHeight - header.offsetHeight - searchSelect.offsetHeight - templateRect.height - buttonsRect.height; // Padding
     elements.promptArea.style.height = `${Math.max(100, availableHeight)}px`;
+    elements.promptArea.style.marginBottom = `${buttonsRect.height + 10}px`; // Ensure no overlap with buttons
   }
 
   // Toggle theme
@@ -105,6 +110,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Toggle fullscreen
   elements.fullscreenToggle.addEventListener("click", () => {
+    isFullscreen = !isFullscreen;
+    const svg = elements.fullscreenToggle.querySelector("svg use");
+    svg.setAttribute("href", isFullscreen ? "sprite.svg#compress" : "sprite.svg#fullscreen");
     saveState();
     chrome.runtime.sendMessage({ action: "toggleFullscreen" });
   });
@@ -150,11 +158,11 @@ document.addEventListener("DOMContentLoaded", () => {
   // Normalize tags input in real-time: strictly comma-separated with no internal whitespace
   elements.templateTags.addEventListener("input", () => {
     storeLastState();
-    let value = elements.templateTags.value.trim();
+    let value = elements.templateTags.value;
     if (value) {
-      // Remove any internal whitespace in tags and ensure comma separation
-      const tags = value.split(",").map(tag => tag.trim().replace(/\s+/g, ""));
-      value = tags.filter(tag => tag).join(", ");
+      value = value.replace(/^[,\s]/g, "")
+      value = value.replace(/[,\s.;/]+/g, ", ")
+      value = value.replace(/[^a-zA-Z0-9_, ]/g, "")
       elements.templateTags.value = value;
     }
     saveState();
@@ -295,24 +303,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function saveTemplates(templates, callback, isNewTemplate = false) {
     const validation = validateTemplateSize({ templates });
     if (!validation.isValid) {
-      // Prompt user to use chrome.storage.local for large templates
-      const useLocalStorage = confirm(
-        `Template size (${(validation.size / 1024).toFixed(2)} KB) exceeds sync storage limit (8 KB).\n` +
-        `Would you like to save it to local storage instead?`
-      );
-      if (useLocalStorage) {
-        chrome.storage.local.set({ templates }, () => {
-          if (chrome.runtime.lastError) {
-            showToast("Failed to save template to local storage: " + chrome.runtime.lastError.message);
-            console.error("Local storage error:", chrome.runtime.lastError);
-          } else {
-            showToast(isNewTemplate ? "Template saved to local storage. Press Ctrl+Z to undo." : "Template updated in local storage. Press Ctrl+Z to undo.");
-            callback();
-          }
-        });
-      } else {
-        showToast("Template too large to save. Consider removing less relevant parts or saving to local storage.");
-      }
+      showToast(`Template size (${(validation.size / 1024).toFixed(2)} KB) exceeds sync storage limit (8 KB). Please reduce the size.`);
       return;
     }
 
@@ -506,6 +497,7 @@ document.addEventListener("DOMContentLoaded", () => {
   elements.clearPrompt.addEventListener("click", () => {
     storeLastState();
     elements.promptArea.value = "";
+    elements.promptArea.focus();
     saveState();
   });
 
@@ -529,6 +521,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Reset rename state to default
   function resetRenameState() {
     elements.templateName.setAttribute("readonly", "true");
+    elements.templateName.classList.remove("highlight"); // Remove highlight
     elements.renameBtn.classList.remove("d-none");
     elements.confirmRename.classList.add("d-none");
     elements.cancelRename.classList.add("d-none");
@@ -541,11 +534,12 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     elements.templateName.removeAttribute("readonly");
+    elements.templateName.classList.add("highlight"); // Add highlight
     elements.templateName.focus();
-    elements.renameBtn.classList.add("d-none"); // Hide rename button
-    elements.confirmRename.classList.remove("d-none"); // Show confirm button
-    elements.cancelRename.classList.remove("d-none"); // Show cancel button
-    elements.templateName.dataset.originalName = selectedTemplateName; // Store original name
+    elements.renameBtn.classList.add("d-none");
+    elements.confirmRename.classList.remove("d-none");
+    elements.cancelRename.classList.remove("d-none");
+    elements.templateName.dataset.originalName = selectedTemplateName;
   });
 
   // Cancel rename and revert
@@ -553,6 +547,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const originalName = elements.templateName.dataset.originalName;
     elements.templateName.value = originalName;
     elements.templateName.setAttribute("readonly", "true");
+    elements.templateName.classList.remove("highlight"); // Remove highlight
     elements.renameBtn.classList.remove("d-none");
     elements.confirmRename.classList.add("d-none");
     elements.cancelRename.classList.add("d-none");
@@ -565,6 +560,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (newName === originalName) {
       // If unchanged, cancel rename
       elements.templateName.setAttribute("readonly", "true");
+      elements.templateName.classList.remove("highlight"); // Remove highlight
       elements.renameBtn.classList.remove("d-none");
       elements.confirmRename.classList.add("d-none");
       elements.cancelRename.classList.add("d-none");
@@ -591,6 +587,7 @@ document.addEventListener("DOMContentLoaded", () => {
         selectedTemplateName = newName;
         elements.templateName.value = newName;
         elements.templateName.setAttribute("readonly", "true");
+        elements.templateName.classList.remove("highlight"); // Remove highlight
         elements.renameBtn.classList.remove("d-none");
         elements.confirmRename.classList.add("d-none");
         elements.cancelRename.classList.add("d-none");
@@ -626,10 +623,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Handle window resize for prompt area
   window.addEventListener("resize", adjustPromptAreaHeight);
-});
 
   // Show the clear button only when the search box contains text
   elements.searchBox.addEventListener("input", () => {
     elements.clearSearch.style.display = elements.searchBox.value ? "block" : "none";
     loadTemplates(elements.typeSelect.value, elements.searchBox.value.toLowerCase());
   });
+});

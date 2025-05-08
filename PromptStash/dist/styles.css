@@ -1,4 +1,3 @@
-/* Base styles */
 body {
   font-family: Roboto, sans-serif;
   padding: 0 24px;
@@ -6,25 +5,13 @@ body {
   margin: 0;
   transition: color 0.2s;
   overflow: auto;
-  z-index: -100;
 }
 
-/* Fullscreen mode */
-body.fullscreen {
-  width: 100vw !important;
-  height: 100vh !important;
-  padding: 0;
-  margin: 0;
-  overflow: auto;
-}
-
-/* Light theme */
 body.light {
   background: #f5f5f5;
   color: #202124;
 }
 
-/* Dark theme */
 body.dark {
   background: #202020;
   color: #e8eaed;
@@ -48,28 +35,22 @@ body.dark {
   }
 }
 
-/* Fixed header */
 header {
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   background: inherit;
-  z-index: 1000;
-  padding: 10px;
+  z-index: 10;
 }
 
-/* Content area */
 .content-area {
   max-height: calc(100vh - 100px);
   width: 100%;
 }
 
-/* Fixed footer */
 #buttons {
   background: inherit;
-  padding: 10px;
-  z-index: 1000;
+  z-index: 10;
 }
 
-/* Toast notification */
 .toast {
   position: fixed;
   top: 20px;
@@ -84,7 +65,7 @@ header {
 }
 
 body.dark .toast {
-  background: #ccc;
+  background: #eee;
   color: #333;
 }
 
@@ -92,20 +73,13 @@ body.dark .toast {
   opacity: 1;
 }
 
-/* Logo */
 .logo {
   width: 48px;
   height: 48px;
   transition: 0.1s;
 }
 
-.logo:hover {
-  scale: 1.01;
-}
-
-/* Title */
 .title {
-  font-weight: 500;
   font-size: 1.7rem;
 }
 
@@ -348,7 +322,11 @@ body.dark #templateName {
 }
 
 #renameBtn svg, #cancelRename svg, #confirmRename svg {
+ display: none;
+}
 
+#templateName:hover + #renameBtn svg, #cancelRename svg, #confirmRename svg {
+  display: block;
   fill: #8888;
 }
 
@@ -424,7 +402,7 @@ body.dark #promptArea {
   transform: translateY(-50%);
 }
 
-#closeBtn svg{
+#closeBtn svg, #fullscreenToggle svg, #compressBtn svg{
   fill: #888;
 }
 
@@ -443,11 +421,6 @@ body.dark #promptArea {
 
 #fullscreenToggle svg, #compressBtn svg {
   fill: #ccc;
-  mix-blend-mode: difference;
-}
-
-#fullscreenToggle:hover svg, #compressBtn:hover svg {
-  fill: #f5f5f5;
   mix-blend-mode: difference;
 }
 
