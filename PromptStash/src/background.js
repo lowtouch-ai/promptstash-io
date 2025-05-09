@@ -24,13 +24,21 @@ chrome.action.onClicked.addListener((tab) => {
 
 // Function to create the popup window
 function createPopupWindow() {
+  // Fallback screen dimensions (common 1080p resolution)
+  const screenWidth = 1920;
+  const screenHeight = 1080;
+  const windowWidth = 600;
+  const windowHeight = 800;
+  const left = Math.round((screenWidth - windowWidth) / 2);
+  const top = Math.round((screenHeight - windowHeight) / 2);
+
   chrome.windows.create({
     url: chrome.runtime.getURL("popup.html"),
     type: "popup",
-    width: 600,
-    height: 800,
-    left: Math.round((window.screen.width - 600) / 2),
-    top: Math.round((window.screen.height - 800) / 2),
+    width: windowWidth,
+    height: windowHeight,
+    left: left,
+    top: top,
     focused: true
   }, (window) => {
     popupWindowId = window.id;
@@ -106,8 +114,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               state: isFullscreen ? "maximized" : "normal",
               width: isFullscreen ? win.width : 600,
               height: isFullscreen ? win.height : 800,
-              left: isFullscreen ? win.left : Math.round((window.screen.width - 600) / 2),
-              top: isFullscreen ? win.top : Math.round((window.screen.height - 800) / 2)
+              left: isFullscreen ? win.left : Math.round((1920 - 600) / 2),
+              top: isFullscreen ? win.top : Math.round((1080 - 800) / 2)
             });
           }
         });

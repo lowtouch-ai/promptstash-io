@@ -46,6 +46,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let nextIndex = 0; // Track next available index
   let isFullscreen = false; // Track fullscreen state
   let windowId = null; // Store the ID of the popup window
+  let recentIndices = []; // Store up to 20 recent template indices
 
   // Get the current window ID
   chrome.runtime.sendMessage({ action: "getWindowId" }, (response) => {
@@ -54,23 +55,26 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Load sidebar state and initialize index
-  chrome.storage.local.get(["sidebarState", "theme", "nextIndex"], (result) => {
-    const state = result.sidebarState || {};
-    elements.templateName.value = state.name || "";
-    elements.templateTags.value = state.tags || "";
-    elements.promptArea.value = state.content || "";
-    selectedTemplateName = state.selectedName || null;
-    currentTheme = result.theme || "light";
-    nextIndex = result.nextIndex || defaultTemplates.length; // Start after pre-built
-    document.body.className = currentTheme;
-    elements.fetchBtn.style.display = elements.promptArea.value ? 'none' : 'block'; // Initial fetchBtn visibility
-    loadTemplates(elements.typeSelect.value, "", false); // Load only favoriteSuggestions initially
-    adjustPromptAreaHeight(); // Adjust prompt area height on load
-    elements.themeToggleMenu.textContent = currentTheme === 'light' ? 'Darkmode' : 'Lightmode'; // Set initial theme toggle text
+  // Load sidebar state, recent indices, and initialize index
+  chrome.storage.local.get(["sidebarState", "theme", "nextIndex"], (localResult) => {
+    chrome.storage.sync.get(["recentIndices"], (syncResult) => {
+      const state = localResult.sidebarState || {};
+      elements.templateName.value = state.name || "";
+      elements.templateTags.value = state.tags || "";
+      elements.promptArea.value = state.content || "";
+      selectedTemplateName = state.selectedName || null;
+      currentTheme = localResult.theme || "light";
+      nextIndex = localResult.nextIndex || defaultTemplates.length; // Start after pre-built
+      recentIndices = syncResult.recentIndices || [];
+      document.body.className = currentTheme;
+      elements.fetchBtn.style.display = elements.promptArea.value ? 'none' : 'block'; // Initial fetchBtn visibility
+      loadTemplates(elements.typeSelect.value, "", false); // Load only favoriteSuggestions initially
+      adjustPromptAreaHeight(); // Adjust prompt area height on load
+      elements.themeToggleMenu.textContent = currentTheme === 'light' ? 'Darkmode' : 'Lightmode'; // Set initial theme toggle text
+    });
   });
 
-  // Save sidebar state
+  // Save sidebar state and recent indices
   function saveState() {
     chrome.storage.local.set({
       sidebarState: {
@@ -81,6 +85,9 @@ document.addEventListener("DOMContentLoaded", () => {
       },
       theme: currentTheme,
       nextIndex
+    });
+    chrome.storage.sync.set({
+      recentIndices
     });
   }
 
@@ -113,6 +120,18 @@ document.addEventListener("DOMContentLoaded", () => {
     const availableHeight = window.innerHeight - header.offsetHeight - searchSelect.offsetHeight - templateRect.height - buttonsRect.height;
     elements.promptArea.style.height = `${Math.max(100, availableHeight)}px`;
     elements.promptArea.style.marginBottom = `${buttonsRect.height + 10}px`; // Ensure no overlap with buttons
+  }
+
+  // Update recent indices
+  function updateRecentIndices(index) {
+    recentIndices.unshift(index); // Add to start
+    // Remove duplicates, keeping the most recent occurrence
+    recentIndices = [...new Set(recentIndices)];
+    // Trim to 20 indices
+    if (recentIndices.length > 20) {
+      recentIndices = recentIndices.slice(0, 20);
+    }
+    saveState();
   }
 
   // Drag functionality for moving the window
@@ -214,8 +233,8 @@ document.addEventListener("DOMContentLoaded", () => {
   elements.menuDropdown.querySelector('#saveLocally').addEventListener('click', () => {
     alert('Save locally functionality to be implemented.');
   });
-  elements.menuDropdown.querySelector('#toggleMarkdown').addEventListener('click', () => {
-    alert('Toggle markdown functionality to be implemented.');
+  elements.menuDropdown.querySelector('#toggleMonospace').addEventListener('click', () => {
+    alert('Toggle monospace functionality to be implemented.');
   });
   elements.menuDropdown.querySelector('#exportData').addEventListener('click', () => {
     alert('Export data functionality to be implemented.');
@@ -318,14 +337,22 @@ document.addEventListener("DOMContentLoaded", () => {
           if (aMatch !== bMatch) return aMatch - bMatch;
           return a.name.localeCompare(b.name);
         });
+      } else {
+        // Sort by recency when searchBox is empty
+        filteredTemplates.sort((a, b) => {
+          const aIndex = recentIndices.indexOf(a.index);
+          const bIndex = recentIndices.indexOf(b.index);
+          // Templates not in recentIndices go to the end
+          if (aIndex === -1 && bIndex === -1) return a.name.localeCompare(b.name);
+          if (aIndex === -1) return 1;
+          if (bIndex === -1) return -1;
+          return aIndex - bIndex; // Earlier index (more recent) comes first
+        });
       }
-
-      // Sort favorites to top
-      filteredTemplates.sort((a, b) => (b.favorite || 0) - (a.favorite || 0));
 
       // Populate dropdown only if showDropdown is true
       if (showDropdown) {
-        filteredTemplates.forEach((tmpl) => {
+        filteredTemplates.forEach((tmpl, idx) => {
           const div = document.createElement("div");
           div.textContent = tmpl.favorite ? `${tmpl.name} (${tmpl.tags})` : `${tmpl.name} (${tmpl.tags})`;
           div.setAttribute("role", "option");
@@ -339,6 +366,7 @@ document.addEventListener("DOMContentLoaded", () => {
               elements.searchBox.value = "";
               elements.dropdownResults.innerHTML = "";
               resetRenameState();
+              elements.fetchBtn.style.display = tmpl.content ? 'none' : 'block'; // Ensure fetchBtn visibility
               saveState();
               elements.promptArea.focus();
             }
@@ -348,9 +376,18 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       }
 
-      // Always populate favorite suggestions
+      // Always populate favorite suggestions, sorted by recency
       const favorites = templates.filter(tmpl => tmpl.favorite);
       if (favorites.length > 0) {
+        // Sort favorites by recency
+        favorites.sort((a, b) => {
+          const aIndex = recentIndices.indexOf(a.index);
+          const bIndex = recentIndices.indexOf(b.index);
+          if (aIndex === -1 && bIndex === -1) return a.name.localeCompare(b.name);
+          if (aIndex === -1) return 1;
+          if (bIndex === -1) return -1;
+          return aIndex - bIndex;
+        });
         elements.favoriteStar.classList.remove("d-none");
         elements.favoriteSuggestions.classList.remove("d-none");
         favorites.forEach((tmpl) => {
@@ -365,6 +402,7 @@ document.addEventListener("DOMContentLoaded", () => {
             elements.templateTags.value = tmpl.tags;
             elements.promptArea.value = tmpl.content;
             elements.searchBox.value = "";
+            elements.fetchBtn.style.display = tmpl.content ? 'none' : 'block'; // Ensure fetchBtn visibility
             saveState();
             elements.promptArea.focus();
           });
@@ -518,7 +556,7 @@ document.addEventListener("DOMContentLoaded", () => {
         content: elements.promptArea.value,
         type: "custom",
         favorite: false,
-        index: nextIndex++
+        index: nextIndex
       };
 
       templates.push(newTemplate);
@@ -526,6 +564,8 @@ document.addEventListener("DOMContentLoaded", () => {
       saveTemplates(templates, () => {
         selectedTemplateName = name;
         elements.templateName.value = name;
+        updateRecentIndices(nextIndex); // Add to recent indices
+        nextIndex++;
         loadTemplates(elements.typeSelect.value, "", false);
         saveState();
       }, true);
@@ -553,7 +593,19 @@ document.addEventListener("DOMContentLoaded", () => {
         action: "sendPrompt",
         prompt: elements.promptArea.value
       }, () => {
-        chrome.runtime.sendMessage({ action: "closeSidebar", windowId });
+        // Update recent indices if a template is selected
+        if (selectedTemplateName) {
+          chrome.storage.sync.get(["templates"], (result) => {
+            const templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
+            const template = templates.find(t => t.name === selectedTemplateName);
+            if (template) {
+              updateRecentIndices(template.index);
+            }
+            chrome.runtime.sendMessage({ action: "closeSidebar", windowId });
+          });
+        } else {
+          chrome.runtime.sendMessage({ action: "closeSidebar", windowId });
+        }
       });
     });
   });
@@ -575,7 +627,10 @@ document.addEventListener("DOMContentLoaded", () => {
       storeLastState();
       lastState.templates = [...templates];
       const templateIndex = templates.findIndex(t => t.name === selectedTemplateName);
+      const deletedIndex = templates[templateIndex].index;
       templates.splice(templateIndex, 1);
+      // Remove deleted index from recentIndices
+      recentIndices = recentIndices.filter(idx => idx !== deletedIndex);
       chrome.storage.sync.set({ templates }, () => {
         showToast("Template deleted. Press Ctrl+Z to undo.");
         selectedTemplateName = null;
@@ -583,6 +638,7 @@ document.addEventListener("DOMContentLoaded", () => {
         elements.templateTags.value = "";
         elements.promptArea.value = "";
         elements.searchBox.value = "";
+        elements.fetchBtn.style.display = 'block';
         loadTemplates(elements.typeSelect.value, "", false);
         saveState();
       });
@@ -601,6 +657,7 @@ document.addEventListener("DOMContentLoaded", () => {
           loadTemplates(elements.typeSelect.value, "", false);
         });
       }
+      elements.fetchBtn.style.display = elements.promptArea.value ? 'none' : 'block'; // Ensure fetchBtn visibility
       showToast("Action undone.");
       lastState = null;
       saveState();
