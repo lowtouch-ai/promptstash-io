@@ -1,71 +1,49 @@
-// Listen for extension icon click to toggle sidebar
+// Store the ID of the popup window
+let popupWindowId = null;
+
+// Listen for extension icon click to toggle window
 chrome.action.onClicked.addListener((tab) => {
   if (tab.url.startsWith("chrome://")) {
-    console.error("Cannot inject into chrome:// URLs");
+    console.error("Cannot open window for chrome:// URLs");
     return;
   }
-  chrome.scripting.executeScript({
-    target: { tabId: tab.id },
-    function: toggleSidebar
-  });
+  if (popupWindowId !== null) {
+    // Check if window still exists
+    chrome.windows.get(popupWindowId, { populate: false }, (win) => {
+      if (chrome.runtime.lastError || !win) {
+        createPopupWindow();
+      } else {
+        // Focus the existing window
+        chrome.windows.update(popupWindowId, { focused: true });
+      }
+    });
+  } else {
+    createPopupWindow();
+  }
 });
 
-// Function to toggle sidebar visibility
-function toggleSidebar() {
-  const sidebarId = "promptstash-sidebar";
-  let sidebar = document.getElementById(sidebarId);
-
-  if (sidebar) {
-    sidebar.remove();
-  } else {
-    sidebar = document.createElement("div");
-    sidebar.id = sidebarId;
-    sidebar.innerHTML = `
-      <iframe src="${chrome.runtime.getURL("popup.html")}" style="width: 100%; height: 100%; border: none;"></iframe>
-    `;
-    document.body.appendChild(sidebar);
-
-    // Check if fullscreen mode is active
-    chrome.storage.local.get(["isFullscreen"], (result) => {
-      const isFullscreen = result.isFullscreen || false;
-      const isSmallScreen = window.innerWidth <= 768;
-      const defaultWidth = isFullscreen ? "100vw" : isSmallScreen ? "100vw" : "48vw";
-      const defaultHeight = isFullscreen ? "100vh" : isSmallScreen ? "100vh" : "96vh";
-      const defaultLeft = isFullscreen ? "0" : isSmallScreen ? "0" : `${window.innerWidth - (window.innerWidth * 0.48) - 20}px`;
-      const defaultTop = isFullscreen ? "0" : isSmallScreen ? "0" : "20px";
-
-      Object.assign(sidebar.style, {
-        width: defaultWidth,
-        height: defaultHeight,
-        position: "fixed",
-        top: defaultTop,
-        left: defaultLeft,
-        zIndex: "10000",
-        backgroundColor: "#f5f5f5",
-        border: "1px solid #88888844",
-        borderRadius: isFullscreen ? "0" : "8px",
-        boxShadow: isFullscreen ? "none" : "0 4px 12px rgba(0, 0, 0, 0.15)",
-        overflow: "hidden",
-        transition: "width 0.3s ease, height 0.3s ease, top 0.3s ease, left 0.3s ease" // Smooth transitions
-      });
-
-
-    });
-
-    // Universal close functionality
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && sidebar) {
-        sidebar.remove();
-      }
-    });
-
-    document.addEventListener("click", (e) => {
-      if (sidebar && !sidebar.contains(e.target)) {
-        sidebar.remove();
-      }
-    });
-  }
+// Function to create the popup window
+function createPopupWindow() {
+  chrome.windows.create({
+    url: chrome.runtime.getURL("popup.html"),
+    type: "popup",
+    width: 600,
+    height: 800,
+    left: Math.round((window.screen.width - 600) / 2),
+    top: Math.round((window.screen.height - 800) / 2),
+    focused: true
+  }, (window) => {
+    popupWindowId = window.id;
+  });
 }
+
+// Handle window removal to clear popupWindowId
+chrome.windows.onRemoved.addListener((windowId) => {
+  if (windowId === popupWindowId) {
+    popupWindowId = null;
+    chrome.storage.local.set({ isFullscreen: false });
+  }
+});
 
 // Context menu for saving selected text
 chrome.runtime.onInstalled.addListener(() => {
@@ -110,47 +88,32 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
 });
 
-// Handle messages for closing sidebar and fullscreen
+// Handle messages for closing window, fullscreen, and window ID requests
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === "closeSidebar") {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      chrome.scripting.executeScript({
-        target: { tabId: tabs[0].id },
-        function: () => {
-          const sidebar = document.getElementById("promptstash-sidebar");
-          if (sidebar) sidebar.remove();
-        }
-      });
-      // Reset fullscreen state
-      chrome.storage.local.set({ isFullscreen: false });
+  if (message.action === "closeSidebar" && message.windowId) {
+    chrome.windows.remove(message.windowId, () => {
+      if (chrome.runtime.lastError) {
+        console.error("Error closing window:", chrome.runtime.lastError);
+      }
     });
-  } else if (message.action === "toggleFullscreen") {
+  } else if (message.action === "toggleFullscreen" && message.windowId) {
     chrome.storage.local.get(["isFullscreen"], (result) => {
       const isFullscreen = !result.isFullscreen;
       chrome.storage.local.set({ isFullscreen }, () => {
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-          chrome.scripting.executeScript({
-            target: { tabId: tabs[0].id },
-            function: (isFullscreen) => {
-              const sidebar = document.getElementById("promptstash-sidebar");
-              if (sidebar) {
-                const isSmallScreen = window.innerWidth <= 768;
-                Object.assign(sidebar.style, {
-                  width: isFullscreen ? "100vw" : isSmallScreen ? "100vw" : "48vw",
-                  height: isFullscreen ? "100vh" : isSmallScreen ? "100vh" : "96vh",
-                  left: isFullscreen ? "0" : isSmallScreen ? "0" : `${window.innerWidth - (window.innerWidth * 0.48) - 20}px`,
-                  top: isFullscreen ? "0" : isSmallScreen ? "0" : "20px",
-                  borderRadius: isFullscreen ? "0" : "8px",
-                  boxShadow: isFullscreen ? "none" : "0 4px 12px rgba(0, 0, 0, 0.15)",
-                  transition: "width 0.3s ease, height 0.3s ease, top 0.3s ease, left 0.3s ease",
-                  transform: "none"
-                });
-              }
-            },
-            args: [isFullscreen]
-          });
+        chrome.windows.get(message.windowId, { populate: false }, (win) => {
+          if (win) {
+            chrome.windows.update(message.windowId, {
+              state: isFullscreen ? "maximized" : "normal",
+              width: isFullscreen ? win.width : 600,
+              height: isFullscreen ? win.height : 800,
+              left: isFullscreen ? win.left : Math.round((window.screen.width - 600) / 2),
+              top: isFullscreen ? win.top : Math.round((window.screen.height - 800) / 2)
+            });
+          }
         });
       });
     });
+  } else if (message.action === "getWindowId") {
+    sendResponse({ windowId: popupWindowId });
   }
 });

@@ -19,7 +19,6 @@ document.addEventListener("DOMContentLoaded", () => {
     clearTags: document.getElementById("clearTags"),
     sendBtn: document.getElementById("sendBtn"),
     clearSearch: document.getElementById("clearSearch"),
-    themeToggle: document.getElementById("themeToggle"),
     favoriteSuggestions: document.getElementById("favoriteSuggestions"),
     fullscreenToggle: document.getElementById("fullscreenToggle"),
     closeBtn: document.getElementById("closeBtn"),
@@ -27,7 +26,12 @@ document.addEventListener("DOMContentLoaded", () => {
     renameBtn: document.getElementById("renameBtn"),
     confirmRename: document.getElementById("confirmRename"),
     cancelRename: document.getElementById("cancelRename"),
-    favoriteStar: document.getElementById("favoriteStar")
+    favoriteStar: document.getElementById("favoriteStar"),
+    dragHandle: document.querySelector('.drag-handle'),
+    resizeHandle: document.querySelector('.resize-handle'),
+    menuBtn: document.getElementById('menuBtn'),
+    menuDropdown: document.getElementById('menuDropdown'),
+    themeToggleMenu: document.getElementById('themeToggleMenu')
   };
 
   // Check if all elements exist
@@ -41,6 +45,14 @@ document.addEventListener("DOMContentLoaded", () => {
   let lastState = null; // Store last state for undo
   let nextIndex = 0; // Track next available index
   let isFullscreen = false; // Track fullscreen state
+  let windowId = null; // Store the ID of the popup window
+
+  // Get the current window ID
+  chrome.runtime.sendMessage({ action: "getWindowId" }, (response) => {
+    if (response && response.windowId) {
+      windowId = response.windowId;
+    }
+  });
 
   // Load sidebar state and initialize index
   chrome.storage.local.get(["sidebarState", "theme", "nextIndex"], (result) => {
@@ -52,8 +64,10 @@ document.addEventListener("DOMContentLoaded", () => {
     currentTheme = result.theme || "light";
     nextIndex = result.nextIndex || defaultTemplates.length; // Start after pre-built
     document.body.className = currentTheme;
-    loadTemplates(elements.typeSelect.value); // Load templates on popup open
+    elements.fetchBtn.style.display = elements.promptArea.value ? 'none' : 'block'; // Initial fetchBtn visibility
+    loadTemplates(elements.typeSelect.value, "", false); // Load only favoriteSuggestions initially
     adjustPromptAreaHeight(); // Adjust prompt area height on load
+    elements.themeToggleMenu.textContent = currentTheme === 'light' ? 'Darkmode' : 'Lightmode'; // Set initial theme toggle text
   });
 
   // Save sidebar state
@@ -96,16 +110,118 @@ document.addEventListener("DOMContentLoaded", () => {
     const buttons = document.querySelector("#buttons");
     const templateRect = template.getBoundingClientRect();
     const buttonsRect = buttons.getBoundingClientRect();
-    const availableHeight = window.innerHeight - header.offsetHeight - searchSelect.offsetHeight - templateRect.height - buttonsRect.height; // Padding
+    const availableHeight = window.innerHeight - header.offsetHeight - searchSelect.offsetHeight - templateRect.height - buttonsRect.height;
     elements.promptArea.style.height = `${Math.max(100, availableHeight)}px`;
     elements.promptArea.style.marginBottom = `${buttonsRect.height + 10}px`; // Ensure no overlap with buttons
   }
 
-  // Toggle theme
-  elements.themeToggle.addEventListener("click", () => {
-    currentTheme = currentTheme === "light" ? "dark" : "light";
+  // Drag functionality for moving the window
+  elements.dragHandle.addEventListener('mousedown', (event) => {
+    event.preventDefault();
+    if (!windowId) return;
+    let initialX = event.screenX;
+    let initialY = event.screenY;
+    let currentWindow = null;
+
+    chrome.windows.get(windowId, (win) => {
+      currentWindow = win;
+    });
+
+    function onMouseMove(e) {
+      if (!currentWindow) return;
+      const deltaX = e.screenX - initialX;
+      const deltaY = e.screenY - initialY;
+      const newLeft = currentWindow.left + deltaX;
+      const newTop = currentWindow.top + deltaY;
+      chrome.windows.update(windowId, { left: newLeft, top: newTop });
+      initialX = e.screenX;
+      initialY = e.screenY;
+    }
+
+    function onMouseUp() {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    }
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  });
+
+  // Resize functionality for the window
+  elements.resizeHandle.addEventListener('mousedown', (event) => {
+    event.preventDefault();
+    if (!windowId) return;
+    let initialX = event.screenX;
+    let initialY = event.screenY;
+    let currentWindow = null;
+
+    chrome.windows.get(windowId, (win) => {
+      currentWindow = win;
+    });
+
+    function onMouseMove(e) {
+      if (!currentWindow) return;
+      const deltaX = e.screenX - initialX;
+      const deltaY = e.screenY - initialY;
+      const newWidth = Math.max(300, Math.min(currentWindow.width + deltaX, window.screen.width * 0.9)); // Min 300px, max 90% of screen
+      const newHeight = Math.max(400, Math.min(currentWindow.height + deltaY, window.screen.height * 0.9)); // Min 400px, max 90% of screen
+      chrome.windows.update(windowId, { width: Math.round(newWidth), height: Math.round(newHeight) });
+      initialX = e.screenX;
+      initialY = e.screenY;
+    }
+
+    function onMouseUp() {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    }
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  });
+
+  // Responsive resizing for header and buttons
+  const resizeObserver = new ResizeObserver(entries => {
+    for (let entry of entries) {
+      const width = entry.contentRect.width;
+      const baseFontSize = Math.min(Math.max(width / 20, 14), 24); // Min 14px, max 24px
+      document.documentElement.style.setProperty('--base-font-size', `${baseFontSize}px`);
+    }
+  });
+  resizeObserver.observe(document.body);
+
+  // Hamburger menu toggle
+  elements.menuBtn.addEventListener('click', (event) => {
+    event.stopPropagation();
+    elements.menuDropdown.style.display = elements.menuDropdown.style.display === 'none' ? 'block' : 'none';
+  });
+
+  // Close menu when clicking outside
+  document.addEventListener('click', (event) => {
+    if (!elements.menuBtn.contains(event.target) && !elements.menuDropdown.contains(event.target)) {
+      elements.menuDropdown.style.display = 'none';
+    }
+  });
+
+  // Theme toggle via menu
+  elements.themeToggleMenu.addEventListener('click', () => {
+    currentTheme = currentTheme === 'light' ? 'dark' : 'light';
     document.body.className = currentTheme;
+    elements.themeToggleMenu.textContent = currentTheme === 'light' ? 'Darkmode' : 'Lightmode';
     saveState();
+  });
+
+  // Placeholder menu options
+  elements.menuDropdown.querySelector('#saveLocally').addEventListener('click', () => {
+    alert('Save locally functionality to be implemented.');
+  });
+  elements.menuDropdown.querySelector('#toggleMarkdown').addEventListener('click', () => {
+    alert('Toggle markdown functionality to be implemented.');
+  });
+  elements.menuDropdown.querySelector('#exportData').addEventListener('click', () => {
+    alert('Export data functionality to be implemented.');
+  });
+  elements.menuDropdown.querySelector('#importData').addEventListener('click', () => {
+    alert('Import data functionality to be implemented.');
   });
 
   // Toggle fullscreen
@@ -114,25 +230,25 @@ document.addEventListener("DOMContentLoaded", () => {
     const svg = elements.fullscreenToggle.querySelector("svg use");
     svg.setAttribute("href", isFullscreen ? "sprite.svg#compress" : "sprite.svg#fullscreen");
     saveState();
-    chrome.runtime.sendMessage({ action: "toggleFullscreen" });
+    chrome.runtime.sendMessage({ action: "toggleFullscreen", windowId });
   });
 
-  // Close sidebar
+  // Close window
   elements.closeBtn.addEventListener("click", () => {
-    chrome.runtime.sendMessage({ action: "closeSidebar" });
+    chrome.runtime.sendMessage({ action: "closeSidebar", windowId });
   });
 
   // Clear search input
   elements.clearSearch.addEventListener("click", () => {
     elements.searchBox.value = "";
-    loadTemplates(elements.typeSelect.value);
+    loadTemplates(elements.typeSelect.value, "", false);
     elements.searchBox.focus();
   });
 
-  // Handle ESC key to close sidebar
+  // Handle ESC key to close window
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
-      chrome.runtime.sendMessage({ action: "closeSidebar" });
+      chrome.runtime.sendMessage({ action: "closeSidebar", windowId });
     }
   });
 
@@ -149,9 +265,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Undo typing
+  // Control fetchBtn visibility on input
   elements.promptArea.addEventListener("input", () => {
     storeLastState();
+    elements.fetchBtn.style.display = elements.promptArea.value ? 'none' : 'block';
     saveState();
   });
 
@@ -160,9 +277,9 @@ document.addEventListener("DOMContentLoaded", () => {
     storeLastState();
     let value = elements.templateTags.value;
     if (value) {
-      value = value.replace(/^[,\s]/g, "")
-      value = value.replace(/[,\s.;/]+/g, ", ")
-      value = value.replace(/[^a-zA-Z0-9_, ]/g, "")
+      value = value.replace(/^[,\s]/g, "");
+      value = value.replace(/[,\s.;/]+/g, ", ");
+      value = value.replace(/[^a-zA-Z0-9_, ]/g, "");
       elements.templateTags.value = value;
     }
     saveState();
@@ -182,10 +299,10 @@ document.addEventListener("DOMContentLoaded", () => {
     return tags.filter(tag => tag).join(", ");
   }
 
-  // Load templates and suggestions
-  function loadTemplates(filter, query = "") {
+  // Load templates and suggestions with dropdown control
+  function loadTemplates(filter, query = "", showDropdown = false) {
     chrome.storage.sync.get(["templates"], (result) => {
-      let templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i })); // Assign indices to pre-built
+      let templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
       elements.dropdownResults.innerHTML = "";
       elements.favoriteSuggestions.innerHTML = "";
 
@@ -206,30 +323,32 @@ document.addEventListener("DOMContentLoaded", () => {
       // Sort favorites to top
       filteredTemplates.sort((a, b) => (b.favorite || 0) - (a.favorite || 0));
 
-      // Populate dropdown
-      filteredTemplates.forEach((tmpl) => {
-        const div = document.createElement("div");
-        div.textContent = tmpl.favorite ? `${tmpl.name} (${tmpl.tags})` : `${tmpl.name} (${tmpl.tags})`;
-        div.setAttribute("role", "option");
-        div.setAttribute("aria-selected", selectedTemplateName === tmpl.name);
-        div.addEventListener("click", (event) => {
-          if (!event.target.classList.contains("favorite-toggle")) {
-            selectedTemplateName = tmpl.name;
-            elements.templateName.value = tmpl.name;
-            elements.templateTags.value = tmpl.tags;
-            elements.promptArea.value = tmpl.content;
-            elements.searchBox.value = ""; // Clear search box after selection
-            elements.dropdownResults.innerHTML = "";
-            resetRenameState(); // Reset rename state on selection
-            saveState();
-            elements.promptArea.focus(); // Focus prompt area after selection
-          }
+      // Populate dropdown only if showDropdown is true
+      if (showDropdown) {
+        filteredTemplates.forEach((tmpl) => {
+          const div = document.createElement("div");
+          div.textContent = tmpl.favorite ? `${tmpl.name} (${tmpl.tags})` : `${tmpl.name} (${tmpl.tags})`;
+          div.setAttribute("role", "option");
+          div.setAttribute("aria-selected", selectedTemplateName === tmpl.name);
+          div.addEventListener("click", (event) => {
+            if (!event.target.classList.contains("favorite-toggle")) {
+              selectedTemplateName = tmpl.name;
+              elements.templateName.value = tmpl.name;
+              elements.templateTags.value = tmpl.tags;
+              elements.promptArea.value = tmpl.content;
+              elements.searchBox.value = "";
+              elements.dropdownResults.innerHTML = "";
+              resetRenameState();
+              saveState();
+              elements.promptArea.focus();
+            }
+          });
+          div.innerHTML += `<button class="favorite-toggle ${tmpl.favorite ? 'favorited' : 'unfavorited'}" data-name="${tmpl.name}" aria-label="${tmpl.favorite ? 'Unfavorite' : 'Favorite'} template">${tmpl.favorite ? '★' : '☆'}</button>`;
+          elements.dropdownResults.appendChild(div);
         });
-        div.innerHTML += `<button class="favorite-toggle ${tmpl.favorite ? 'favorited' : 'unfavorited'}" data-name="${tmpl.name}" aria-label="${tmpl.favorite ? 'Unfavorite' : 'Favorite'} template">${tmpl.favorite ? '★' : '☆'}</button>`;
-        elements.dropdownResults.appendChild(div);
-      });
+      }
 
-      // Populate favorite suggestions
+      // Always populate favorite suggestions
       const favorites = templates.filter(tmpl => tmpl.favorite);
       if (favorites.length > 0) {
         elements.favoriteStar.classList.remove("d-none");
@@ -245,9 +364,9 @@ document.addEventListener("DOMContentLoaded", () => {
             elements.templateName.value = tmpl.name;
             elements.templateTags.value = tmpl.tags;
             elements.promptArea.value = tmpl.content;
-            elements.searchBox.value = ""; // Clear search box after selection
+            elements.searchBox.value = "";
             saveState();
-            elements.promptArea.focus(); // Focus prompt area after selection
+            elements.promptArea.focus();
           });
           span.addEventListener("keydown", (e) => {
             if (e.key === "Enter" || e.key === " ") {
@@ -263,38 +382,35 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Show dropdown on search box click
-  elements.searchBox.addEventListener("click", (event) => {
-    event.stopPropagation();
-    loadTemplates(elements.typeSelect.value, elements.searchBox.value.toLowerCase());
+  // Show dropdown on search box focus
+  elements.searchBox.addEventListener("focus", () => {
+    loadTemplates(elements.typeSelect.value, elements.searchBox.value.toLowerCase(), true);
   });
 
   // Search as user types
   elements.searchBox.addEventListener("input", () => {
-    loadTemplates(elements.typeSelect.value, elements.searchBox.value.toLowerCase());
+    loadTemplates(elements.typeSelect.value, elements.searchBox.value.toLowerCase(), true);
   });
 
   // Handle type select
   elements.typeSelect.addEventListener("change", () => {
-    loadTemplates(elements.typeSelect.value, elements.searchBox.value.toLowerCase());
+    loadTemplates(elements.typeSelect.value, elements.searchBox.value.toLowerCase(), true);
   });
 
   // Close dropdowns when clicking outside
   document.addEventListener("click", (event) => {
-    if (!elements.searchBox.contains(event.target) && !elements.dropdownResults.contains(event.target) && !elements.themeToggle.contains(event.target)) {
+    if (!elements.searchBox.contains(event.target) && !elements.dropdownResults.contains(event.target)) {
       elements.dropdownResults.innerHTML = "";
     }
     if (!elements.typeSelect.contains(event.target)) {
-        elements.typeSelect.blur();
+      elements.typeSelect.blur();
     }
   });
 
   // Validate template size
   function validateTemplateSize(template) {
-    // Stringify template to estimate size in bytes (UTF-8)
     const serialized = JSON.stringify(template);
     const sizeInBytes = new TextEncoder().encode(serialized).length;
-    // Chrome.storage.sync has 8KB per key-value pair limit
     const maxSize = 8 * 1024; // 8KB
     return { isValid: sizeInBytes <= maxSize, size: sizeInBytes };
   }
@@ -307,7 +423,6 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    // Attempt to save to chrome.storage.sync
     chrome.storage.sync.set({ templates }, () => {
       if (chrome.runtime.lastError) {
         showToast("Failed to save template: " + chrome.runtime.lastError.message);
@@ -338,7 +453,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
       storeLastState();
-      lastState.templates = [...templates]; // Backup for undo
+      lastState.templates = [...templates];
       const isPreBuilt = template.type === "pre-built";
       const message = `Are you sure you want to edit the content/tags of "${selectedTemplateName}"?${isPreBuilt ? "\nThis is a pre-built template." : ""}`;
       const confirmSave = confirm(message);
@@ -346,23 +461,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const templateIndex = templates.findIndex(t => t.name === selectedTemplateName);
       templates[templateIndex] = {
-        name: selectedTemplateName, // Preserve original name
-        tags: sanitizeTags(elements.templateTags.value), // Sanitize tags on save
+        name: selectedTemplateName,
+        tags: sanitizeTags(elements.templateTags.value),
         content: elements.promptArea.value,
         type: template.type,
         favorite: template.favorite || false,
-        index: template.index // Preserve index
+        index: template.index
       };
 
-      // Save with validation and error handling
       saveTemplates(templates, () => {
-        loadTemplates(elements.typeSelect.value);
+        loadTemplates(elements.typeSelect.value, "", false);
         saveState();
       });
     });
   });
 
-  // Save as new template with separate prompts
+  // Save as new template
   elements.saveAsBtn.addEventListener("click", () => {
     chrome.storage.sync.get(["templates"], (result) => {
       const templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
@@ -372,7 +486,7 @@ document.addEventListener("DOMContentLoaded", () => {
         defaultName = `New Template ${i++}`;
       }
       let name = prompt("Enter template name (required):", defaultName);
-      if (name === null) return; // User cancelled
+      if (name === null) return;
       name = name.trim();
       if (!name) {
         showToast("Name is mandatory.");
@@ -383,8 +497,8 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
       let tagsInput = prompt("Enter tags (optional, comma-separated):", elements.templateTags.value);
-      if (tagsInput === null) tagsInput = ""; // Treat cancel as empty tags
-      const tags = sanitizeTags(tagsInput); // Sanitize tags input
+      if (tagsInput === null) tagsInput = "";
+      const tags = sanitizeTags(tagsInput);
       saveNewTemplate(name, tags);
     });
   });
@@ -400,7 +514,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const newTemplate = {
         name,
-        tags, // Already sanitized
+        tags,
         content: elements.promptArea.value,
         type: "custom",
         favorite: false,
@@ -409,11 +523,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
       templates.push(newTemplate);
 
-      // Save with validation and error handling
       saveTemplates(templates, () => {
         selectedTemplateName = name;
         elements.templateName.value = name;
-        loadTemplates(elements.typeSelect.value);
+        loadTemplates(elements.typeSelect.value, "", false);
         saveState();
       }, true);
     });
@@ -426,20 +539,21 @@ document.addEventListener("DOMContentLoaded", () => {
         if (response && response.prompt) {
           storeLastState();
           elements.promptArea.value = response.prompt;
+          elements.fetchBtn.style.display = 'none';
           saveState();
         }
       });
     });
   });
 
-  // Send prompt to website and close sidebar
+  // Send prompt to website and close window
   elements.sendBtn.addEventListener("click", () => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       chrome.tabs.sendMessage(tabs[0].id, {
         action: "sendPrompt",
         prompt: elements.promptArea.value
       }, () => {
-        chrome.runtime.sendMessage({ action: "closeSidebar" });
+        chrome.runtime.sendMessage({ action: "closeSidebar", windowId });
       });
     });
   });
@@ -469,7 +583,7 @@ document.addEventListener("DOMContentLoaded", () => {
         elements.templateTags.value = "";
         elements.promptArea.value = "";
         elements.searchBox.value = "";
-        loadTemplates(elements.typeSelect.value);
+        loadTemplates(elements.typeSelect.value, "", false);
         saveState();
       });
     });
@@ -484,7 +598,7 @@ document.addEventListener("DOMContentLoaded", () => {
       selectedTemplateName = lastState.selectedName || null;
       if (lastState.templates) {
         chrome.storage.sync.set({ templates: lastState.templates }, () => {
-          loadTemplates(elements.typeSelect.value);
+          loadTemplates(elements.typeSelect.value, "", false);
         });
       }
       showToast("Action undone.");
@@ -497,6 +611,7 @@ document.addEventListener("DOMContentLoaded", () => {
   elements.clearPrompt.addEventListener("click", () => {
     storeLastState();
     elements.promptArea.value = "";
+    elements.fetchBtn.style.display = 'block';
     elements.promptArea.focus();
     saveState();
   });
@@ -511,7 +626,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (template) {
           template.favorite = !template.favorite;
           chrome.storage.sync.set({ templates }, () => {
-            loadTemplates(elements.typeSelect.value, elements.searchBox.value.toLowerCase());
+            loadTemplates(elements.typeSelect.value, elements.searchBox.value.toLowerCase(), true);
           });
         }
       });
@@ -521,7 +636,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Reset rename state to default
   function resetRenameState() {
     elements.templateName.setAttribute("readonly", "true");
-    elements.templateName.classList.remove("highlight"); // Remove highlight
+    elements.templateName.classList.remove("highlight");
     elements.renameBtn.classList.remove("d-none");
     elements.confirmRename.classList.add("d-none");
     elements.cancelRename.classList.add("d-none");
@@ -534,7 +649,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     elements.templateName.removeAttribute("readonly");
-    elements.templateName.classList.add("highlight"); // Add highlight
+    elements.templateName.classList.add("highlight");
     elements.templateName.focus();
     elements.renameBtn.classList.add("d-none");
     elements.confirmRename.classList.remove("d-none");
@@ -547,7 +662,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const originalName = elements.templateName.dataset.originalName;
     elements.templateName.value = originalName;
     elements.templateName.setAttribute("readonly", "true");
-    elements.templateName.classList.remove("highlight"); // Remove highlight
+    elements.templateName.classList.remove("highlight");
     elements.renameBtn.classList.remove("d-none");
     elements.confirmRename.classList.add("d-none");
     elements.cancelRename.classList.add("d-none");
@@ -558,9 +673,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const newName = elements.templateName.value.trim();
     const originalName = elements.templateName.dataset.originalName;
     if (newName === originalName) {
-      // If unchanged, cancel rename
       elements.templateName.setAttribute("readonly", "true");
-      elements.templateName.classList.remove("highlight"); // Remove highlight
+      elements.templateName.classList.remove("highlight");
       elements.renameBtn.classList.remove("d-none");
       elements.confirmRename.classList.add("d-none");
       elements.cancelRename.classList.add("d-none");
@@ -587,11 +701,11 @@ document.addEventListener("DOMContentLoaded", () => {
         selectedTemplateName = newName;
         elements.templateName.value = newName;
         elements.templateName.setAttribute("readonly", "true");
-        elements.templateName.classList.remove("highlight"); // Remove highlight
+        elements.templateName.classList.remove("highlight");
         elements.renameBtn.classList.remove("d-none");
         elements.confirmRename.classList.add("d-none");
         elements.cancelRename.classList.add("d-none");
-        loadTemplates(elements.typeSelect.value);
+        loadTemplates(elements.typeSelect.value, "", false);
       });
     });
   });
@@ -627,6 +741,6 @@ document.addEventListener("DOMContentLoaded", () => {
   // Show the clear button only when the search box contains text
   elements.searchBox.addEventListener("input", () => {
     elements.clearSearch.style.display = elements.searchBox.value ? "block" : "none";
-    loadTemplates(elements.typeSelect.value, elements.searchBox.value.toLowerCase());
+    loadTemplates(elements.typeSelect.value, elements.searchBox.value.toLowerCase(), true);
   });
 });

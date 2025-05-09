@@ -46,11 +46,6 @@ header {
   width: 100%;
 }
 
-#buttons {
-  background: inherit;
-  z-index: 10;
-}
-
 .toast {
   position: fixed;
   top: 20px;
@@ -80,7 +75,7 @@ body.dark .toast {
 }
 
 .title {
-  font-size: 1.7rem;
+  font-size: var(--base-font-size);
 }
 
 body.dark .title {
@@ -91,23 +86,10 @@ body.light .title {
   color: #202124;
 }
 
-/* Theme toggle */
-#themeToggle {
-  padding: 8px;
-  background: transparent;
-}
-
-#themeToggle svg {
-  fill: #ddd;
-  mix-blend-mode: difference;
-}
-
-/* Close button */
 #closeBtn {
   z-index: 1001;
 }
 
-/* Search section */
 .search-select {
   position: relative;
 }
@@ -155,13 +137,12 @@ body.dark #searchBox:hover, #searchBox:focus {
   color: #888;
 }
 
-/* Type select */
 #typeSelect {
   border: none;
   background-color: transparent;
   font-size: 0.70rem;
   padding: 10px;
-  padding-right: 80px;
+  padding-right: 50px;
   color: #5f6368;
   max-width: 36px;
   height: 36px;
@@ -177,7 +158,6 @@ body.dark #typeSelect {
 #typeSelect option {
   background: #ffffff;
   color: #202124;
-  
 }
 
 body.dark #typeSelect option {
@@ -190,7 +170,6 @@ body.dark #typeSelect option {
   mix-blend-mode: difference;
 }
 
-/* Dropdowns */
 .dropdown {
   margin-top: -24px;
   position: absolute;
@@ -272,7 +251,6 @@ body.dark .favorite-toggle.favorited {
   display: block;
 }
 
-/* Favorite suggestions */
 .favorite-suggestions {
   display: flex;
   flex-wrap: wrap;
@@ -290,8 +268,6 @@ body.dark .favorite-toggle.favorited {
   cursor: pointer;
 }
 
-
-
 .favorite-suggestion:hover, .favorite-suggestion:focus {
   background: #fff;
   box-shadow: 0 0 8px rgba(0, 0, 0, 0.1);
@@ -301,7 +277,6 @@ body.dark .favorite-suggestion:hover, body.dark .favorite-suggestion:focus {
   background: #4b4f57;
 }
 
-/* Template section */
 .template {
   margin-top: 16px;
 }
@@ -313,7 +288,7 @@ body.dark .favorite-suggestion:hover, body.dark .favorite-suggestion:focus {
 
 body.dark #templateName {
   border-color: #5f6368;
-  background: #3a3c40 ;
+  background: #3a3c40;
   color: #e8eaed;
 }
 
@@ -321,13 +296,25 @@ body.dark #templateName {
   color: #888;
 }
 
-#renameBtn svg, #cancelRename svg, #confirmRename svg {
- display: none;
+.rbtn {
+  background-color: transparent;
+  border: none;
+  fill: #eee;
+  mix-blend-mode: difference;
+  transition: 0.2s;
 }
 
-#templateName:hover + #renameBtn svg, #cancelRename svg, #confirmRename svg {
-  display: block;
-  fill: #8888;
+#renameBtn {
+  fill: none;
+}
+
+#templateName:hover + #renameBtn, #renameBtn:hover {
+  fill: #eee;
+  mix-blend-mode: difference;
+}
+
+.rbtn:hover svg {
+  transform: scale(1.08);
 }
 
 .tags-wrapper {
@@ -360,8 +347,18 @@ body.dark #templateTags {
   color: #888a;
 }
 
-#clearTags svg{
-  transform: translateY(-45%);
+#clearTags svg {
+  transform: translateY(-15%);
+}
+
+#fetchBtn {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #ccc;
+  border: 1px dashed #aaa;
+  mix-blend-mode: difference;
 }
 
 #promptArea {
@@ -371,21 +368,7 @@ body.dark #templateTags {
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(136, 136, 136, 0.1) #fff;
-  }
-  
-  #promptArea::-webkit-scrollbar {
-    width: 1px;
-    background: transparent;
-  }
-  
-  #promptArea::-webkit-scrollbar-thumb {
-    background: rgba(136, 136, 136, 0.3);
-    border-radius: 1px;
-  }
-  
-  #promptArea:hover::-webkit-scrollbar-thumb {
-    background: rgba(136, 136, 136, 0.6);
-  }
+}
 
 body.dark #promptArea {
   border-color: #5f6368;
@@ -402,45 +385,50 @@ body.dark #promptArea {
   transform: translateY(-50%);
 }
 
-#closeBtn svg, #fullscreenToggle svg, #compressBtn svg{
-  fill: #888;
-}
-
-#clearPrompt, #clearTags, #clearSearch, #fullscreenToggle, #compressBtn {
-  background: transparent;
+.tbtn {
+  fill: #222;
   border: none;
 }
 
-#clearPrompt svg, #clearTags svg, #clearSearch svg {
-  fill: #8884;
+body.dark .tbtn {
+  fill: #ccc;
 }
 
-#clearPrompt:hover svg, #clearTags:hover svg, #clearSearch:hover svg {
-  fill: #888;
+.tbtn:hover svg {
+  transform: scale(1.1);
 }
 
-#fullscreenToggle svg, #compressBtn svg {
+.crbtn {
+  background: transparent;
+  border: none;
+  padding: 2px 5px;
+  margin-right: 10px;
+  fill: none;
+}
+
+:hover + .crbtn {
   fill: #ccc;
   mix-blend-mode: difference;
 }
 
-#fullscreenToggle:hover svg {
-  transform: scale(1.1);
+.crbtn:hover {
+  fill: #fff;
+  mix-blend-mode: difference;
 }
 
-#compressBtn:hover svg {
-  transform: scale(0.9);
-}
-
-/* Fullscreen header */
 #fullscreenHeader {
   font-size: 1.5rem;
   color: inherit;
 }
 
-/* Buttons */
+#buttons {
+  background: inherit;
+  z-index: 10;
+}
+
 #buttons .btn {
-  margin: 2vw;
+  font-size: calc(var(--base-font-size) * 0.8);
+  margin: calc(var(--base-font-size) * 0.2);
   border: none;
 }
 
@@ -455,7 +443,6 @@ body.dark #promptArea {
   transform: scale(1.1);
 }
 
-/* Tooltip */
 .tooltip-inner {
   background: #202124;
   color: #e8eaed;
@@ -468,6 +455,14 @@ body.dark #promptArea {
 
 body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
   border-color: #5f6368;
-  background: #3a3c40 ;
+  background: #3a3c40;
   color: #e8eaed;
+}
+
+#templateName:focus, #templateTags:focus, #promptArea:focus {
+  outline: none;
+}
+
+:root {
+  --base-font-size: 16px; /* Default */
 }
