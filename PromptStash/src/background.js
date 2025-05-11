@@ -7,6 +7,7 @@ let targetTabId = null;
 chrome.action.onClicked.addListener((tab) => {
   if (tab.url.startsWith("chrome://")) {
     console.error("Cannot open window for chrome:// URLs");
+    alert("Cannot open window for chrome:// URLs");
     return;
   }
   // Set the target tab ID when the icon is clicked
@@ -49,25 +50,32 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
 // Function to create the popup window
 function createPopupWindow() {
-  // Fallback screen dimensions (common 1080p resolution)
-  const screenWidth = 1920;
-  const screenHeight = 1080;
-  const windowWidth = 800;
-  const windowHeight = 800;
-  const left = Math.round((screenWidth - windowWidth) / 2);
-  const top = Math.round((screenHeight - windowHeight) / 2);
+  chrome.system.display.getInfo((displays) => {
+    const primaryDisplay = displays[0];
+    const screenWidth = primaryDisplay.workArea.width;
+    const screenHeight = primaryDisplay.workArea.height;
+    const screenLeft = primaryDisplay.workArea.left;
+    const screenTop = primaryDisplay.workArea.top;
+    const popupWidth = 800;
+    const popupHeight = 800;
 
-  chrome.windows.create({
-    url: chrome.runtime.getURL("popup.html"),
-    type: "popup",
-    width: windowWidth,
-    height: windowHeight,
-    left: left,
-    top: top,
-    focused: true
-  }, (window) => {
-    popupWindowId = window.id;
-  });
+    // Calculate center
+    const left = screenLeft + Math.round((screenWidth - popupWidth) / 2);
+    const top = screenTop + Math.round((screenHeight - popupHeight) / 2);
+
+    // Create popup window
+    chrome.windows.create({
+      url: chrome.runtime.getURL("popup.html"),
+      type: "popup",
+      width: popupWidth,
+      height: popupHeight,
+      left: left,
+      top: top,
+      focused: true
+    }, (window) => {
+      popupWindowId = window.id;
+    });
+  });  
 }
 
 // Handle window removal to clear popupWindowId

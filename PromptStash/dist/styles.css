@@ -4,14 +4,14 @@ body {
   box-sizing: border-box;
   margin: 0;
   transition: color 0.2s;
-  overflow: auto;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
 body::-webkit-scrollbar {
   background: #8882;
-  width: 5px;
+  width: 6px;
   cursor: pointer;
 }
 body::-webkit-scrollbar-thumb {
@@ -21,7 +21,7 @@ body::-webkit-scrollbar-thumb {
 }
 
 body.light {
-  background: #f1f1f1;
+  background: #f8f8f8;
   color: #202124;
 }
 
@@ -38,7 +38,6 @@ header {
 
 .content-area {
   width: 100%;
-  flex-grow: 1;
   display: flex;
   flex-direction: column;
 }
@@ -47,13 +46,13 @@ header {
   position: fixed;
   top: 20px;
   right: 20px;
-  background: #333;
-  color: #fff;
+  background: #cfc;
+  color: #141;
   padding: 10px 20px;
   border-radius: 4px;
   opacity: 0;
   transition: opacity 0.3s;
-  z-index: 2000;
+  z-index: 10000;
 }
 
 body.dark .toast {
@@ -203,6 +202,7 @@ body.dark .dropdown {
 
 body.dark .dropdown div {
   color: #e8eaed;
+  background: #000;
   border-bottom-color: #5f6368;
 }
 
@@ -273,10 +273,6 @@ body.dark .favorite-toggle.favorited {
 
 body.dark .favorite-suggestion:hover, body.dark .favorite-suggestion:focus {
   background: #4b4f57;
-}
-
-#template {
-  margin-top: 16px;
 }
 
 #templateName {
@@ -361,9 +357,6 @@ body.dark #templateTags {
 
 #promptArea {
   border: 1px solid #dadce0;
-  flex-grow: 1;
-  height: 100vh;
-  min-height: 200px;
   font-size: 1rem;
   width: 100%;
   overflow-y: auto;
@@ -433,13 +426,16 @@ body.dark .tbtn {
 
 #buttons {
   background: transparent;
-  z-index: 10;
   margin-bottom: 10px;
 }
 
 #buttons .btn {
   border: none;
-  background-color: #f2f2f2;
+  background-color: #f8f8f8;
+}
+
+body.dark #buttons .btn {
+  background-color: #202020;
 }
 
 #buttons .btn svg {
@@ -464,9 +460,7 @@ body.dark .tbtn {
 }
 
 .tooltip-arrow::before {
-  display: none;
-  margin: -5px;
-  border-top-color: #202124;
+  color: #202124;
 }
 
 body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
@@ -509,10 +503,18 @@ body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
 @media (max-height: 400px) {
   body {
     font-size: small;
+    overflow-y: auto;
   }
 
   #buttons .btn {
     margin-top: 1vh;
+    margin-bottom: 1vh;
     padding-top: 1vh;
+    padding-bottom: 1vh;
+  }  
+  
+  #buttons .btn svg{
+    width: calc(8px + 4vh);
+    height: calc(8px + 4vh);
   }  
 }

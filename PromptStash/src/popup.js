@@ -59,7 +59,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Load sidebar state, recent indices, and initialize index
+  // Load popup state, recent indices, and initialize index
   chrome.storage.local.get(["popupState", "theme", "nextIndex"], (localResult) => {
     chrome.storage.sync.get(["recentIndices"], (syncResult) => {
       const state = localResult.popupState || {};
@@ -78,7 +78,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Save sidebar state and recent indices
+  // Save popup state and recent indices
   function saveState() {
     chrome.storage.local.set({
       popupState: {
@@ -114,28 +114,28 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // Adjust prompt area height
-function adjustPromptAreaHeight() {
-  const header = document.querySelector("header");
-  const searchSelect = document.querySelector(".search-select");
-  const templateNameTags = document.querySelector("#template > .row.g-2 >");
-  const buttons = document.querySelector("#buttons");
+  function adjustPromptAreaHeight() {
+    const header = document.querySelector("header");
+    const searchSelect = document.querySelector(".search-select");
+    const templateNameTags = document.querySelector("#template > .row.g-2");
+    const buttons = document.querySelector("#buttons");
 
-  if (!header || !searchSelect || !templateNameTags || !buttons) {
-    console.warn("One or more elements not found for height adjustment");
-    return;
+    if (!header || !searchSelect || !templateNameTags || !buttons) {
+      console.warn("One or more elements not found for height adjustment");
+      return;
+    }
+
+    const headerHeight = header.offsetHeight;
+    const searchHeight = searchSelect.offsetHeight;
+    const nameTagsHeight = templateNameTags.offsetHeight;
+    const buttonsHeight = buttons.offsetHeight;
+
+    const totalFixedHeight = headerHeight + searchHeight + nameTagsHeight + buttonsHeight;
+    const availableHeight = window.innerHeight - totalFixedHeight;
+
+    elements.promptArea.style.height = `${Math.max(110, availableHeight - 40)}px`;
+    elements.promptArea.style.marginBottom = `${buttonsHeight + 20}px`;
   }
-
-  const headerHeight = header.offsetHeight;
-  const searchHeight = searchSelect.offsetHeight;
-  const nameTagsHeight = templateNameTags.offsetHeight;
-  const buttonsHeight = buttons.offsetHeight;
-
-  const totalFixedHeight = headerHeight + searchHeight + nameTagsHeight + buttonsHeight;
-  const availableHeight = window.innerHeight - totalFixedHeight;
-
-  elements.promptArea.style.height = `${Math.max(100, availableHeight)}px`;
-  elements.promptArea.style.marginBottom = `${buttonsHeight - 10}px`;
-}
 
   // Update recent indices
   function updateRecentIndices(index) {
@@ -181,18 +181,18 @@ function adjustPromptAreaHeight() {
   });
 
   // Placeholder menu options
-  elements.menuDropdown.querySelector('#saveLocally').addEventListener('click', () => {
-    showToast('Save locally functionality may or may not be implemented in the future..');
-  });
-  elements.menuDropdown.querySelector('#toggleMarkdown').addEventListener('click', () => {
-    showToast('Toggle markdown functionality may or may not be implemented in the future..');
-  });
-  elements.menuDropdown.querySelector('#exportData').addEventListener('click', () => {
-    showToast('Export data functionality may or may not be implemented in the future..');
-  });
-  elements.menuDropdown.querySelector('#importData').addEventListener('click', () => {
-    showToast('Import data functionality may or may not be implemented in the future..');
-  });
+  // elements.menuDropdown.querySelector('#saveLocally').addEventListener('click', () => {
+  //   showToast('Save locally functionality may or may not be implemented in the future..');
+  // });
+  // elements.menuDropdown.querySelector('#toggleMarkdown').addEventListener('click', () => {
+  //   showToast('Toggle markdown functionality may or may not be implemented in the future..');
+  // });
+  // elements.menuDropdown.querySelector('#exportData').addEventListener('click', () => {
+  //   showToast('Export data functionality may or may not be implemented in the future..');
+  // });
+  // elements.menuDropdown.querySelector('#importData').addEventListener('click', () => {
+  //   showToast('Import data functionality may or may not be implemented in the future..');
+  // });
 
   // // Toggle fullscreen
   // elements.fullscreenToggle.addEventListener("click", () => {
@@ -824,15 +824,24 @@ function adjustPromptAreaHeight() {
   // Handle window resize for prompt area
   window.addEventListener("resize", adjustPromptAreaHeight);
 
-  // Show the clear button only when the search box contains text
+  // Show the clear button only when the field contains text
+  let timeout;
   document.addEventListener("mousemove", (event) => {
-      elements.clearSearch.style.display = (elements.searchBox.value && elements.searchBox.contains(event.target)) ? "block" : "none";
-      elements.clearTags.style.display = (elements.templateTags.value && elements.templateTags.contains(event.target)) ? "block" : "none";
-      elements.clearPrompt.style.display = (elements.promptArea.value && elements.promptArea.contains(event.target)) ? "block" : "none";
-  })
+    clearTimeout(timeout);
+    timeout = setTimeout(() => {
+      elements.clearSearch.style.display = (elements.searchBox.contains(event.target) && elements.searchBox.value) ? "block" : "none";
+      elements.clearTags.style.display = (elements.templateTags.contains(event.target) && elements.templateTags.value) ? "block" : "none";
+      elements.clearPrompt.style.display = (elements.promptArea.contains(event.target) && elements.promptArea.value) ? "block" : "none";
+    }, 50);
+  });
 
   document.addEventListener("click", (event) => {
     elements.template.style.opacity = elements.buttons.style.opacity = (elements.searchBox.contains(event.target) || elements.dropdownResults.contains(event.target)) ? "0.2" : "1"
   });
-
 });
+
+// chrome.windows.onFocusChanged.addListener((windowId) => {
+//   if (windowId === chrome.windows.WINDOW_ID_NONE) {
+//     window.close();
+//   }
+// });
