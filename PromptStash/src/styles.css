@@ -362,7 +362,7 @@ body.dark #templateTags {
 #promptArea {
   border: 1px solid #dadce0;
   flex-grow: 1;
-  height: calc(100vw - 300px);
+  height: 100vh;
   min-height: 200px;
   font-size: 1rem;
   width: 100%;

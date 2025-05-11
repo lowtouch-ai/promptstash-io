@@ -74,7 +74,7 @@ function createPopupWindow() {
 chrome.windows.onRemoved.addListener((windowId) => {
   if (windowId === popupWindowId) {
     popupWindowId = null;
-    chrome.storage.local.set({ isFullscreen: false });
+    // chrome.storage.local.set({ isFullscreen: false });
   }
 });
 
@@ -86,23 +86,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         console.error("Error closing window:", chrome.runtime.lastError);
       }
     });
-  } else if (message.action === "toggleFullscreen" && message.windowId) {
-    chrome.storage.local.get(["isFullscreen"], (result) => {
-      const isFullscreen = !result.isFullscreen;
-      chrome.storage.local.set({ isFullscreen }, () => {
-        chrome.windows.get(message.windowId, { populate: false }, (win) => {
-          if (win) {
-            chrome.windows.update(message.windowId, {
-              state: isFullscreen ? "maximized" : "normal",
-              width: isFullscreen ? win.width : 600,
-              height: isFullscreen ? win.height : 800,
-              left: isFullscreen ? win.left : Math.round((1920 - 600) / 2),
-              top: isFullscreen ? win.top : Math.round((1080 - 800) / 2)
-            });
-          }
-        });
-      });
-    });
+  // } else if (message.action === "toggleFullscreen" && message.windowId) {
+  //   chrome.storage.local.get(["isFullscreen"], (result) => {
+  //     const isFullscreen = !result.isFullscreen;
+  //     chrome.storage.local.set({ isFullscreen }, () => {
+  //       chrome.windows.get(message.windowId, { populate: false }, (win) => {
+  //         if (win) {
+  //           chrome.windows.update(message.windowId, {
+  //             state: isFullscreen ? "maximized" : "normal",
+  //             width: isFullscreen ? win.width : 600,
+  //             height: isFullscreen ? win.height : 800,
+  //             left: isFullscreen ? win.left : Math.round((1920 - 600) / 2),
+  //             top: isFullscreen ? win.top : Math.round((1080 - 800) / 2)
+  //           });
+  //         }
+  //       });
+  //     });
+  //   });
   } else if (message.action === "getWindowId") {
     sendResponse({ windowId: popupWindowId });
   } else if (message.action === "getTargetTabId") {

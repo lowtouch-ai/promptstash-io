@@ -22,7 +22,7 @@ document.addEventListener("DOMContentLoaded", () => {
     sendBtn: document.getElementById("sendBtn"),
     clearSearch: document.getElementById("clearSearch"),
     favoriteSuggestions: document.getElementById("favoriteSuggestions"),
-    fullscreenToggle: document.getElementById("fullscreenToggle"),
+    //fullscreenToggle: document.getElementById("fullscreenToggle"),
     closeBtn: document.getElementById("closeBtn"),
     toast: document.getElementById("toast"),
     renameBtn: document.getElementById("renameBtn"),
@@ -48,7 +48,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentTheme = "light";
   let lastState = null; // Store last state for undo
   let nextIndex = 0; // Track next available index
-  let isFullscreen = false; // Track fullscreen state
+  //let isFullscreen = false; // Track fullscreen state
   let windowId = null; // Store the ID of the popup window
   let recentIndices = []; // Store up to 20 recent template indices
 
@@ -113,24 +113,29 @@ document.addEventListener("DOMContentLoaded", () => {
     setTimeout(() => elements.toast.classList.remove("show"), 4000);
   }
 
-  // Adjust prompt area height dynamically
-  function adjustPromptAreaHeight() {
-    const header = document.querySelector("header");
-    const searchSelect = document.querySelector(".search-select");
-    // === MODIFIED START === Fix selector to use ID instead of class
-    const template = document.querySelector("#template");
-    // === MODIFIED END ===
-    const buttons = document.querySelector("#buttons");
-    if (!header || !searchSelect || !template || !buttons) {
-      console.warn("One or more elements not found for height adjustment");
-      return;
-    }
-    const templateRect = template.getBoundingClientRect();
-    const buttonsRect = buttons.getBoundingClientRect();
-    const availableHeight = window.innerHeight - header.offsetHeight - searchSelect.offsetHeight - templateRect.height - buttonsRect.height;
-    elements.promptArea.style.height = `${Math.max(100, availableHeight)}px`;
-    elements.promptArea.style.marginBottom = `${buttonsRect.height + 10}px`; // Ensure no overlap with buttons
+  // Adjust prompt area height
+function adjustPromptAreaHeight() {
+  const header = document.querySelector("header");
+  const searchSelect = document.querySelector(".search-select");
+  const templateNameTags = document.querySelector("#template > .row.g-2 >");
+  const buttons = document.querySelector("#buttons");
+
+  if (!header || !searchSelect || !templateNameTags || !buttons) {
+    console.warn("One or more elements not found for height adjustment");
+    return;
   }
+
+  const headerHeight = header.offsetHeight;
+  const searchHeight = searchSelect.offsetHeight;
+  const nameTagsHeight = templateNameTags.offsetHeight;
+  const buttonsHeight = buttons.offsetHeight;
+
+  const totalFixedHeight = headerHeight + searchHeight + nameTagsHeight + buttonsHeight;
+  const availableHeight = window.innerHeight - totalFixedHeight;
+
+  elements.promptArea.style.height = `${Math.max(100, availableHeight)}px`;
+  elements.promptArea.style.marginBottom = `${buttonsHeight - 10}px`;
+}
 
   // Update recent indices
   function updateRecentIndices(index) {
@@ -189,14 +194,14 @@ document.addEventListener("DOMContentLoaded", () => {
     showToast('Import data functionality may or may not be implemented in the future..');
   });
 
-  // Toggle fullscreen
-  elements.fullscreenToggle.addEventListener("click", () => {
-    isFullscreen = !isFullscreen;
-    const svg = elements.fullscreenToggle.querySelector("svg use");
-    svg.setAttribute("href", isFullscreen ? "sprite.svg#compress" : "sprite.svg#fullscreen");
-    saveState();
-    chrome.runtime.sendMessage({ action: "toggleFullscreen", windowId });
-  });
+  // // Toggle fullscreen
+  // elements.fullscreenToggle.addEventListener("click", () => {
+  //   isFullscreen = !isFullscreen;
+  //   const svg = elements.fullscreenToggle.querySelector("svg use");
+  //   svg.setAttribute("href", isFullscreen ? "sprite.svg#compress" : "sprite.svg#fullscreen");
+  //   saveState();
+  //   chrome.runtime.sendMessage({ action: "toggleFullscreen", windowId });
+  // });
 
   // Close window
   elements.closeBtn.addEventListener("click", () => {
