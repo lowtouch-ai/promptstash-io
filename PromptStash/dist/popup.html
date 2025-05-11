@@ -4,23 +4,22 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PromptStash by lowtouch.ai</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body class="light">
-  <button id="closeBtn" class="btn tbtn position-absolute top-0 end-0 m-0" aria-label="Close sidebar" data-bs-toggle="tooltip" data-bs-placement="top" title="Close sidebar">
+  <button id="closeBtn" class="btn tbtn position-absolute top-0 end-0 m-0" aria-label="Close pop-up" data-bs-toggle="tooltip" data-bs-placement="top" title="Close">
     <svg width="12" height="12"><use href="sprite.svg#close"></use></svg>
   </button>
   <button id="fullscreenToggle" class="btn tbtn rounded-pill position-absolute top-0 end-0 m-0 me-4" aria-label="Enter fullscreen" data-bs-toggle="tooltip" data-bs-placement="top" title="Enter fullscreen">
     <svg width="12" height="12"><use href="sprite.svg#fullscreen"></use></svg>
   </button>
   <button id="menuBtn" class="btn tbtn rounded-pill position-absolute top-0 end-0 m-0 me-5" aria-label="Open menu" data-bs-toggle="tooltip" data-bs-placement="top" title="Menu">
-    <svg width="12" height="12"><use href="sprite.svg#menus"></use></svg>
+    <svg width="12" height="12"><use href="sprite.svg#menu"></use></svg>
   </button>
   <header class="d-flex justify-content-center align-items-center my-2 position-relative fixed-top" style="z-index: -1;">
-    <div class="drag-handle position-absolute top-0 start-0 m-2" style="cursor: move; width: 20px; height: 20px; background: #ccc; border-radius: 4px;" aria-label="Drag handle"></div>
     <a href="https://www.lowtouch.ai/" target="_blank" aria-label="Visit lowtouch.ai">
-      <img src="icon128.png" alt="lowtouch.ai logo" class="logo me-2 shadow rounded-pill" style="width: 42px; height: 42px;" data-bs-toggle="tooltip" data-bs-placement="top" title="Visit lowtouch.ai">
+      <img src="icon128.png" alt="lowtouch.ai logo" class="logo me-2 shadow rounded-pill" data-bs-toggle="tooltip" data-bs-placement="top" title="Visit lowtouch.ai">
     </a>
     <div class="h2 mt-3 mx-2 d-flex ">
       <a href="https://promptstash.io/" target="_blank" class="title text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="top" title="Visit PromptStash">PromptStash</a>
@@ -62,7 +61,7 @@
       </div>
     </div>
 
-    <div class="template w-100 mt-3">
+    <div id="template" class="w-100 mt-3">
       <div class="row g-2">
         <div class="position-relative mt-2">
           <input type="text" id="templateName" class="form-control rounded-1 px-3 py-2" placeholder="Template Name" aria-label="Template name" data-bs-toggle="tooltip" data-bs-placement="top" title="Template name">
@@ -96,25 +95,24 @@
     </div>
   </div>
 
-  <div id="buttons" class="d-flex gap-1 justify-content-center flex-wrap py-1 position-fixed bottom-0 start-0 end-0">
-    <button id="saveBtn" class="btn rounded-pill" aria-label="Save changes to template" data-bs-toggle="tooltip" data-bs-placement="top" title="Save changes to template">
-      <svg width="24" height="24"><use href="sprite.svg#save"></use></svg>
+  <div id="buttons" class="d-flex gap-3 justify-content-center flex-wrap py-1 position-fixed bottom-0 start-0 end-0">
+    <button id="saveBtn" class="btn rounded-pill" aria-label="Save changes to template" data-bs-toggle="tooltip" data-bs-placement="top" title="Update changes to this template">
+      <svg><use href="sprite.svg#save"></use></svg>
     </button>
-    <button id="saveAsBtn" class="btn rounded-pill" aria-label="Save as new template" data-bs-toggle="tooltip" data-bs-placement="top" title="Save as new template">
-      <svg width="24" height="24"><use href="sprite.svg#saveAs"></use></svg>
+    <button id="saveAsBtn" class="btn rounded-pill" aria-label="Save as new template" data-bs-toggle="tooltip" data-bs-placement="top" title="Save this as new template">
+      <svg><use href="sprite.svg#saveAs"></use></svg>
     </button>
     <button id="deleteBtn" class="btn rounded-pill" aria-label="Delete selected template" data-bs-toggle="tooltip" data-bs-placement="top" title="Delete selected template">
-      <svg width="24" height="24"><use href="sprite.svg#delete"></use></svg>
+      <svg><use href="sprite.svg#delete"></use></svg>
     </button>
     <button id="sendBtn" class="btn rounded-pill" aria-label="Send prompt to website" data-bs-toggle="tooltip" data-bs-placement="top" title="Send prompt to website">
-      <svg width="24" height="24"><use href="sprite.svg#send"></use></svg>
+      <svg><use href="sprite.svg#send"></use></svg>
     </button> 
   </div>
-  <div class="resize-handle position-absolute bottom-0 end-0 m-2" style="cursor: se-resize; width: 15px; height: 15px; background: #ccc; border-radius: 3px;" aria-label="Resize handle"></div>
 
   <div id="toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true"></div>
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="bootstrap.bundle.min.js"></script>
   <script type="module" src="popup.js"></script>
 </body>
 </html>

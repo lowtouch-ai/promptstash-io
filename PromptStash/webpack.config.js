@@ -21,7 +21,8 @@ module.exports = {
         { from: "./src/popup.html" },
         { from: "./src/styles.css" },
         { from: "./src/*.{png,svg}", to: "[name][ext]" },
-        { from: "./src/*.mjs", to: "[name][ext]" }
+        { from: "./src/*.mjs", to: "[name][ext]" },
+        { from: "./src/bootstrap.bundle.min.js" }
       ]
     })
   ]

@@ -1,5 +1,7 @@
 // Store the ID of the popup window
 let popupWindowId = null;
+// Store the ID of the target tab
+let targetTabId = null;
 
 // Listen for extension icon click to toggle window
 chrome.action.onClicked.addListener((tab) => {
@@ -7,6 +9,8 @@ chrome.action.onClicked.addListener((tab) => {
     console.error("Cannot open window for chrome:// URLs");
     return;
   }
+  // Set the target tab ID when the icon is clicked
+  targetTabId = tab.id;
   if (popupWindowId !== null) {
     // Check if window still exists
     chrome.windows.get(popupWindowId, { populate: false }, (win) => {
@@ -22,12 +26,33 @@ chrome.action.onClicked.addListener((tab) => {
   }
 });
 
+// Update targetTabId when the active tab changes
+chrome.tabs.onActivated.addListener((activeInfo) => {
+  chrome.tabs.get(activeInfo.tabId, (tab) => {
+    if (chrome.runtime.lastError || !tab || tab.url.startsWith("chrome://")) {
+      console.log("Cannot set targetTabId to invalid or chrome:// tab");
+      targetTabId = null;
+    } else {
+      targetTabId = activeInfo.tabId;
+      console.log("Updated targetTabId to:", targetTabId);
+    }
+  });
+});
+
+// Ensure targetTabId is set when a tab is updated (e.g., navigation)
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === "complete" && tab.active && !tab.url.startsWith("chrome://")) {
+    targetTabId = tabId;
+    console.log("Updated targetTabId on tab update to:", targetTabId);
+  }
+});
+
 // Function to create the popup window
 function createPopupWindow() {
   // Fallback screen dimensions (common 1080p resolution)
   const screenWidth = 1920;
   const screenHeight = 1080;
-  const windowWidth = 600;
+  const windowWidth = 800;
   const windowHeight = 800;
   const left = Math.round((screenWidth - windowWidth) / 2);
   const top = Math.round((screenHeight - windowHeight) / 2);
@@ -53,52 +78,9 @@ chrome.windows.onRemoved.addListener((windowId) => {
   }
 });
 
-// Context menu for saving selected text
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
-    id: "saveToPromptStash",
-    title: "Save to PromptStash",
-    contexts: ["selection"]
-  });
-});
-
-chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === "saveToPromptStash") {
-    chrome.tabs.sendMessage(tab.id, { action: "getSelectedText" }, (response) => {
-      if (response && response.selectedText) {
-        chrome.storage.local.get(["nextIndex"], (result) => {
-          let nextIndex = result.nextIndex || 0;
-          chrome.storage.sync.get(["templates"], (result) => {
-            const templates = result.templates || [];
-            let defaultName = "New Template 1";
-            let i = 1;
-            while (templates.some(t => t.name === defaultName)) {
-              defaultName = `New Template ${++i}`;
-            }
-            const details = prompt(`Enter template details:\nName (required, default: ${defaultName}):\nTags (optional, comma-separated):`, `${defaultName}\n`);
-            if (!details) return;
-            const [name, tags] = details.split("\n").map(s => s.trim());
-            if (!name) return;
-            templates.push({
-              name,
-              tags: tags ? tags.replace(/[^a-zA-Z0-9, ]/g, "").replace(/\s*,\s*/g, ", ").replace(/^,+\s*|,+\s*$/g, "") : "",
-              content: response.selectedText,
-              type: "custom",
-              favorite: false,
-              index: nextIndex++
-            });
-            chrome.storage.sync.set({ templates });
-            chrome.storage.local.set({ nextIndex });
-          });
-        });
-      }
-    });
-  }
-});
-
-// Handle messages for closing window, fullscreen, and window ID requests
+// Handle messages for closing window, fullscreen, and window/tab ID requests
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === "closeSidebar" && message.windowId) {
+  if (message.action === "closePopup" && message.windowId) {
     chrome.windows.remove(message.windowId, () => {
       if (chrome.runtime.lastError) {
         console.error("Error closing window:", chrome.runtime.lastError);
@@ -123,5 +105,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
   } else if (message.action === "getWindowId") {
     sendResponse({ windowId: popupWindowId });
+  } else if (message.action === "getTargetTabId") {
+    // Validate targetTabId before sending
+    if (targetTabId !== null) {
+      chrome.tabs.get(targetTabId, (tab) => {
+        if (chrome.runtime.lastError || !tab || tab.url.startsWith("chrome://")) {
+          console.log("Invalid targetTabId, clearing");
+          targetTabId = null;
+          sendResponse({ tabId: null });
+        } else {
+          sendResponse({ tabId: targetTabId });
+        }
+      });
+    } else {
+      sendResponse({ tabId: null });
+    }
   }
 });
