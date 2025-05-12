@@ -1,14 +1,36 @@
 // Handle messages from popup/background
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  let inputField;
+  // Attempt to find the input field with a more specific selector
+  let inputField = document.querySelector(
+    "[contenteditable='true'][role='textbox'], " +
+    "textarea:not([disabled]), " +
+    "input[type='text']:not([disabled]), " +
+    "[contenteditable='true'][aria-label*='prompt' i], " +
+    "textarea[aria-label*='prompt' i], " +
+    "input[aria-label*='prompt' i]"
+  );
 
-  // Select input field based on website
-  if (window.location.hostname.includes("chatgpt.com")) {
-    inputField = document.querySelector("div[contenteditable='true']");
-  } else {
-    inputField = document.querySelector("textarea, input[type='text']");
+  // Retry finding the input field after a short delay if not found
+  if (!inputField && message.action === "sendPrompt" || message.action === "getPrompt") {
+    setTimeout(() => {
+      inputField = document.querySelector(
+        "[contenteditable='true'][role='textbox'], " +
+        "textarea:not([disabled]), " +
+        "input[type='text']:not([disabled]), " +
+        "[contenteditable='true'][aria-label*='prompt' i], " +
+        "textarea[aria-label*='prompt' i], " +
+        "input[aria-label*='prompt' i]"
+      );
+      processMessage(message, inputField, sendResponse);
+    }, 500); // Wait 500ms for page elements to load
+    return true; // Keep the message channel open for async response
   }
 
+  processMessage(message, inputField, sendResponse);
+});
+
+// Process the message with the found input field
+function processMessage(message, inputField, sendResponse) {
   if (message.action === "sendPrompt") {
     if (inputField) {
       if (inputField.tagName === "DIV" && inputField.contentEditable === "true") {
@@ -17,7 +39,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       } else {
         inputField.value = message.prompt;
       }
+      // Dispatch input and change events to ensure compatibility
       inputField.dispatchEvent(new Event("input", { bubbles: true }));
+      inputField.dispatchEvent(new Event("change", { bubbles: true }));
       inputField.focus();
     } else {
       console.log("No input field found for sendPrompt");
@@ -33,38 +57,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       sendResponse({ prompt });
     } else {
+      console.log("No input field found for getPrompt");
       sendResponse({ prompt: "" });
     }
   } else if (message.action === "getSelectedText") {
     const selectedText = window.getSelection().toString();
     sendResponse({ selectedText });
   }
-});
+};
 
-// Listen for sidebar close messages from iframe
-window.addEventListener("message", (event) => {
-  if (event.data.action === "closeSidebar") {
-    const sidebar = document.getElementById("promptstash-sidebar");
-    if (sidebar) {
-      sidebar.remove();
-    }
-  } else if (event.data.action === "loadFullscreen") {
-    const sidebar = document.getElementById("promptstash-sidebar");
-    if (sidebar) {
-      sidebar.querySelector("iframe").src = chrome.runtime.getURL("fullscreen.html");
-    }
-  } else if (event.data.action === "loadPopup") {
-    const sidebar = document.getElementById("promptstash-sidebar");
-    if (sidebar) {
-      sidebar.querySelector("iframe").src = chrome.runtime.getURL("popup.html");
-    }
-  }
-});
+
 
 // Handle ESC key to close sidebar
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
-    chrome.runtime.sendMessage({ action: "closeSidebar" });
+    chrome.runtime.sendMessage({ action: "closePopup" });
   }
 });
 
@@ -72,6 +79,6 @@ document.addEventListener("keydown", (event) => {
 document.addEventListener("click", (event) => {
   const sidebar = document.getElementById("promptstash-sidebar");
   if (sidebar && !sidebar.contains(event.target)) {
-    chrome.runtime.sendMessage({ action: "closeSidebar" });
+    chrome.runtime.sendMessage({ action: "closePopup" });
   }
 });
