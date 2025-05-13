@@ -22,16 +22,13 @@ document.addEventListener("DOMContentLoaded", () => {
     sendBtn: document.getElementById("sendBtn"),
     clearSearch: document.getElementById("clearSearch"),
     favoriteSuggestions: document.getElementById("favoriteSuggestions"),
-    //fullscreenToggle: document.getElementById("fullscreenToggle"),
+    fullscreenToggle: document.getElementById("fullscreenToggle"),
     closeBtn: document.getElementById("closeBtn"),
     toast: document.getElementById("toast"),
-    renameBtn: document.getElementById("renameBtn"),
-    confirmRename: document.getElementById("confirmRename"),
-    cancelRename: document.getElementById("cancelRename"),
     favoriteStar: document.getElementById("favoriteStar"),
-    menuBtn: document.getElementById('menuBtn'),
-    menuDropdown: document.getElementById('menuDropdown'),
-    themeToggleMenu: document.getElementById('themeToggleMenu')
+    // menuBtn: document.getElementById("menuBtn"),
+    // menuDropdown: document.getElementById("menuDropdown"),
+    themeToggle: document.getElementById("themeToggle")
   };
 
   // Log missing elements
@@ -40,6 +37,7 @@ document.addEventListener("DOMContentLoaded", () => {
     .map(([key]) => key);
   if (missingElements.length > 0) {
     console.error("Missing DOM elements:", missingElements);
+    showToast("Extension UI failed to load. Please reload the extension.");
   } else {
     console.log("All DOM elements found:", Object.keys(elements));
   }
@@ -48,16 +46,8 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentTheme = "light";
   let lastState = null; // Store last state for undo
   let nextIndex = 0; // Track next available index
-  //let isFullscreen = false; // Track fullscreen state
-  let windowId = null; // Store the ID of the popup window
+  let isFullscreen = false; // Track fullscreen state
   let recentIndices = []; // Store up to 20 recent template indices
-
-  // Get the current window ID
-  chrome.runtime.sendMessage({ action: "getWindowId" }, (response) => {
-    if (response && response.windowId) {
-      windowId = response.windowId;
-    }
-  });
 
   // Load popup state, recent indices, and initialize index
   chrome.storage.local.get(["popupState", "theme", "nextIndex"], (localResult) => {
@@ -68,13 +58,14 @@ document.addEventListener("DOMContentLoaded", () => {
       elements.promptArea.value = state.content || "";
       selectedTemplateName = state.selectedName || null;
       currentTheme = localResult.theme || "light";
-      nextIndex = localResult.nextIndex || defaultTemplates.length; // Start after pre-built
+      nextIndex = localResult.nextIndex || defaultTemplates.length;
       recentIndices = syncResult.recentIndices || [];
       document.body.className = currentTheme;
-      elements.fetchBtn.style.display = elements.promptArea.value ? 'none' : 'block'; // Initial fetchBtn visibility
-      loadTemplates(elements.typeSelect.value, "", false); // Load only favoriteSuggestions initially
+      elements.fetchBtn.style.display = elements.promptArea.value ? "none" : "block";
+      loadTemplates(elements.typeSelect.value, "", false);
       adjustPromptAreaHeight(); // Adjust prompt area height on load
-      elements.themeToggleMenu.textContent = currentTheme === 'light' ? 'Darkmode' : 'Lightmode'; // Set initial theme toggle text
+      // elements.themeToggle.textContent = currentTheme === "light" ? "Dark Mode" : "Light Mode"; // Set initial theme toggle text
+      // elements.fullscreenToggle.setAttribute("data-bs-title", "Enter fullscreen"); // Initial fullscreen tooltip
     });
   });
 
@@ -133,7 +124,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const totalFixedHeight = headerHeight + searchHeight + nameTagsHeight + buttonsHeight;
     const availableHeight = window.innerHeight - totalFixedHeight;
 
-    elements.promptArea.style.height = `${Math.max(110, availableHeight - 40)}px`;
+    elements.promptArea.style.height = `${Math.max(80, availableHeight - 50)}px`;
     elements.promptArea.style.marginBottom = `${buttonsHeight + 20}px`;
   }
 
@@ -149,65 +140,75 @@ document.addEventListener("DOMContentLoaded", () => {
     saveState();
   }
 
-  // Responsive resizing for header and buttons
-  const resizeObserver = new ResizeObserver(entries => {
-    for (let entry of entries) {
-      const width = entry.contentRect.width;
+  // Debounced resize observer for responsive font sizing
+  let resizeTimeout;
+  const resizeObserver = new ResizeObserver(() => {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+      const width = document.body.clientWidth;
       const baseFontSize = Math.min(Math.max(width / 20, 14), 24); // Min 14px, max 24px
-      document.documentElement.style.setProperty('--base-font-size', `${baseFontSize}px`);
-    }
+      document.documentElement.style.setProperty("--base-font-size", `${baseFontSize}px`);
+    }, 100);
   });
   resizeObserver.observe(document.body);
 
+  /*
   // Hamburger menu toggle
-  elements.menuBtn.addEventListener('click', (event) => {
+  elements.menuBtn.addEventListener("click", (event) => {
     event.stopPropagation();
-    elements.menuDropdown.style.display = elements.menuDropdown.style.display === 'none' ? 'block' : 'none';
+    elements.menuDropdown.style.display = elements.menuDropdown.style.display === "none" ? "block" : "none";
   });
 
   // Close menu when clicking outside
-  document.addEventListener('click', (event) => {
+  document.addEventListener("click", (event) => {
     if (!elements.menuBtn.contains(event.target) && !elements.menuDropdown.contains(event.target)) {
-      elements.menuDropdown.style.display = 'none';
+      elements.menuDropdown.style.display = "none";
     }
   });
-
+  */
   // Theme toggle via menu
-  elements.themeToggleMenu.addEventListener('click', () => {
-    currentTheme = currentTheme === 'light' ? 'dark' : 'light';
+  elements.themeToggle.addEventListener("click", () => {
+    currentTheme = currentTheme === "light" ? "dark" : "light";
     document.body.className = currentTheme;
-    elements.themeToggleMenu.textContent = currentTheme === 'light' ? 'Darkmode' : 'Lightmode';
+    // elements.themeToggle.textContent = currentTheme === "light" ? "Dark Mode" : "Light Mode";
     saveState();
   });
-
+  /*
   // Placeholder menu options
-  // elements.menuDropdown.querySelector('#saveLocally').addEventListener('click', () => {
-  //   showToast('Save locally functionality may or may not be implemented in the future..');
-  // });
-  // elements.menuDropdown.querySelector('#toggleMarkdown').addEventListener('click', () => {
-  //   showToast('Toggle markdown functionality may or may not be implemented in the future..');
-  // });
-  // elements.menuDropdown.querySelector('#exportData').addEventListener('click', () => {
-  //   showToast('Export data functionality may or may not be implemented in the future..');
-  // });
-  // elements.menuDropdown.querySelector('#importData').addEventListener('click', () => {
-  //   showToast('Import data functionality may or may not be implemented in the future..');
-  // });
+  elements.menuDropdown.querySelector('#saveLocally').addEventListener('click', () => {
+    showToast('Save locally functionality may or may not be implemented in the future..');
+  });
+  elements.menuDropdown.querySelector('#toggleMarkdown').addEventListener('click', () => {
+    showToast('Toggle markdown functionality may or may not be implemented in the future..');
+  });
+  elements.menuDropdown.querySelector('#exportData').addEventListener('click', () => {
+    showToast('Export data functionality may or may not be implemented in the future..');
+  });
+  elements.menuDropdown.querySelector('#importData').addEventListener('click', () => {
+    showToast('Import data functionality may or may not be implemented in the future..');
+  }); 
+  */
 
-  // // Toggle fullscreen
-  // elements.fullscreenToggle.addEventListener("click", () => {
-  //   isFullscreen = !isFullscreen;
-  //   const svg = elements.fullscreenToggle.querySelector("svg use");
-  //   svg.setAttribute("href", isFullscreen ? "sprite.svg#compress" : "sprite.svg#fullscreen");
-  //   saveState();
-  //   chrome.runtime.sendMessage({ action: "toggleFullscreen", windowId });
-  // });
-
-  // Close window
-  elements.closeBtn.addEventListener("click", () => {
-    chrome.runtime.sendMessage({ action: "closePopup", windowId });
+  // Toggle fullscreen
+  elements.fullscreenToggle.addEventListener("click", () => {
+    isFullscreen = !isFullscreen;
+    const svg = elements.fullscreenToggle.querySelector("svg use");
+    svg.setAttribute("href", isFullscreen ? "sprite.svg#compress" : "sprite.svg#fullscreen");
+    saveState();
+    chrome.runtime.sendMessage({ action: "toggleFullscreen" });
   });
 
+  // Close popup
+  elements.closeBtn.addEventListener("click", () => {
+
+    chrome.runtime.sendMessage({ action: "closePopup" });
+  });
+
+/*   // Minimize popup
+  elements.minimizeBtn.addEventListener("click", () => {
+    chrome.runtime.sendMessage({ action: "closePopup" });
+  });
+ */
   // Clear search input
   elements.clearSearch.addEventListener("click", () => {
     elements.searchBox.value = "";
@@ -215,10 +216,10 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.searchBox.focus();
   });
 
-  // Handle ESC key to close window
+  // Handle ESC key to close popup
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
-      chrome.runtime.sendMessage({ action: "closePopup", windowId });
+      chrome.runtime.sendMessage({ action: "closePopup" });
     }
   });
 
@@ -238,7 +239,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Control fetchBtn visibility on input
   elements.promptArea.addEventListener("input", () => {
     storeLastState();
-    elements.fetchBtn.style.display = elements.promptArea.value ? 'none' : 'block';
+    elements.fetchBtn.style.display = elements.promptArea.value ? "none" : "block";
     saveState();
   });
 
@@ -247,7 +248,7 @@ document.addEventListener("DOMContentLoaded", () => {
     storeLastState();
     let value = elements.templateTags.value;
     if (value) {
-      value = value.replace(/^[,\s]/g, "");
+      value = value.replace(/^[,\s]+/g, "");
       value = value.replace(/[,\s.;/]+/g, ", ");
       value = value.replace(/[^a-zA-Z0-9_, ]/g, "");
       elements.templateTags.value = value;
@@ -269,55 +270,22 @@ document.addEventListener("DOMContentLoaded", () => {
     return tags.filter(tag => tag).join(", ");
   }
 
-  // === MODIFIED START === Function to get the target tab ID with fallback
+  // Function to get the target tab ID with timeout
   function getTargetTabId(callback) {
+    const timeout = setTimeout(() => {
+      showToast("No response from tab. Please activate a supported webpage.");
+      callback(null);
+    }, 5000);
     chrome.runtime.sendMessage({ action: "getTargetTabId" }, (response) => {
+      clearTimeout(timeout);
       if (response && response.tabId) {
-        // Verify the tab is still valid
-        chrome.tabs.get(response.tabId, (tab) => {
-          if (chrome.runtime.lastError || !tab || tab.url.startsWith("chrome://")) {
-            console.log("Target tab invalid, falling back to active tab");
-            // Fallback to querying the active tab in the main browser window
-            chrome.windows.getAll({ populate: true, windowTypes: ["normal"] }, (windows) => {
-              const mainWindow = windows.find(w => w.type === "normal");
-              if (mainWindow) {
-                const activeTab = mainWindow.tabs.find(t => t.active && !t.url.startsWith("chrome://"));
-                if (activeTab) {
-                  callback(activeTab.id);
-                } else {
-                  showToast("No valid active tab found.");
-                  callback(null);
-                }
-              } else {
-                showToast("No browser window found.");
-                callback(null);
-              }
-            });
-          } else {
-            callback(response.tabId);
-          }
-        });
+        callback(response.tabId);
       } else {
-        // Fallback to querying the active tab in the main browser window
-        chrome.windows.getAll({ populate: true, windowTypes: ["normal"] }, (windows) => {
-          const mainWindow = windows.find(w => w.type === "normal");
-          if (mainWindow) {
-            const activeTab = mainWindow.tabs.find(t => t.active && !t.url.startsWith("chrome://"));
-            if (activeTab) {
-              callback(activeTab.id);
-            } else {
-              showToast("No valid active tab found.");
-              callback(null);
-            }
-          } else {
-            showToast("No browser window found.");
-            callback(null);
-          }
-        });
+        showToast("No valid tab selected. Please activate a supported webpage.");
+        callback(null);
       }
     });
   }
-  // === MODIFIED END ===
 
   // Load templates and suggestions with dropdown control
   function loadTemplates(filter, query = "", showDropdown = false) {
@@ -366,8 +334,7 @@ document.addEventListener("DOMContentLoaded", () => {
               elements.promptArea.value = tmpl.content;
               elements.searchBox.value = "";
               elements.dropdownResults.innerHTML = "";
-              resetRenameState();
-              elements.fetchBtn.style.display = tmpl.content ? 'none' : 'block'; // Ensure fetchBtn visibility
+              elements.fetchBtn.style.display = tmpl.content ? "none" : "block";
               saveState();
               elements.promptArea.focus();
             }
@@ -403,7 +370,7 @@ document.addEventListener("DOMContentLoaded", () => {
             elements.templateTags.value = tmpl.tags;
             elements.promptArea.value = tmpl.content;
             elements.searchBox.value = "";
-            elements.fetchBtn.style.display = tmpl.content ? 'none' : 'block'; // Ensure fetchBtn visibility
+            elements.fetchBtn.style.display = tmpl.content ? "none" : "block";
             saveState();
             elements.promptArea.focus();
           });
@@ -486,24 +453,20 @@ document.addEventListener("DOMContentLoaded", () => {
         showToast("Selected template not found.");
         return;
       }
-      const isEdited = sanitizeTags(elements.templateTags.value) !== template.tags || elements.promptArea.value !== template.content;
+      const isEdited = elements.templateName.value !== template.name || sanitizeTags(elements.templateTags.value) !== template.tags || elements.promptArea.value !== template.content;
       if (!isEdited) {
         showToast("No changes to save.");
         return;
       }
       storeLastState();
       lastState.templates = [...templates];
-      const isPreBuilt = template.type === "pre-built";
-      const message = `Are you sure you want to edit the content/tags of "${selectedTemplateName}"?${isPreBuilt ? "\nThis is a pre-built template." : ""}`;
-      const confirmSave = confirm(message);
-      if (!confirmSave) return;
 
       const templateIndex = templates.findIndex(t => t.name === selectedTemplateName);
       templates[templateIndex] = {
-        name: selectedTemplateName,
+        name: elements.templateName.value,
         tags: sanitizeTags(elements.templateTags.value),
         content: elements.promptArea.value,
-        type: template.type,
+        type: "custom",
         favorite: template.favorite || false,
         index: template.index
       };
@@ -519,24 +482,34 @@ document.addEventListener("DOMContentLoaded", () => {
   elements.saveAsBtn.addEventListener("click", () => {
     chrome.storage.sync.get(["templates"], (result) => {
       const templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
-      let defaultName = "New Template";
-      let i = 1;
-      while (templates.some(t => t.name === defaultName)) {
-        defaultName = `New Template ${i++}`;
-      }
-      let name = prompt("Enter template name (required):", defaultName);
-      if (name === null) return;
+      storeLastState();
+      let name = elements.templateName.value;
       name = name.trim();
-      if (!name) {
-        showToast("Name is mandatory.");
-        return;
-      }
       if (templates.some(t => t.name === name)) {
         showToast("Name already exists.");
+        // let i = 2;
+        // const temp = name;
+        // while (templates.some(t => t.name === name)) {
+        //   name = `${temp} ${i++}`;
+        // }
+        // elements.templateName.value = name;
+        elements.templateName.focus();
         return;
       }
-      let tagsInput = prompt("Enter tags (optional, comma-separated):", elements.templateTags.value);
-      if (tagsInput === null) tagsInput = "";
+      if (!name) {
+        showToast("Name is mandatory.");
+        name = "New template";
+        let i = 2;
+        const temp = name;
+        while (templates.some(t => t.name === name)) {
+          name = `${temp} ${i++}`;
+        }
+        elements.templateName.value = name;
+        elements.templateName.focus();
+        return;
+      }
+
+      let tagsInput = elements.templateTags.value;
       const tags = sanitizeTags(tagsInput);
       saveNewTemplate(name, tags);
     });
@@ -548,8 +521,6 @@ document.addEventListener("DOMContentLoaded", () => {
       let templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
       storeLastState();
       lastState.templates = [...templates];
-      const confirmSave = confirm(`Save as new template "${name}"?`);
-      if (!confirmSave) return;
 
       const newTemplate = {
         name,
@@ -575,7 +546,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Fetch prompt from website
   elements.fetchBtn.addEventListener("click", () => {
-    // === MODIFIED START === Enhanced fetch with better error handling
     getTargetTabId((tabId) => {
       if (!tabId) {
         showToast("No valid tab selected. Please activate a supported webpage.");
@@ -584,25 +554,23 @@ document.addEventListener("DOMContentLoaded", () => {
       chrome.tabs.sendMessage(tabId, { action: "getPrompt" }, (response) => {
         if (chrome.runtime.lastError) {
           console.error("Fetch error:", chrome.runtime.lastError.message);
-          showToast("Failed to fetch prompt: Content script not available on this page.\nTry refreshing the page");
+          showToast("Failed to fetch prompt.\nTry refreshing the page");
           return;
         }
         if (response && response.prompt) {
           storeLastState();
           elements.promptArea.value = response.prompt;
-          elements.fetchBtn.style.display = 'none';
+          elements.fetchBtn.style.display = "none";
           saveState();
         } else {
           showToast("No input field found on the page.\nTry refreshing the page");
         }
       });
     });
-    // === MODIFIED END ===
   });
 
-  // Send prompt to website and close window
+  // Send prompt to website and close popup
   elements.sendBtn.addEventListener("click", () => {
-    // === MODIFIED START === Enhanced send with better error handling
     getTargetTabId((tabId) => {
       if (!tabId) {
         showToast("No valid tab selected. Please activate a supported webpage.");
@@ -614,7 +582,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }, (response) => {
         if (chrome.runtime.lastError) {
           console.error("Send error:", chrome.runtime.lastError.message);
-          showToast("Failed to send prompt: Content script not available on this page.\nTry refreshing the page");
+          showToast("Failed to send prompt.\nTry refreshing the page");
           return;
         }
         if (response && response.success) {
@@ -626,17 +594,16 @@ document.addEventListener("DOMContentLoaded", () => {
               if (template) {
                 updateRecentIndices(template.index);
               }
-              chrome.runtime.sendMessage({ action: "closePopup", windowId });
+              chrome.runtime.sendMessage({ action: "closePopup" });
             });
           } else {
-            chrome.runtime.sendMessage({ action: "closePopup", windowId });
+            chrome.runtime.sendMessage({ action: "closePopup" });
           }
         } else {
-          showToast("Failed to send prompt: No input field found on the page.\nTry refreshing the page");
+          showToast("Failed to send prompt.\nTry refreshing the page");
         }
       });
     });
-    // === MODIFIED END ===
   });
 
   // Delete selected template
@@ -667,7 +634,7 @@ document.addEventListener("DOMContentLoaded", () => {
         elements.templateTags.value = "";
         elements.promptArea.value = "";
         elements.searchBox.value = "";
-        elements.fetchBtn.style.display = 'block';
+        elements.fetchBtn.style.display = "block";
         loadTemplates(elements.typeSelect.value, "", false);
         saveState();
       });
@@ -686,7 +653,7 @@ document.addEventListener("DOMContentLoaded", () => {
           loadTemplates(elements.typeSelect.value, "", false);
         });
       }
-      elements.fetchBtn.style.display = elements.promptArea.value ? 'none' : 'block'; // Ensure fetchBtn visibility
+      elements.fetchBtn.style.display = elements.promptArea.value ? "none" : "block"; // Update fetchBtn visibility
       showToast("Action undone.");
       lastState = null;
       saveState();
@@ -697,7 +664,7 @@ document.addEventListener("DOMContentLoaded", () => {
   elements.clearPrompt.addEventListener("click", () => {
     storeLastState();
     elements.promptArea.value = "";
-    elements.fetchBtn.style.display = 'block';
+    elements.fetchBtn.style.display = "block";
     elements.promptArea.focus();
     saveState();
   });
@@ -719,88 +686,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Reset rename state to default
-  function resetRenameState() {
-    elements.templateName.setAttribute("readonly", "true");
-    elements.templateName.classList.remove("highlight");
-    elements.renameBtn.classList.remove("d-none");
-    elements.confirmRename.classList.add("d-none");
-    elements.cancelRename.classList.add("d-none");
-  }
-
-  // Initiate rename process
-  elements.renameBtn.addEventListener("click", () => {
-    if (!selectedTemplateName) {
-      showToast("Please select a template to rename.");
-      return;
-    }
-    elements.templateName.removeAttribute("readonly");
-    elements.templateName.classList.add("highlight");
-    elements.templateName.focus();
-    elements.renameBtn.classList.add("d-none");
-    elements.confirmRename.classList.remove("d-none");
-    elements.cancelRename.classList.remove("d-none");
-    elements.templateName.dataset.originalName = selectedTemplateName;
-  });
-
-  // Cancel rename and revert
-  elements.cancelRename.addEventListener("click", () => {
-    const originalName = elements.templateName.dataset.originalName;
-    elements.templateName.value = originalName;
-    elements.templateName.setAttribute("readonly", "true");
-    elements.templateName.classList.remove("highlight");
-    elements.renameBtn.classList.remove("d-none");
-    elements.confirmRename.classList.add("d-none");
-    elements.cancelRename.classList.add("d-none");
-  });
-
-  // Confirm rename with validation
-  elements.confirmRename.addEventListener("click", () => {
-    const newName = elements.templateName.value.trim();
-    const originalName = elements.templateName.dataset.originalName;
-    if (newName === originalName) {
-      elements.templateName.setAttribute("readonly", "true");
-      elements.templateName.classList.remove("highlight");
-      elements.renameBtn.classList.remove("d-none");
-      elements.confirmRename.classList.add("d-none");
-      elements.cancelRename.classList.add("d-none");
-      return;
-    }
-    if (!newName) {
-      showToast("Name is mandatory.");
-      return;
-    }
-    chrome.storage.sync.get(["templates"], (result) => {
-      const templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
-      if (templates.some(t => t.name === newName)) {
-        showToast("Name already exists.");
-        return;
-      }
-      const templateIndex = templates.findIndex(t => t.name === originalName);
-      if (templateIndex === -1) {
-        showToast("Template not found.");
-        return;
-      }
-      templates[templateIndex].name = newName;
-      chrome.storage.sync.set({ templates }, () => {
-        showToast("Template renamed.");
-        selectedTemplateName = newName;
-        elements.templateName.value = newName;
-        elements.templateName.setAttribute("readonly", "true");
-        elements.templateName.classList.remove("highlight");
-        elements.renameBtn.classList.remove("d-none");
-        elements.confirmRename.classList.add("d-none");
-        elements.cancelRename.classList.add("d-none");
-        loadTemplates(elements.typeSelect.value, "", false);
-      });
-    });
-  });
-
-  // Initialize tooltips
+/*   // Initialize tooltips
   const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
   tooltipTriggerList.forEach(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl, {
     delay: { show: 500, hide: 50 }
-  }));
+  })); */
 
   // Keyboard navigation for dropdown
   elements.dropdownResults.addEventListener("keydown", (event) => {
@@ -821,9 +711,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Handle window resize for prompt area
+/*   // Handle window resize for prompt area
   window.addEventListener("resize", adjustPromptAreaHeight);
-
+ */
   // Show the clear button only when the field contains text
   let timeout;
   document.addEventListener("mousemove", (event) => {
@@ -831,17 +721,12 @@ document.addEventListener("DOMContentLoaded", () => {
     timeout = setTimeout(() => {
       elements.clearSearch.style.display = (elements.searchBox.contains(event.target) && elements.searchBox.value) ? "block" : "none";
       elements.clearTags.style.display = (elements.templateTags.contains(event.target) && elements.templateTags.value) ? "block" : "none";
-      elements.clearPrompt.style.display = (elements.promptArea.contains(event.target) && elements.promptArea.value) ? "block" : "none";
+      elements.clearPrompt.style.display = (elements.promptArea.value) ? "block" : "none";
     }, 50);
   });
 
+  // Fade template area while searching
   document.addEventListener("click", (event) => {
-    elements.template.style.opacity = elements.buttons.style.opacity = (elements.searchBox.contains(event.target) || elements.dropdownResults.contains(event.target)) ? "0.2" : "1"
+    elements.template.style.opacity = elements.buttons.style.opacity = (elements.searchBox.contains(event.target) || elements.dropdownResults.contains(event.target)) ? "0.1" : "1";
   });
 });
-
-// chrome.windows.onFocusChanged.addListener((windowId) => {
-//   if (windowId === chrome.windows.WINDOW_ID_NONE) {
-//     window.close();
-//   }
-// });

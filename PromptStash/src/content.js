@@ -11,7 +11,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   );
 
   // Retry finding the input field after a short delay if not found
-  if (!inputField && message.action === "sendPrompt" || message.action === "getPrompt") {
+  if (!inputField && (message.action === "sendPrompt" || message.action === "getPrompt")) {
     setTimeout(() => {
       inputField = document.querySelector(
         "[contenteditable='true'][role='textbox'], " +
@@ -66,19 +66,10 @@ function processMessage(message, inputField, sendResponse) {
   }
 };
 
-
-
-// Handle ESC key to close sidebar
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") {
-    chrome.runtime.sendMessage({ action: "closePopup" });
-  }
-});
-
-// Detect clicks outside sidebar to minimize it
+// Detect clicks outside popup to close it
 document.addEventListener("click", (event) => {
-  const sidebar = document.getElementById("promptstash-sidebar");
-  if (sidebar && !sidebar.contains(event.target)) {
+  const popup = document.getElementById("promptstash-popup");
+  if (popup && !popup.contains(event.target)) {
     chrome.runtime.sendMessage({ action: "closePopup" });
   }
 });
