@@ -24,6 +24,8 @@ document.addEventListener("DOMContentLoaded", () => {
     favoriteSuggestions: document.getElementById("favoriteSuggestions"),
     fullscreenToggle: document.getElementById("fullscreenToggle"),
     closeBtn: document.getElementById("closeBtn"),
+    minimizeBtn: document.getElementById("minimizeBtn"),
+    newBtn: document.getElementById("newBtn"),
     toast: document.getElementById("toast"),
     favoriteStar: document.getElementById("favoriteStar"),
     // menuBtn: document.getElementById("menuBtn"),
@@ -166,6 +168,21 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
   */
+
+  // New template button: Clear template area and reset selection
+  elements.newBtn.addEventListener("click", () => {
+    storeLastState();
+    elements.templateName.value = "";
+    elements.templateTags.value = "";
+    elements.promptArea.value = "";
+    selectedTemplateName = null;
+    elements.fetchBtn.style.display = "block";
+    elements.searchBox.value = "";
+    loadTemplates(elements.typeSelect.value, "", false);
+    saveState();
+    showToast("New template created.");
+  });
+  
   // Theme toggle via menu
   elements.themeToggle.addEventListener("click", () => {
     currentTheme = currentTheme === "light" ? "dark" : "light";
@@ -198,17 +215,24 @@ document.addEventListener("DOMContentLoaded", () => {
     chrome.runtime.sendMessage({ action: "toggleFullscreen" });
   });
 
-  // Close popup
-  elements.closeBtn.addEventListener("click", () => {
-
-    chrome.runtime.sendMessage({ action: "closePopup" });
-  });
-
-/*   // Minimize popup
+  // Minimize popup
   elements.minimizeBtn.addEventListener("click", () => {
     chrome.runtime.sendMessage({ action: "closePopup" });
   });
- */
+
+  // Close popup and clear fields
+  elements.closeBtn.addEventListener("click", () => {
+    elements.templateName.value = "";
+    elements.templateTags.value = "";
+    elements.promptArea.value = "";
+    selectedTemplateName = null;
+    elements.fetchBtn.style.display = "block";
+    elements.searchBox.value = "";
+    loadTemplates(elements.typeSelect.value, "", false);
+    saveState();
+    chrome.runtime.sendMessage({ action: "closePopup" });
+  });
+
   // Clear search input
   elements.clearSearch.addEventListener("click", () => {
     elements.searchBox.value = "";
@@ -287,7 +311,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Load templates and suggestions with dropdown control
+  // Load templates and suggestions
   function loadTemplates(filter, query = "", showDropdown = false) {
     chrome.storage.sync.get(["templates"], (result) => {
       let templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
@@ -344,7 +368,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       }
 
-      // Always populate favorite suggestions, sorted by recency
       const favorites = templates.filter(tmpl => tmpl.favorite);
       if (favorites.length > 0) {
         // Sort favorites by recency
@@ -421,7 +444,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return { isValid: sizeInBytes <= maxSize, size: sizeInBytes };
   }
 
-  // Save templates with error handling
+  // Save templates
   function saveTemplates(templates, callback, isNewTemplate = false) {
     const validation = validateTemplateSize({ templates });
     if (!validation.isValid) {
@@ -653,7 +676,7 @@ document.addEventListener("DOMContentLoaded", () => {
           loadTemplates(elements.typeSelect.value, "", false);
         });
       }
-      elements.fetchBtn.style.display = elements.promptArea.value ? "none" : "block"; // Update fetchBtn visibility
+      elements.fetchBtn.style.display = elements.promptArea.value ? "none" : "block";
       showToast("Action undone.");
       lastState = null;
       saveState();

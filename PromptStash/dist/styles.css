@@ -1,20 +1,9 @@
 body {
   font-family: Roboto, sans-serif;
-  padding: 0 24px;
+  padding: 24px;
 
   transition: color 0.2s;
   overflow: hidden;
-}
-
-body::-webkit-scrollbar {
-  background: #8882;
-  width: 6px;
-  cursor: pointer;
-}
-body::-webkit-scrollbar-thumb {
-  background-color: #8888;
-  border-radius: 4px;
-  cursor: pointer;
 }
 
 body.light {
@@ -77,7 +66,7 @@ body.light .title {
   color: #202124;
 }
 
-#closeBtn {
+#newBtn, #minimizeBtn, #closeBtn {
   z-index: 1001;
 }
 
@@ -108,7 +97,6 @@ body.dark #searchIcon svg {
   padding: 12px 80px 12px 36px;
   font-size: 0.9rem;
   transition: border-color 0.2s, box-shadow 0.2s;
-  width: 50%;
 }
 
 body.dark #searchBox {
@@ -130,7 +118,7 @@ body.dark #searchBox:hover, #searchBox:focus {
 
 #typeSelect {
   border: none;
-  background-color: transparent;
+  background: transparent;
   font-size: 0.70rem;
   padding: 10px;
   padding-right: 50px;
@@ -178,6 +166,22 @@ body.dark #typeSelect option {
   transition: 0.3s;
 }
 
+.dropdown::-webkit-scrollbar {
+  background: #f5f5f5;
+  width: 6px;
+  cursor: pointer;
+}
+body.dark .dropdown::-webkit-scrollbar {
+  background: #222;
+  width: 6px;
+  cursor: pointer;
+}
+.dropdown::-webkit-scrollbar-thumb {
+  background: #8884;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
 body.dark .dropdown {
   background: #232323;
   border-color: #5f6368;
@@ -188,8 +192,6 @@ body.dark .dropdown {
   cursor: pointer;
   color: #202124;
   background: #fff;
-  border-top: 1px solid #dadce0;
-  border-bottom: 1px solid #dadce0;
   display: flex;
   justify-content: space-between;
   align-items: center;

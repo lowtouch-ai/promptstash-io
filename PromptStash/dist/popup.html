@@ -8,21 +8,29 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body class="light">
-  <button id="closeBtn" class="btn tbtn position-absolute top-0 end-0 m-0" aria-label="Close popup" data-bs-toggle="tooltip" data-bs-placement="top" title="Close">
-    <svg width="12" height="12"><use href="sprite.svg#close"></use></svg>
-  </button>
-  <button id="fullscreenToggle" class="btn tbtn rounded-pill position-absolute top-0 end-0 m-0 me-4" aria-label="Enter fullscreen" data-bs-toggle="tooltip" data-bs-placement="top" title="Enter fullscreen">
-    <svg width="12" height="12"><use href="sprite.svg#fullscreen"></use></svg>
-  </button>
-  <button id="themeToggle" class="btn tbtn rounded-pill position-absolute top-0 end-0 m-0 me-5" aria-label="Toggle theme" data-bs-toggle="tooltip" data-bs-placement="top" title="Toggle theme">
-    <svg width="12" height="12"><use href="sprite.svg#theme"></use></svg>
-  </button>
+  <div class="position-absolute top-0 end-0 d-flex align-items-center m-0 py-0 px-2" style="gap: 0.5rem;">
+    <button id="newBtn" class="tbtn p-1 m-0" aria-label="Toggle theme" data-bs-toggle="tooltip" data-bs-title="New template">
+      <svg width="10" height="10"><use href="sprite.svg#new"></use></svg>
+    </button>
+    <button id="themeToggle" class="tbtn p-1 m-0" aria-label="Toggle theme" data-bs-toggle="tooltip" data-bs-title="Toggle theme">
+      <svg width="12" height="12"><use href="sprite.svg#theme"></use></svg>
+    </button>
+    <button id="minimizeBtn" class="tbtn p-1 m-0" aria-label="Minimize popup" data-bs-toggle="tooltip" data-bs-title="Minimize">
+      <svg width="10" height="10"><use href="sprite.svg#minimize"></use></svg>
+    </button>
+    <button id="fullscreenToggle" class="tbtn p-1 m-0" aria-label="Enter fullscreen" data-bs-toggle="tooltip" data-bs-title="Enter fullscreen">
+      <svg width="10" height="10"><use href="sprite.svg#fullscreen"></use></svg>
+    </button>
+    <button id="closeBtn" class="tbtn p-1 m-0" aria-label="Close popup" data-bs-toggle="tooltip" data-bs-title="Close">
+      <svg width="10" height="10"><use href="sprite.svg#close"></use></svg>
+    </button>
+  </div>
   <!-- <button id="menuBtn" class="btn tbtn rounded-pill position-absolute top-0 end-0 m-0 me-5" aria-label="Open menu" data-bs-toggle="tooltip" data-bs-placement="top" title="Menu">
     <svg width="12" height="12"><use href="sprite.svg#menu"></use></svg>
   </button> -->
-  <header class="d-flex justify-content-center align-items-center my-2 position-relative fixed-top">
+  <header class="d-flex justify-content-center align-items-center mb-2 position-relative fixed-top">
     <a href="https://www.lowtouch.ai/" target="_blank" aria-label="Visit lowtouch.ai">
-      <img src="icon128.png" alt="lowtouch.ai logo" class="logo me-2 shadow rounded-pill" data-bs-toggle="tooltip" data-bs-placement="top" title="Visit lowtouch.ai">
+      <img src="icon128.png" alt="lowtouch.ai logo" class="logo shadow rounded-pill" data-bs-toggle="tooltip" data-bs-placement="top" title="Visit lowtouch.ai">
     </a>
     <div class="h2 mt-3 mx-2 d-flex ">
       <a href="https://promptstash.io/" target="_blank" class="title text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="top" title="Visit PromptStash">PromptStash</a>
@@ -41,7 +49,7 @@
     
   </div>
 
-  <div class="content-area">
+  <div class="content-area p-0 m-0">
     <div class="search-select w-100 position-relative">
       <div class="input-group position-relative">
         <span id="searchIcon" class="position-absolute mx-2 p-0 " style="pointer-events: none; z-index: 10;" aria-hidden="true" data-bs-toggle="tooltip" data-bs-placement="top" title="Search templates">
@@ -51,7 +59,7 @@
         <button id="clearSearch" class="clrbtn rounded-pill position-absolute top-50 translate-middle-y end-0 me-5" style="z-index: 11;" aria-label="Clear search" data-bs-toggle="tooltip" data-bs-placement="top" title="Clear search">
           <svg width="15" height="15"><use href="sprite.svg#clear"></use></svg>
         </button>
-        <select id="typeSelect" class="btn rounded-1 position-absolute end-0" style="z-index: 1;" aria-label="Filter templates by type" data-bs-toggle="tooltip" data-bs-placement="top" title="Filter templates by type">
+        <select id="typeSelect" class="btn position-absolute end-0" style="z-index: 10;" aria-label="Filter templates by type" data-bs-toggle="tooltip" data-bs-placement="top" title="Filter templates by type">
           <option value="all">All templates</option>
           <option value="pre-built">Pre-built</option>
           <option value="custom">User-made</option>
@@ -63,7 +71,7 @@
       <div id="dropdownResults" class="dropdown mt-0" role="listbox" aria-label="Template search results"></div>
       <div class="d-flex">
         <span id="favoriteStar" class="d-none" style="color: #888c;">&nbsp;★&nbsp;</span>
-        <div id="favoriteSuggestions" class="favorite-suggestions mt-1 d-none" role="list" aria-label="Favorite template suggestions"></div>
+        <div id="favoriteSuggestions" class="favorite-suggestions m-1 d-none" role="list" aria-label="Favorite template suggestions"></div>
       </div>
     </div>
 
