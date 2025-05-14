@@ -1,6 +1,9 @@
 // Import default templates
 import defaultTemplates from './defaultTemplates.mjs';
 
+// Extension version for schema validation
+const EXTENSION_VERSION = "1.0.0";
+
 // Initialize DOM elements
 document.addEventListener("DOMContentLoaded", () => {
   // DOM elements
@@ -17,17 +20,18 @@ document.addEventListener("DOMContentLoaded", () => {
     saveBtn: document.getElementById("saveBtn"),
     saveAsBtn: document.getElementById("saveAsBtn"),
     deleteBtn: document.getElementById("deleteBtn"),
+    clearSearch: document.getElementById("clearSearch"),
+    clearName: document.getElementById("clearName"),
     clearPrompt: document.getElementById("clearPrompt"),
     clearTags: document.getElementById("clearTags"),
     sendBtn: document.getElementById("sendBtn"),
-    clearSearch: document.getElementById("clearSearch"),
     favoriteSuggestions: document.getElementById("favoriteSuggestions"),
     fullscreenToggle: document.getElementById("fullscreenToggle"),
     closeBtn: document.getElementById("closeBtn"),
     minimizeBtn: document.getElementById("minimizeBtn"),
     newBtn: document.getElementById("newBtn"),
     toast: document.getElementById("toast"),
-    favoriteStar: document.getElementById("favoriteStar"),
+    favoriteStar: document.getElementsByClassName("favoriteStar"),
     // menuBtn: document.getElementById("menuBtn"),
     // menuDropdown: document.getElementById("menuDropdown"),
     themeToggle: document.getElementById("themeToggle")
@@ -46,14 +50,28 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let selectedTemplateName = null;
   let currentTheme = "light";
-  let lastState = null; // Store last state for undo
-  let nextIndex = 0; // Track next available index
-  let isFullscreen = false; // Track fullscreen state
-  let recentIndices = []; // Store up to 20 recent template indices
+  let lastState = null;
+  let nextIndex = 0;
+  let isFullscreen = false;
+  let recentIndices = [];
 
-  // Load popup state, recent indices, and initialize index
-  chrome.storage.local.get(["popupState", "theme", "nextIndex"], (localResult) => {
-    chrome.storage.sync.get(["recentIndices"], (syncResult) => {
+  // Load popup state, recent indices, and initialize index with version check
+  chrome.storage.local.get(["popupState", "theme", "nextIndex", "extensionVersion"], (localResult) => {
+    chrome.storage.sync.get(["recentIndices", "templates"], (syncResult) => {
+      // Check if stored version matches current version
+      const storedVersion = localResult.extensionVersion || "0.0.0";
+      if (storedVersion !== EXTENSION_VERSION) {
+        // Handle schema migration if needed (currently no changes required)
+        console.log(`Version updated from ${storedVersion} to ${EXTENSION_VERSION}. No schema migration needed.`);
+        chrome.storage.local.set({ extensionVersion: EXTENSION_VERSION }, () => {
+          if (chrome.runtime.lastError) {
+            console.error("Failed to save extension version:", chrome.runtime.lastError.message);
+            showToast("Error saving extension version. Some data may not persist.");
+          }
+        });
+      }
+
+      // Initialize state, falling back to defaults if not present
       const state = localResult.popupState || {};
       elements.templateName.value = state.name || "";
       elements.templateTags.value = state.tags || "";
@@ -62,18 +80,29 @@ document.addEventListener("DOMContentLoaded", () => {
       currentTheme = localResult.theme || "light";
       nextIndex = localResult.nextIndex || defaultTemplates.length;
       recentIndices = syncResult.recentIndices || [];
+      // Ensure templates are initialized
+      const templates = syncResult.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
+
+      // Save templates if they were initialized from defaults
+      if (!syncResult.templates) {
+        chrome.storage.sync.set({ templates }, () => {
+          if (chrome.runtime.lastError) {
+            console.error("Failed to initialize templates:", chrome.runtime.lastError.message);
+            showToast("Error initializing templates. Some data may not be saved.");
+          }
+        });
+      }
+
       document.body.className = currentTheme;
       elements.fetchBtn.style.display = elements.promptArea.value ? "none" : "block";
       loadTemplates(elements.typeSelect.value, "", false);
       adjustPromptAreaHeight(); // Adjust prompt area height on load
-      // elements.themeToggle.textContent = currentTheme === "light" ? "Dark Mode" : "Light Mode"; // Set initial theme toggle text
-      // elements.fullscreenToggle.setAttribute("data-bs-title", "Enter fullscreen"); // Initial fullscreen tooltip
     });
   });
 
   // Save popup state and recent indices
   function saveState() {
-    chrome.storage.local.set({
+    const state = {
       popupState: {
         name: elements.templateName.value,
         tags: elements.templateTags.value,
@@ -81,10 +110,23 @@ document.addEventListener("DOMContentLoaded", () => {
         selectedName: selectedTemplateName
       },
       theme: currentTheme,
-      nextIndex
+      nextIndex,
+      isFullscreen,
+      extensionVersion: EXTENSION_VERSION
+    };
+
+    chrome.storage.local.set(state, () => {
+      if (chrome.runtime.lastError) {
+        console.error("Failed to save state:", chrome.runtime.lastError.message);
+        showToast("Error saving extension state. Some data may not persist.");
+      }
     });
-    chrome.storage.sync.set({
-      recentIndices
+
+    chrome.storage.sync.set({ recentIndices }, () => {
+      if (chrome.runtime.lastError) {
+        console.error("Failed to save recent indices:", chrome.runtime.lastError.message);
+        showToast("Error saving recent indices. Some data may not persist.");
+      }
     });
   }
 
@@ -106,7 +148,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setTimeout(() => elements.toast.classList.remove("show"), 4000);
   }
 
-  // Adjust prompt area height
+/*   // Adjust prompt area height
   function adjustPromptAreaHeight() {
     const header = document.querySelector("header");
     const searchSelect = document.querySelector(".search-select");
@@ -129,15 +171,13 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.promptArea.style.height = `${Math.max(80, availableHeight - 50)}px`;
     elements.promptArea.style.marginBottom = `${buttonsHeight + 20}px`;
   }
-
+ */
   // Update recent indices
   function updateRecentIndices(index) {
     recentIndices.unshift(index); // Add to start
-    // Remove duplicates, keeping the most recent occurrence
-    recentIndices = [...new Set(recentIndices)];
-    // Trim to 20 indices
+    recentIndices = [...new Set(recentIndices)]; // Remove duplicates
     if (recentIndices.length > 20) {
-      recentIndices = recentIndices.slice(0, 20);
+      recentIndices = recentIndices.slice(0, 20); // Trim to 20
     }
     saveState();
   }
@@ -180,14 +220,13 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.searchBox.value = "";
     loadTemplates(elements.typeSelect.value, "", false);
     saveState();
-    showToast("New template created.");
+    // showToast("New template created.");
   });
-  
-  // Theme toggle via menu
+
+  // Theme toggle
   elements.themeToggle.addEventListener("click", () => {
     currentTheme = currentTheme === "light" ? "dark" : "light";
     document.body.className = currentTheme;
-    // elements.themeToggle.textContent = currentTheme === "light" ? "Dark Mode" : "Light Mode";
     saveState();
   });
   /*
@@ -267,7 +306,7 @@ document.addEventListener("DOMContentLoaded", () => {
     saveState();
   });
 
-  // Normalize tags input in real-time: strictly comma-separated with no internal whitespace
+  // Normalize tags input
   elements.templateTags.addEventListener("input", () => {
     storeLastState();
     let value = elements.templateTags.value;
@@ -277,6 +316,7 @@ document.addEventListener("DOMContentLoaded", () => {
       value = value.replace(/[^a-zA-Z0-9_, ]/g, "");
       elements.templateTags.value = value;
     }
+    // must add code for backspace/delete
     saveState();
   });
 
@@ -287,14 +327,14 @@ document.addEventListener("DOMContentLoaded", () => {
     saveState();
   });
 
-  // Sanitize tags to ensure strictly comma-separated format with no internal whitespace
+  // Sanitize tags
   function sanitizeTags(input) {
     if (!input) return "";
     const tags = input.split(",").map(tag => tag.trim().replace(/\s+/g, ""));
     return tags.filter(tag => tag).join(", ");
   }
 
-  // Function to get the target tab ID with timeout
+  // Get target tab ID
   function getTargetTabId(callback) {
     const timeout = setTimeout(() => {
       showToast("No response from tab. Please activate a supported webpage.");
@@ -379,7 +419,7 @@ document.addEventListener("DOMContentLoaded", () => {
           if (bIndex === -1) return -1;
           return aIndex - bIndex;
         });
-        elements.favoriteStar.classList.remove("d-none");
+        // elements.favoriteStar.classList.remove("d-none");
         elements.favoriteSuggestions.classList.remove("d-none");
         favorites.forEach((tmpl) => {
           const span = document.createElement("span");
@@ -405,7 +445,7 @@ document.addEventListener("DOMContentLoaded", () => {
           elements.favoriteSuggestions.appendChild(span);
         });
       } else {
-        elements.favoriteStar.classList.add("d-none");
+        // elements.favoriteStar.classList.add("d-none");
         elements.favoriteSuggestions.classList.add("d-none");
       }
     });
@@ -428,11 +468,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Close dropdowns when clicking outside
   document.addEventListener("click", (event) => {
-    if (!elements.searchBox.contains(event.target) && !elements.dropdownResults.contains(event.target)) {
+    if (!elements.searchBox.contains(event.target) && !elements.dropdownResults.contains(event.target) && !elements.themeToggle.contains(event.target) && !elements.typeSelect.contains(event.target)) {
       elements.dropdownResults.innerHTML = "";
-    }
-    if (!elements.typeSelect.contains(event.target)) {
-      elements.typeSelect.blur();
     }
   });
 
@@ -510,12 +547,6 @@ document.addEventListener("DOMContentLoaded", () => {
       name = name.trim();
       if (templates.some(t => t.name === name)) {
         showToast("Name already exists.");
-        // let i = 2;
-        // const temp = name;
-        // while (templates.some(t => t.name === name)) {
-        //   name = `${temp} ${i++}`;
-        // }
-        // elements.templateName.value = name;
         elements.templateName.focus();
         return;
       }
@@ -559,7 +590,7 @@ document.addEventListener("DOMContentLoaded", () => {
       saveTemplates(templates, () => {
         selectedTemplateName = name;
         elements.templateName.value = name;
-        updateRecentIndices(nextIndex); // Add to recent indices
+        updateRecentIndices(nextIndex);
         nextIndex++;
         loadTemplates(elements.typeSelect.value, "", false);
         saveState();
@@ -586,7 +617,7 @@ document.addEventListener("DOMContentLoaded", () => {
           elements.fetchBtn.style.display = "none";
           saveState();
         } else {
-          showToast("No input field found on the page.\nTry refreshing the page");
+          showToast("No input found on the page.");
         }
       });
     });
@@ -739,17 +770,18 @@ document.addEventListener("DOMContentLoaded", () => {
  */
   // Show the clear button only when the field contains text
   let timeout;
-  document.addEventListener("mousemove", (event) => {
+  document.addEventListener("mousemove", () => {
     clearTimeout(timeout);
     timeout = setTimeout(() => {
-      elements.clearSearch.style.display = (elements.searchBox.contains(event.target) && elements.searchBox.value) ? "block" : "none";
-      elements.clearTags.style.display = (elements.templateTags.contains(event.target) && elements.templateTags.value) ? "block" : "none";
-      elements.clearPrompt.style.display = (elements.promptArea.value) ? "block" : "none";
+      elements.clearSearch.style.display = elements.searchBox.value ? "block" : "none";
+      elements.clearName.style.display = elements.templateName.value ? "block" : "none";
+      elements.clearTags.style.display = elements.templateTags.value ? "block" : "none";
+      elements.clearPrompt.style.display = elements.promptArea.value ? "block" : "none";
     }, 50);
   });
 
   // Fade template area while searching
   document.addEventListener("click", (event) => {
-    elements.template.style.opacity = elements.buttons.style.opacity = (elements.searchBox.contains(event.target) || elements.dropdownResults.contains(event.target)) ? "0.1" : "1";
+    elements.template.style.display = elements.buttons.style.display = (elements.searchBox.contains(event.target) || elements.dropdownResults.contains(event.target)) ? "none" : "block";
   });
 });

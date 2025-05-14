@@ -1,7 +1,7 @@
 body {
   font-family: Roboto, sans-serif;
-  padding: 24px;
-
+  margin: 0;
+  padding: 18px 24px 24px 24px;
   transition: color 0.2s;
   overflow: hidden;
 }
@@ -16,14 +16,17 @@ body.dark {
   color: #e8eaed;
 }
 
-header {
-  background: none;
-}
-
-.content-area {
-  width: 100%;
+main {
   display: flex;
   flex-direction: column;
+  min-height: 100vh;
+  padding: 0.5rem;
+  box-sizing: border-box;
+}
+
+header, .search-select, #template, #buttons {
+  z-index: 1;
+  flex-shrink: 0;
 }
 
 .toast {
@@ -70,10 +73,6 @@ body.light .title {
   z-index: 1001;
 }
 
-.search-select {
-  position: relative;
-}
-
 .input-group {
   align-items: center;
   position: relative;
@@ -94,8 +93,8 @@ body.dark #searchIcon svg {
 #searchBox {
   border: 1px solid #ddd;
   background-color: transparent;
-  padding: 12px 80px 12px 36px;
-  font-size: 0.9rem;
+  padding: 1px 80px 1px 36px;
+  font-size: 0.85rem;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
@@ -105,7 +104,7 @@ body.dark #searchBox {
 }
 
 #searchBox:hover, #searchBox:focus {
-  box-shadow: 0 0 0.5rem 2px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 0 0.5rem 1px rgba(0, 0, 0, 0.15);
 }
 
 body.dark #searchBox:hover, #searchBox:focus {
@@ -121,7 +120,7 @@ body.dark #searchBox:hover, #searchBox:focus {
   background: transparent;
   font-size: 0.70rem;
   padding: 10px;
-  padding-right: 50px;
+  padding-right: 70px;
   color: #5f6368;
   max-width: 36px;
   height: 36px;
@@ -204,11 +203,11 @@ body.dark .dropdown div {
 }
 
 .dropdown div[aria-selected="true"] {
-  background: #f2f4f4;
+  background: #f8f9fa;
 }
 
 body.dark .dropdown div[aria-selected="true"] {
-  background: #2e2e2e;
+  background: #34373a;
 }
 
 .dropdown div:hover, .dropdown div:focus {
@@ -229,13 +228,12 @@ body.dark .dropdown div:hover, body.dark .dropdown div:focus {
 }
 
 .favorite-toggle.favorited {
-  color: #555;
+  color: #333;
   font-weight: bolder;
 }
 
 body.dark .favorite-toggle.favorited {
   color: #ccc;
-  font-weight: bolder;
 }
 
 .favorite-toggle.unfavorited {
@@ -246,19 +244,29 @@ body.dark .favorite-toggle.favorited {
   display: block;
 }
 
-.favorite-suggestions {
+#favoriteSuggestions {
   display: flex;
-  flex-wrap: wrap;
-  text-wrap: nowrap;
-  text-overflow: clip;
+  flex-wrap: nowrap;
+  overflow-x: scroll;
   border: none;
   gap: 5px;
 }
 
+#favoriteSuggestions::-webkit-scrollbar {
+  height: 10px;
+  cursor: pointer;
+}
+#favoriteSuggestions:hover::-webkit-scrollbar-thumb {
+  background: linear-gradient(transparent 0%, transparent 40%, #8884 40%, #8884 60%, transparent 60%, transparent 100%);
+  width: 4px;
+  cursor: pointer;
+}
+
 .favorite-suggestion {
-  border: 1px solid #88888811;
+  border: 1px solid #88888820;
   padding: 1px 8px;
   border-radius: 15px;
+  text-wrap: nowrap;
   font-size: 0.6rem;
   cursor: pointer;
 }
@@ -273,47 +281,35 @@ body.dark .favorite-suggestion:hover, body.dark .favorite-suggestion:focus {
 }
 
 #template {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  margin: 0;
+  gap: 0.75rem;
   transition: opacity 0.1s;
+}
+.template:focus {
+  box-shadow: 0 0 0.5rem 1px rgba(0, 0, 0, 0.15);
+  border: 1px solid rgb(208, 208, 208);
+}
+
+#template > div {
+  z-index: -1;
 }
 
 #templateName {
   border: 1px solid #dadce0;
   font-weight: bold;
+  flex-shrink: 0;
 }
 
 body.dark #templateName {
   border-color: #5f6368;
   background: #3a3c40;
-  color: #e8eaed;
 }
 
 #templateName::placeholder {
   color: #888;
-}
-
-.rbtn {
-  background-color: transparent;
-  border: none;
-  fill: #eee;
-  mix-blend-mode: difference;
-  transition: 0.2s;
-}
-
-#renameBtn {
-  fill: none;
-}
-
-#templateName:hover + #renameBtn, #renameBtn:hover {
-  fill: #eee;
-  mix-blend-mode: difference;
-}
-
-.rbtn:hover svg {
-  transform: scale(1.08);
-}
-
-.tags-wrapper {
-  position: relative;
 }
 
 #tags-label {
@@ -330,12 +326,12 @@ body.dark #templateName {
   padding: 8px 40px 8px 56px;
   font-size: 0.9rem;
   width: 100%;
+  flex-shrink: 0;
 }
 
 body.dark #templateTags {
   border-color: #5f6368;
   background: #303134;
-  color: #e8eaed;
 }
 
 #templateTags::placeholder {
@@ -343,7 +339,11 @@ body.dark #templateTags {
 }
 
 #clearTags svg {
-  transform: translateY(25%);
+  transform: translateY(20%);
+}
+
+#clearName svg {
+  transform: translateY(55%);
 }
 
 #fetchBtn {
@@ -351,15 +351,20 @@ body.dark #templateTags {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  color: #ccc;
-  border: 1px dashed #aaa;
-  mix-blend-mode: difference;
+  color: #888d;
+  border: 1px dashed #8888;
+}
+
+#fetchBtn:hover {
+  color: #888;
+  border: 1px dashed #888;
 }
 
 #promptArea {
+  flex: 1;
   border: 1px solid #dadce0;
-  font-size: 1rem;
-  width: 100%;
+  min-height: 50px;
+  height: calc(100vh - 320px);
   overflow: both;
   transition: 0.2s;
 }
@@ -378,7 +383,6 @@ body.dark #templateTags {
 body.dark #promptArea {
   border-color: #5f6368;
   background: #303134;
-  color: #e8eaed;
 }
 
 #promptArea::placeholder {
@@ -389,17 +393,18 @@ body.dark #promptArea {
   transform: translateY(-50%);
 }
 
-.tbtn {
+.topbtn {
   fill: #222;
+  background: none;
   border: none;
   z-index: 9999;
 }
 
-body.dark .tbtn {
+body.dark .topbtn {
   fill: #ccc;
 }
 
-.tbtn:hover svg {
+.topbtn:hover svg {
   transform: scale(1.1);
 }
 
@@ -413,22 +418,18 @@ body.dark .tbtn {
 }
 
 :hover + .clrbtn {
-  fill: #ccc;
-  mix-blend-mode: difference;
+  fill: #888;
 }
 
 .clrbtn:hover {
-  fill: #fff;
-  mix-blend-mode: difference;
+  fill: #000;
+  transform: scale(1.05);
 }
-
-#fullscreenHeader {
-  font-size: 1.5rem;
-  color: inherit;
+body.dark .clrbtn:hover {
+  fill: #fff;
 }
 
 #buttons {
-  background: inherit;
   transition: opacity 0.1s;
 }
 
@@ -441,13 +442,11 @@ body.dark .tbtn {
   height: 24px;
   fill: #aaa;
   mix-blend-mode: difference;
-  transition: all 0.2s;
+  transition: transform 0.1s;
 }
 
 #buttons .btn:hover svg {
-  fill: #fff;
-  mix-blend-mode: difference;
-  transform: scale(1.1);
+  transform: scale(1.05);
 }
 
 .tooltip-inner {
@@ -465,10 +464,6 @@ body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
   border-color: #5f6368;
   background: #3a3c40;
   color: #e8eaed;
-}
-
-#templateName:focus, #templateTags:focus, #promptArea:focus {
-  outline: #888;
 }
 
 :root {
@@ -495,13 +490,25 @@ body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
   #buttons .btn svg{
     width: 10vw;
     height: 10vw;
-  }  
+  }
+
 }
 
 @media (max-height: 400px) {
   body {
     font-size: small;
     overflow-y: auto;
+  }
+
+  body::-webkit-scrollbar {
+    background: #8882;
+    width: 5px;
+    cursor: pointer;
+  }
+  body::-webkit-scrollbar-thumb {
+    background-color: #8888;
+    border-radius: 4px;
+    cursor: pointer;
   }
 
   #buttons .btn {
@@ -514,5 +521,5 @@ body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
   #buttons .btn svg{
     width: calc(8px + 4vh);
     height: calc(8px + 4vh);
-  }  
+  }
 }

@@ -8,114 +8,112 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body class="light">
-  <div class="position-absolute top-0 end-0 d-flex align-items-center m-0 py-0 px-2" style="gap: 0.5rem;">
-    <button id="newBtn" class="tbtn p-1 m-0" aria-label="Toggle theme" data-bs-toggle="tooltip" data-bs-title="New template">
+  <div class="position-absolute top-0 end-0 d-flex align-items-center m-0 py-0 px-2" style="gap: 0.3rem;">
+    <button id="newBtn" class="topbtn m-0" aria-label="Toggle theme" data-bs-toggle="tooltip" data-bs-placement="top" title="New template">
       <svg width="10" height="10"><use href="sprite.svg#new"></use></svg>
     </button>
-    <button id="themeToggle" class="tbtn p-1 m-0" aria-label="Toggle theme" data-bs-toggle="tooltip" data-bs-title="Toggle theme">
+    <button id="themeToggle" class="topbtn m-0" aria-label="Toggle theme" data-bs-toggle="tooltip" data-bs-placement="top" title="Toggle theme">
       <svg width="12" height="12"><use href="sprite.svg#theme"></use></svg>
     </button>
-    <button id="minimizeBtn" class="tbtn p-1 m-0" aria-label="Minimize popup" data-bs-toggle="tooltip" data-bs-title="Minimize">
+    <button id="minimizeBtn" class="topbtn m-0" aria-label="Minimize popup">
       <svg width="10" height="10"><use href="sprite.svg#minimize"></use></svg>
     </button>
-    <button id="fullscreenToggle" class="tbtn p-1 m-0" aria-label="Enter fullscreen" data-bs-toggle="tooltip" data-bs-title="Enter fullscreen">
+    <button id="fullscreenToggle" class="topbtn m-0" aria-label="Enter fullscreen">
       <svg width="10" height="10"><use href="sprite.svg#fullscreen"></use></svg>
     </button>
-    <button id="closeBtn" class="tbtn p-1 m-0" aria-label="Close popup" data-bs-toggle="tooltip" data-bs-title="Close">
+    <button id="closeBtn" class="topbtn m-0" aria-label="Close popup">
       <svg width="10" height="10"><use href="sprite.svg#close"></use></svg>
     </button>
   </div>
-  <!-- <button id="menuBtn" class="btn tbtn rounded-pill position-absolute top-0 end-0 m-0 me-5" aria-label="Open menu" data-bs-toggle="tooltip" data-bs-placement="top" title="Menu">
+  <!-- <button id="menuBtn" class="btn topbtn rounded-pill position-absolute top-0 end-0 m-0 me-5" aria-label="Open menu" data-bs-toggle="tooltip" data-bs-placement="top" title="Menu">
     <svg width="12" height="12"><use href="sprite.svg#menu"></use></svg>
   </button> -->
-  <header class="d-flex justify-content-center align-items-center mb-2 position-relative fixed-top">
-    <a href="https://www.lowtouch.ai/" target="_blank" aria-label="Visit lowtouch.ai">
-      <img src="icon128.png" alt="lowtouch.ai logo" class="logo shadow rounded-pill" data-bs-toggle="tooltip" data-bs-placement="top" title="Visit lowtouch.ai">
-    </a>
-    <div class="h2 mt-3 mx-2 d-flex ">
-      <a href="https://promptstash.io/" target="_blank" class="title text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="top" title="Visit PromptStash">PromptStash</a>
-      <span class="title mx-1">by</span>
-      <a href="https://www.lowtouch.ai/" target="_blank" class="title text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="top" title="Visit lowtouch.ai">lowtouch.ai</a>
-    </div>
-  </header>
-
   <!-- <div id="menuDropdown" class="dropdown-menu position-absolute top-0 end-0 mt-5" style="display: none; z-index: 999;">
     <button class="dropdown-item" id="themeToggle">Toggle Theme</button>
     <button class="dropdown-item" id="saveLocally">Save Locally</button>
     <button class="dropdown-item" id="markdownToggle">Markdown-view</button>
     <button class="dropdown-item" id="exportData">Export Data</button>
     <button class="dropdown-item" id="importData">Import Data</button>
-    <button class="dropdown-item" id="importData">Import Data</button> -->
-    
-  </div>
+    <button class="dropdown-item" id="importData">Import Data</button>
+  </div> -->
 
-  <div class="content-area p-0 m-0">
+    <header class="d-flex justify-content-center align-items-center mb-2 position-relative">
+      <a href="https://www.lowtouch.ai/" target="_blank" aria-label="Visit lowtouch.ai">
+        <img src="icon128.png" alt="lowtouch.ai logo" class="logo shadow rounded-pill" data-bs-toggle="tooltip" data-bs-placement="top" title="Visit lowtouch.ai">
+      </a>
+      <div class="h2 mt-3 mx-2 d-flex">
+        <a href="https://promptstash.io/" target="_blank" class="title text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="top" title="Visit PromptStash">PromptStash</a>
+        <span class="title mx-1">by</span>
+        <a href="https://www.lowtouch.ai/" target="_blank" class="title text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="top" title="Visit lowtouch.ai">lowtouch.ai</a>
+      </div>
+    </header>
+
     <div class="search-select w-100 position-relative">
-      <div class="input-group position-relative">
-        <span id="searchIcon" class="position-absolute mx-2 p-0 " style="pointer-events: none; z-index: 10;" aria-hidden="true" data-bs-toggle="tooltip" data-bs-placement="top" title="Search templates">
-          <svg width="18" height="18"><use href="sprite.svg#search"></use></svg>
+      <div class="input-group position-relative d-flex">
+        <span id="searchIcon" class="position-absolute mx-2 p-0" style="pointer-events: none; z-index: 10;" aria-hidden="true" data-bs-toggle="tooltip" data-bs-placement="top" title="Search templates">
+          <svg width="15" height="15"><use href="sprite.svg#search"></use></svg>
         </span>
-        <input type="text" id="searchBox" class="form-control rounded-1 py-1" placeholder="" aria-label="Search templates" data-bs-toggle="tooltip" data-bs-placement="top" title="Search templates">
+        <input type="text" id="searchBox" class="form-control rounded-2" placeholder="" aria-label="Search templates" data-bs-toggle="tooltip" data-bs-placement="top" title="Search templates">
         <button id="clearSearch" class="clrbtn rounded-pill position-absolute top-50 translate-middle-y end-0 me-5" style="z-index: 11;" aria-label="Clear search" data-bs-toggle="tooltip" data-bs-placement="top" title="Clear search">
-          <svg width="15" height="15"><use href="sprite.svg#clear"></use></svg>
+          <svg width="13" height="13"><use href="sprite.svg#clear"></use></svg>
         </button>
         <select id="typeSelect" class="btn position-absolute end-0" style="z-index: 10;" aria-label="Filter templates by type" data-bs-toggle="tooltip" data-bs-placement="top" title="Filter templates by type">
           <option value="all">All templates</option>
           <option value="pre-built">Pre-built</option>
           <option value="custom">User-made</option>
         </select>
-        <svg id="filterIcon" class="position-absolute top-50 translate-middle-y me-1" style="pointer-events:none; z-index: 11; right: 10px;" width="12" height="12" aria-hidden="true">
+        <svg id="filterIcon" class="position-absolute top-50 translate-middle-y me-1" style="pointer-events:none; z-index: 11; right: 10px;" width="11" height="11" aria-hidden="true">
           <use href="sprite.svg#filter"></use>
         </svg>
       </div>
-      <div id="dropdownResults" class="dropdown mt-0" role="listbox" aria-label="Template search results"></div>
-      <div class="d-flex">
-        <span id="favoriteStar" class="d-none" style="color: #888c;">&nbsp;★&nbsp;</span>
-        <div id="favoriteSuggestions" class="favorite-suggestions m-1 d-none" role="list" aria-label="Favorite template suggestions"></div>
+      <div id="dropdownResults" class="dropdown mt-0" style="z-index: 10000;" role="listbox" aria-label="Template search results"></div>
+      <div class="d-flex w-100 position-relative">
+        <span class="favoriteStar position-absolute start-0" style="color: #888;"> ★ </span>
+        <div id="favoriteSuggestions" class="d-none rounded-2 m-1 mx-4" role="list" aria-label="Favorite template suggestions"></div>
+        <span class="favoriteStar position-absolute end-0" style="color: #888;"> ★ </span>
       </div>
     </div>
 
-    <div id="template" class="w-100 mt-3">
-      <div class="row g-2">
-        <div class="position-relative mt-2">
-          <input type="text" id="templateName" class="form-control rounded-1 px-3 py-2" placeholder="Template Name" aria-label="Template name" data-bs-toggle="tooltip" data-bs-placement="top" title="Template name">
-        </div>
-        <div class="col-12 mt-2">
-          <div class="tags-wrapper position-relative">
-            <span id="tags-label" class="position-absolute ms-3" aria-hidden="true">Tags: </span>
-            <input type="text" id="templateTags" class="form-control rounded-1 pe-3 py-1" placeholder="(comma-separated)" aria-label="Template tags" data-bs-toggle="tooltip" data-bs-placement="top" title="Comma-separated tags">
-            <button id="clearTags" class="clrbtn rounded-pill position-absolute top-0 end-0" aria-label="Clear tags" data-bs-toggle="tooltip" data-bs-placement="top" title="Clear tags">
-              <svg width="15" height="15"><use href="sprite.svg#clear"></use></svg>
-            </button>
-          </div>
-        </div>
-      </div>
-      <div class="position-relative mt-2 mb-0">
-        <textarea id="promptArea" class="form-control rounded-1 px-3 py-2" placeholder="Edit your prompt here..." style="resize: none;" aria-label="Prompt text" data-bs-toggle="tooltip" data-bs-placement="top" title="Prompt text"></textarea>
-        <button id="clearPrompt" class="clrbtn rounded-pill position-absolute top-0 end-0" aria-label="Clear prompt text" data-bs-toggle="tooltip" data-bs-placement="top" title="Clear prompt text">
+    <div id="template" class="p-0 g-2">
+      <div class="position-relative">
+        <input type="text" id="templateName" class="template form-control rounded-2 px-3 py-2" placeholder="Template Name" aria-label="Template name" data-bs-toggle="tooltip" data-bs-placement="top" title="Template name">
+        <button id="clearName" class="clrbtn position-absolute top-0 end-0" aria-label="Clear Name" data-bs-toggle="tooltip" data-bs-placement="top" title="Clear name">
           <svg width="15" height="15"><use href="sprite.svg#clear"></use></svg>
         </button>
-        <button id="fetchBtn" class="btn btn-md rounded-1 position-absolute" aria-label="Fetch from website">Fetch prompt from website</button> 
+      </div>
+      <div class="position-relative">
+        <span id="tags-label" class="position-absolute ps-3" aria-hidden="true"> Tags:</span>
+        <input type="text" id="templateTags" class="template form-control rounded-2 pe-3 py-1" placeholder="(comma-separated)" aria-label="Template tags" data-bs-toggle="tooltip" data-bs-placement="top" title="Comma-separated tags">
+        <button id="clearTags" class="clrbtn position-absolute top-0 end-0" aria-label="Clear tags" data-bs-toggle="tooltip" data-bs-placement="top" title="Clear tags">
+          <svg width="15" height="15"><use href="sprite.svg#clear"></use></svg>
+        </button>
+      </div>
+      <div class="position-relative">
+        <textarea id="promptArea" class="template form-control rounded-2 px-3 py-2" placeholder="Edit your prompt here..." style="resize: none;" aria-label="Prompt text" data-bs-toggle="tooltip" data-bs-placement="top" title="Prompt text"></textarea>
+        <button id="clearPrompt" class="clrbtn position-absolute top-0 end-0" aria-label="Clear prompt text" data-bs-toggle="tooltip" data-bs-placement="top" title="Clear prompt text">
+          <svg width="15" height="15"><use href="sprite.svg#clear"></use></svg>
+        </button>
+        <button id="fetchBtn" class="btn btn-sm rounded-3 position-absolute" aria-label="Fetch from website">Fetch prompt from website</button>
       </div>
     </div>
-  </div>
 
-  <div id="buttons" class="d-flex column gap-3 justify-content-center flex-wrap py-1 my-2 position-fixed bottom-0 start-0 end-0">
-    <button id="saveBtn" class="btn rounded-pill" aria-label="Save changes to template" data-bs-toggle="tooltip" data-bs-placement="top" title="Update changes to this template">
-      <svg><use href="sprite.svg#save"></use></svg>
-    </button>
-    <button id="saveAsBtn" class="btn rounded-pill" aria-label="Save as new template" data-bs-toggle="tooltip" data-bs-placement="top" title="Save this as new template">
-      <svg><use href="sprite.svg#saveAs"></use></svg>
-    </button>
-    <button id="deleteBtn" class="btn rounded-pill" aria-label="Delete selected template" data-bs-toggle="tooltip" data-bs-placement="top" title="Delete selected template">
-      <svg><use href="sprite.svg#delete"></use></svg>
-    </button>
-    <button id="sendBtn" class="btn rounded-pill" aria-label="Send prompt to website" data-bs-toggle="tooltip" data-bs-placement="top" title="Send prompt to website">
-      <svg><use href="sprite.svg#send"></use></svg>
-    </button> 
-  </div>
-
+    <div id="buttons" class="d-flex column gap-3 justify-content-center flex-wrap py-1 mt-2 mb-3">
+      <button id="saveBtn" class="btn rounded-pill" aria-label="Save changes to template" data-bs-toggle="tooltip" data-bs-placement="top" title="Update changes to this template">
+        <svg><use href="sprite.svg#save"></use></svg>
+      </button>
+      <button id="saveAsBtn" class="btn rounded-pill" aria-label="Save as new template" data-bs-toggle="tooltip" data-bs-placement="top" title="Save this as new template">
+        <svg><use href="sprite.svg#saveAs"></use></svg>
+      </button>
+      <button id="deleteBtn" class="btn rounded-pill" aria-label="Delete selected template" data-bs-toggle="tooltip" data-bs-placement="top" title="Delete selected template">
+        <svg><use href="sprite.svg#delete"></use></svg>
+      </button>
+      <button id="sendBtn" class="btn rounded-pill" aria-label="Send prompt to website" data-bs-toggle="tooltip" data-bs-placement="top" title="Send prompt to website">
+        <svg><use href="sprite.svg#send"></use></svg>
+      </button>
+    </div>
   <div id="toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true"></div>
+  <div id="goodToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true"></div>
+  <div id="badToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true"></div>
 
   <script src="bootstrap.bundle.min.js"></script>
   <script type="module" src="popup.js"></script>
