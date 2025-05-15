@@ -31,7 +31,7 @@ document.addEventListener("DOMContentLoaded", () => {
     minimizeBtn: document.getElementById("minimizeBtn"),
     newBtn: document.getElementById("newBtn"),
     toast: document.getElementById("toast"),
-    favoriteStar: document.getElementsByClassName("favoriteStar"),
+    // favoriteStar: document.getElementsByClassName("favoriteStar"),
     // menuBtn: document.getElementById("menuBtn"),
     // menuDropdown: document.getElementById("menuDropdown"),
     themeToggle: document.getElementById("themeToggle")
@@ -780,8 +780,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }, 50);
   });
 
-  // Fade template area while searching
-  document.addEventListener("click", (event) => {
-    elements.template.style.display = elements.buttons.style.display = (elements.searchBox.contains(event.target) || elements.dropdownResults.contains(event.target)) ? "none" : "block";
-  });
+  // // Fade template area while searching
+  // document.addEventListener("click", (event) => {
+  //   elements.template.style.display = elements.buttons.style.display = (elements.searchBox.contains(event.target) || elements.dropdownResults.contains(event.target)) ? "none" : "block";
+  // });
 });

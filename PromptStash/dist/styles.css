@@ -161,7 +161,7 @@ body.dark #typeSelect option {
   border-radius: 5px;
   border-top: none;
   border-bottom: none;
-  z-index: 1000;
+  z-index: 9999;
   transition: 0.3s;
 }
 
@@ -288,13 +288,9 @@ body.dark .favorite-suggestion:hover, body.dark .favorite-suggestion:focus {
   gap: 0.75rem;
   transition: opacity 0.1s;
 }
-.template:focus {
-  box-shadow: 0 0 0.5rem 1px rgba(0, 0, 0, 0.15);
-  border: 1px solid rgb(208, 208, 208);
-}
 
 #template > div {
-  z-index: -1;
+  z-index: 0;
 }
 
 #templateName {
@@ -491,7 +487,6 @@ body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
     width: 10vw;
     height: 10vw;
   }
-
 }
 
 @media (max-height: 400px) {
