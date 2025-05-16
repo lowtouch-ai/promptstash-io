@@ -16,20 +16,23 @@ document.addEventListener("DOMContentLoaded", () => {
     templateTags: document.getElementById("templateTags"),
     promptArea: document.getElementById("promptArea"),
     buttons: document.getElementById("buttons"),
-    fetchBtn: document.getElementById("fetchBtn"),
+    fetchBtns: document.querySelectorAll("#fetchBtn, #fetchBtn2"),
+    fetchBtn2: document.getElementById("fetchBtn2"),
     saveBtn: document.getElementById("saveBtn"),
     saveAsBtn: document.getElementById("saveAsBtn"),
     deleteBtn: document.getElementById("deleteBtn"),
     clearSearch: document.getElementById("clearSearch"),
-    clearName: document.getElementById("clearName"),
+    // clearName: document.getElementById("clearName"),
+    // clearTags: document.getElementById("clearTags"),
     clearPrompt: document.getElementById("clearPrompt"),
-    clearTags: document.getElementById("clearTags"),
+    clearAllBtn: document.getElementById("clearAllBtn"),
     sendBtn: document.getElementById("sendBtn"),
     favoriteSuggestions: document.getElementById("favoriteSuggestions"),
     fullscreenToggle: document.getElementById("fullscreenToggle"),
     closeBtn: document.getElementById("closeBtn"),
     minimizeBtn: document.getElementById("minimizeBtn"),
     newBtn: document.getElementById("newBtn"),
+    overlay: document.getElementById("overlay"),
     toast: document.getElementById("toast"),
     // favoriteStar: document.getElementsByClassName("favoriteStar"),
     // menuBtn: document.getElementById("menuBtn"),
@@ -94,9 +97,9 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       document.body.className = currentTheme;
-      elements.fetchBtn.style.display = elements.promptArea.value ? "none" : "block";
+      elements.fetchBtn2.style.display = elements.promptArea.value ? "none" : "block";
       loadTemplates(elements.typeSelect.value, "", false);
-      adjustPromptAreaHeight(); // Adjust prompt area height on load
+      // adjustPromptAreaHeight(); // Adjust prompt area height on load
     });
   });
 
@@ -209,20 +212,6 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   */
 
-  // New template button: Clear template area and reset selection
-  elements.newBtn.addEventListener("click", () => {
-    storeLastState();
-    elements.templateName.value = "";
-    elements.templateTags.value = "";
-    elements.promptArea.value = "";
-    selectedTemplateName = null;
-    elements.fetchBtn.style.display = "block";
-    elements.searchBox.value = "";
-    loadTemplates(elements.typeSelect.value, "", false);
-    saveState();
-    // showToast("New template created.");
-  });
-
   // Theme toggle
   elements.themeToggle.addEventListener("click", () => {
     currentTheme = currentTheme === "light" ? "dark" : "light";
@@ -265,11 +254,25 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.templateTags.value = "";
     elements.promptArea.value = "";
     selectedTemplateName = null;
-    elements.fetchBtn.style.display = "block";
+    elements.fetchBtn2.style.display = "block";
     elements.searchBox.value = "";
     loadTemplates(elements.typeSelect.value, "", false);
     saveState();
     chrome.runtime.sendMessage({ action: "closePopup" });
+  });
+
+  // New template button: Clear template area and reset selection
+  elements.newBtn.addEventListener("click", () => {
+    storeLastState();
+    elements.templateName.value = "";
+    elements.templateTags.value = "";
+    elements.promptArea.value = "";
+    selectedTemplateName = null;
+    elements.fetchBtn2.style.display = "block";
+    elements.searchBox.value = "";
+    loadTemplates(elements.typeSelect.value, "", false);
+    saveState();
+    // showToast("New template created.");
   });
 
   // Clear search input
@@ -278,6 +281,29 @@ document.addEventListener("DOMContentLoaded", () => {
     loadTemplates(elements.typeSelect.value, "", false);
     elements.searchBox.focus();
   });
+
+  // Clear prompt area
+  elements.clearPrompt.addEventListener("click", () => {
+    storeLastState();
+    elements.promptArea.value = "";
+    elements.fetchBtn2.style.display = "block";
+    elements.promptArea.focus();
+    saveState();
+  });
+
+  // Clear all
+  elements.clearAllBtn.addEventListener("click", () => {
+    storeLastState();
+    elements.templateName.value = "";
+    elements.templateTags.value = "";
+    elements.promptArea.value = "";
+    selectedTemplateName = null;
+    elements.fetchBtn2.style.display = "block";
+    elements.searchBox.value = "";
+    loadTemplates(elements.typeSelect.value, "", false);
+    saveState();
+  });
+  
 
   // Handle ESC key to close popup
   document.addEventListener("keydown", (event) => {
@@ -299,11 +325,58 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Control fetchBtn visibility on input
+  // Control fetchBtn2 visibility on input
   elements.promptArea.addEventListener("input", () => {
     storeLastState();
-    elements.fetchBtn.style.display = elements.promptArea.value ? "none" : "block";
+    elements.fetchBtn2.style.display = elements.promptArea.value ? "none" : "block";
     saveState();
+  });
+
+  // Handle key events for templateTags to treat ", " as a single unit
+  elements.templateTags.addEventListener("keydown", (event) => {
+    const cursorPos = elements.templateTags.selectionStart;
+    const value = elements.templateTags.value;
+
+    // Handle Backspace at the end of ", "
+    if (event.key === "Backspace" && cursorPos > 0 && value[cursorPos - 1] === " " && value[cursorPos - 2] === ",") {
+      event.preventDefault();
+      elements.templateTags.value = value.slice(0, cursorPos - 2) + value.slice(cursorPos);
+      elements.templateTags.selectionStart = elements.templateTags.selectionEnd = cursorPos - 2;
+      storeLastState();
+      saveState();
+      return;
+    }
+
+    // Handle Delete at the start of ", "
+    if (event.key === "Delete" && cursorPos < value.length && value[cursorPos] === "," && value[cursorPos + 1] === " ") {
+      event.preventDefault();
+      elements.templateTags.value = value.slice(0, cursorPos) + value.slice(cursorPos + 2);
+      elements.templateTags.selectionStart = elements.templateTags.selectionEnd = cursorPos;
+      storeLastState();
+      saveState();
+      return;
+    }
+
+    // Handle arrow keys to skip over ", "
+    if (event.key === "ArrowLeft" && cursorPos > 1 && value[cursorPos - 1] === " " && value[cursorPos - 2] === ",") {
+      event.preventDefault();
+      elements.templateTags.selectionStart = elements.templateTags.selectionEnd = cursorPos - 2;
+      return;
+    }
+    if (event.key === "ArrowRight" && cursorPos < value.length - 1 && value[cursorPos] === "," && value[cursorPos + 1] === " ") {
+      event.preventDefault();
+      elements.templateTags.selectionStart = elements.templateTags.selectionEnd = cursorPos + 2;
+      return;
+    }
+  });
+
+  // Snap cursor to start of ", " if placed between "," and " "
+  elements.templateTags.addEventListener("click", () => {
+    const cursorPos = elements.templateTags.selectionStart;
+    const value = elements.templateTags.value;
+    if (cursorPos > 0 && value[cursorPos] === " " && value[cursorPos - 1] === ",") {
+      elements.templateTags.selectionStart = elements.templateTags.selectionEnd = cursorPos - 1;
+    }
   });
 
   // Normalize tags input
@@ -311,26 +384,24 @@ document.addEventListener("DOMContentLoaded", () => {
     storeLastState();
     let value = elements.templateTags.value;
     if (value) {
-      value = value.replace(/^[,\s]+/g, "");
-      value = value.replace(/[,\s.;/]+/g, ", ");
+      value = value.replace(/^[,\s]+/g, "");      
+      value = value.replace(/,[,\s]*/g, ", ");
+      value = value.replace(/\s+/g, " ")
       value = value.replace(/[^a-zA-Z0-9_, ]/g, "");
       elements.templateTags.value = value;
     }
-    // must add code for backspace/delete
-    saveState();
-  });
-
-  // Clear tags
-  elements.clearTags.addEventListener("click", () => {
-    storeLastState();
-    elements.templateTags.value = "";
+    // Snap cursor if between "," and " "
+    const cursorPos = elements.templateTags.selectionStart;
+    if (value[cursorPos] === " " && value[cursorPos - 1] === ",") {
+      elements.templateTags.selectionStart = elements.templateTags.selectionEnd = cursorPos - 1;
+    }
     saveState();
   });
 
   // Sanitize tags
   function sanitizeTags(input) {
     if (!input) return "";
-    const tags = input.split(",").map(tag => tag.trim().replace(/\s+/g, ""));
+    const tags = input.split(",").map(tag => tag.trim());
     return tags.filter(tag => tag).join(", ");
   }
 
@@ -398,7 +469,7 @@ document.addEventListener("DOMContentLoaded", () => {
               elements.promptArea.value = tmpl.content;
               elements.searchBox.value = "";
               elements.dropdownResults.innerHTML = "";
-              elements.fetchBtn.style.display = tmpl.content ? "none" : "block";
+              elements.fetchBtn2.style.display = tmpl.content ? "none" : "block";
               saveState();
               elements.promptArea.focus();
             }
@@ -433,7 +504,7 @@ document.addEventListener("DOMContentLoaded", () => {
             elements.templateTags.value = tmpl.tags;
             elements.promptArea.value = tmpl.content;
             elements.searchBox.value = "";
-            elements.fetchBtn.style.display = tmpl.content ? "none" : "block";
+            elements.fetchBtn2.style.display = tmpl.content ? "none" : "block";
             saveState();
             elements.promptArea.focus();
           });
@@ -599,26 +670,28 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // Fetch prompt from website
-  elements.fetchBtn.addEventListener("click", () => {
-    getTargetTabId((tabId) => {
-      if (!tabId) {
-        showToast("No valid tab selected. Please activate a supported webpage.");
-        return;
-      }
-      chrome.tabs.sendMessage(tabId, { action: "getPrompt" }, (response) => {
-        if (chrome.runtime.lastError) {
-          console.error("Fetch error:", chrome.runtime.lastError.message);
-          showToast("Failed to fetch prompt.\nTry refreshing the page");
+  elements.fetchBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      getTargetTabId((tabId) => {
+        if (!tabId) {
+          showToast("No valid tab selected. Please activate a supported webpage.");
           return;
         }
-        if (response && response.prompt) {
-          storeLastState();
-          elements.promptArea.value = response.prompt;
-          elements.fetchBtn.style.display = "none";
-          saveState();
-        } else {
-          showToast("No input found on the page.");
-        }
+        chrome.tabs.sendMessage(tabId, { action: "getPrompt" }, (response) => {
+          if (chrome.runtime.lastError) {
+            console.error("Fetch error:", chrome.runtime.lastError.message);
+            showToast("Failed to fetch prompt.\nTry refreshing the page");
+            return;
+          }
+          if (response && response.prompt) {
+            storeLastState();
+            elements.promptArea.value = response.prompt;
+            elements.fetchBtn2.style.display = "none";
+            saveState();
+          } else {
+            showToast("No input found on the page.");
+          }
+        });
       });
     });
   });
@@ -688,7 +761,7 @@ document.addEventListener("DOMContentLoaded", () => {
         elements.templateTags.value = "";
         elements.promptArea.value = "";
         elements.searchBox.value = "";
-        elements.fetchBtn.style.display = "block";
+        elements.fetchBtn2.style.display = "block";
         loadTemplates(elements.typeSelect.value, "", false);
         saveState();
       });
@@ -707,20 +780,11 @@ document.addEventListener("DOMContentLoaded", () => {
           loadTemplates(elements.typeSelect.value, "", false);
         });
       }
-      elements.fetchBtn.style.display = elements.promptArea.value ? "none" : "block";
+      elements.fetchBtn2.style.display = elements.promptArea.value ? "none" : "block";
       showToast("Action undone.");
       lastState = null;
       saveState();
     }
-  });
-
-  // Clear prompt area
-  elements.clearPrompt.addEventListener("click", () => {
-    storeLastState();
-    elements.promptArea.value = "";
-    elements.fetchBtn.style.display = "block";
-    elements.promptArea.focus();
-    saveState();
   });
 
   // Toggle favorite status
@@ -774,14 +838,16 @@ document.addEventListener("DOMContentLoaded", () => {
     clearTimeout(timeout);
     timeout = setTimeout(() => {
       elements.clearSearch.style.display = elements.searchBox.value ? "block" : "none";
-      elements.clearName.style.display = elements.templateName.value ? "block" : "none";
-      elements.clearTags.style.display = elements.templateTags.value ? "block" : "none";
       elements.clearPrompt.style.display = elements.promptArea.value ? "block" : "none";
     }, 50);
   });
 
-  // // Fade template area while searching
-  // document.addEventListener("click", (event) => {
-  //   elements.template.style.display = elements.buttons.style.display = (elements.searchBox.contains(event.target) || elements.dropdownResults.contains(event.target)) ? "none" : "block";
-  // });
+  // Toggle overlay and adjust z-index when clicking searchBox, dropdownResults, or elsewhere
+  document.addEventListener('click', (event) => {
+    const isSearchActive = elements.searchBox.contains(event.target) || elements.dropdownResults.contains(event.target);
+    
+    // Show/hide overlay
+    elements.overlay.style.display = isSearchActive ? 'block' : 'none';
+    
+  });
 });
