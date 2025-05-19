@@ -59,8 +59,8 @@ document.addEventListener("DOMContentLoaded", () => {
   let recentIndices = [];
 
   // Load popup state, recent indices, and initialize index with version check
-  chrome.storage.local.get(["popupState", "theme", "nextIndex", "extensionVersion"], (localResult) => {
-    chrome.storage.sync.get(["recentIndices", "templates"], (syncResult) => {
+  chrome.storage.local.get(["popupState", "theme", "extensionVersion"], (localResult) => {
+    chrome.storage.sync.get(["recentIndices", "templates", "nextIndex"], (syncResult) => {
       // Check if stored version matches current version
       const storedVersion = localResult.extensionVersion || "0.0.0";
       if (storedVersion !== EXTENSION_VERSION) {
@@ -81,7 +81,7 @@ document.addEventListener("DOMContentLoaded", () => {
       elements.promptArea.value = state.content || "";
       selectedTemplateName = state.selectedName || null;
       currentTheme = localResult.theme || "light";
-      nextIndex = localResult.nextIndex || defaultTemplates.length;
+      nextIndex = syncResult.nextIndex || defaultTemplates.length;
       recentIndices = syncResult.recentIndices || [];
       // Ensure templates are initialized
       const templates = syncResult.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
@@ -113,7 +113,6 @@ document.addEventListener("DOMContentLoaded", () => {
         selectedName: selectedTemplateName
       },
       theme: currentTheme,
-      nextIndex,
       isFullscreen,
       extensionVersion: EXTENSION_VERSION
     };
@@ -125,10 +124,11 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
 
-    chrome.storage.sync.set({ recentIndices }, () => {
+    // Save nextIndex to sync storage
+    chrome.storage.sync.set({ nextIndex }, () => {
       if (chrome.runtime.lastError) {
-        console.error("Failed to save recent indices:", chrome.runtime.lastError.message);
-        showToast("Error saving recent indices. Some data may not persist.");
+        console.error("Failed to save nextIndex:", chrome.runtime.lastError.message);
+        // showToast("Error saving nextIndex. Some data may not persist.");
       }
     });
   }
@@ -182,8 +182,20 @@ document.addEventListener("DOMContentLoaded", () => {
     if (recentIndices.length > 20) {
       recentIndices = recentIndices.slice(0, 20); // Trim to 20
     }
-    saveState();
-  }
+    // Save recentIndices explicitly
+    const serializedRecentIndices = JSON.stringify({ recentIndices });
+    const sizeInBytes = new TextEncoder().encode(serializedRecentIndices).length;
+    if (sizeInBytes > 8 * 1024) {
+      console.warn("Recent indices size exceeds sync quota, pruning older entries.");
+      recentIndices = recentIndices.slice(0, 10);
+    }
+    chrome.storage.sync.set({ recentIndices }, () => {
+      if (chrome.runtime.lastError) {
+        console.error("Failed to save recent indices:", chrome.runtime.lastError.message);
+        showToast("Error saving recent indices. Some data may not persist.");
+      }
+    });
+ }
 
   // Debounced resize observer for responsive font sizing
   let resizeTimeout;
@@ -386,7 +398,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (value) {
       value = value.replace(/^[,\s]+/g, "");      
       value = value.replace(/,[,\s]*/g, ", ");
-      value = value.replace(/\s+/g, " ")
+      value = value.replace(/\s+/g, " ");
       value = value.replace(/[^a-zA-Z0-9_, ]/g, "");
       elements.templateTags.value = value;
     }
@@ -577,41 +589,83 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Save changes to existing template
+  // Save changes to existing template or create new template
   elements.saveBtn.addEventListener("click", () => {
-    if (!selectedTemplateName) {
-      showToast("Please select a template to save changes.");
-      return;
-    }
     chrome.storage.sync.get(["templates"], (result) => {
       let templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
-      const template = templates.find(t => t.name === selectedTemplateName);
-      if (!template) {
-        showToast("Selected template not found.");
-        return;
-      }
-      const isEdited = elements.templateName.value !== template.name || sanitizeTags(elements.templateTags.value) !== template.tags || elements.promptArea.value !== template.content;
-      if (!isEdited) {
-        showToast("No changes to save.");
-        return;
-      }
-      storeLastState();
-      lastState.templates = [...templates];
+      let name = elements.templateName.value.trim();
+      const tags = sanitizeTags(elements.templateTags.value);
 
-      const templateIndex = templates.findIndex(t => t.name === selectedTemplateName);
-      templates[templateIndex] = {
-        name: elements.templateName.value,
-        tags: sanitizeTags(elements.templateTags.value),
-        content: elements.promptArea.value,
-        type: "custom",
-        favorite: template.favorite || false,
-        index: template.index
-      };
+      // If no template is selected, treat as a new template
+      if (!selectedTemplateName) {
+        // Validate name
+        if (templates.some(t => t.name === name)) {
+          showToast("Name already exists.");
+          elements.templateName.focus();
+          return;
+        }
+        if (!name) {
+          showToast("Name is mandatory.");
+          name = "New template";
+          let i = 2;
+          const temp = name;
+          while (templates.some(t => t.name === name)) {
+            name = `${temp} ${i++}`;
+          }
+          elements.templateName.value = name;
+          elements.templateName.focus();
+          return;
+        }
 
-      saveTemplates(templates, () => {
-        loadTemplates(elements.typeSelect.value, "", false);
-        saveState();
-      });
+        // Save new template
+        storeLastState();
+        lastState.templates = [...templates];
+        const newTemplate = {
+          name,
+          tags,
+          content: elements.promptArea.value,
+          type: "custom",
+          favorite: false,
+          index: nextIndex
+        };
+        templates.push(newTemplate);
+        updateRecentIndices(nextIndex);
+        nextIndex++;
+        saveTemplates(templates, () => {
+          selectedTemplateName = name;
+          loadTemplates(elements.typeSelect.value, "", false);
+          saveState();
+        }, true);
+      } else {
+        // Update existing template
+        const template = templates.find(t => t.name === selectedTemplateName);
+        if (!template) {
+          showToast("Selected template not found.");
+          return;
+        }
+        const isEdited = elements.templateName.value !== template.name || sanitizeTags(elements.templateTags.value) !== template.tags || elements.promptArea.value !== template.content;
+        if (!isEdited) {
+          showToast("No changes to save.");
+          return;
+        }
+        storeLastState();
+        lastState.templates = [...templates];
+
+        const templateIndex = templates.findIndex(t => t.name === selectedTemplateName);
+        templates[templateIndex] = {
+          name: elements.templateName.value,
+          tags: sanitizeTags(elements.templateTags.value),
+          content: elements.promptArea.value,
+          type: "custom",
+          favorite: template.favorite || false,
+          index: template.index
+        };
+
+        saveTemplates(templates, () => {
+          loadTemplates(elements.typeSelect.value, "", false);
+          saveState();
+        });
+      }
     });
   });
 
@@ -663,7 +717,8 @@ document.addEventListener("DOMContentLoaded", () => {
       };
 
       templates.push(newTemplate);
-
+      updateRecentIndices(nextIndex);
+      nextIndex++;
       saveTemplates(templates, () => {
         selectedTemplateName = name;
         elements.templateName.value = name;

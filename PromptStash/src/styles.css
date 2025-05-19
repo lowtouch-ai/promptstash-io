@@ -61,8 +61,13 @@ body.light .title {
   color: #202124;
 }
 
-#newBtn, #minimizeBtn, #closeBtn {
+#themeToggle, #fullscreenToggle, #minimizeBtn, #closeBtn, #newBtn {
+  fill: #555;
   z-index: 1001;
+}
+
+body.dark #themeToggle, body.dark #fullscreenToggle, body.dark #minimizeBtn, body.dark #closeBtn, body.dark #newBtn {
+  fill: #aaa;
 }
 
 .input-group {
@@ -392,6 +397,10 @@ body.dark .topbtn {
 }
 body.dark .clrbtn:hover {
   fill: #fff;
+}
+
+#clearSearch {
+  margin-right: 4rem;
 }
 
 #buttons {
