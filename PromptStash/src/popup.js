@@ -437,6 +437,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Load templates and suggestions
   function loadTemplates(filter, query = "", showDropdown = false) {
     chrome.storage.sync.get(["templates"], (result) => {
+      console.log(result);
       let templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
       elements.dropdownResults.innerHTML = "";
       elements.favoriteSuggestions.innerHTML = "";

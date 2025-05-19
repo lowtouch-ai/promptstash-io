@@ -12,7 +12,7 @@ body.light {
 }
 
 body.dark {
-  background: #151515;
+  background: #000;
   color: #e8eaed;
 }
 
@@ -47,10 +47,6 @@ body.dark .toast {
   width: 36px;
   height: 36px;
   transition: 0.1s;
-}
-
-.title {
-  font-size: var(--base-font-size);
 }
 
 body.dark .title {
@@ -88,7 +84,7 @@ body.dark #searchIcon {
   border: 1px solid #bdc1c6;
   background-color: #f0f0f0;
   padding: 1px 80px 1px 36px;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
