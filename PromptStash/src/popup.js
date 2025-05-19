@@ -236,9 +236,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Toggle fullscreen
   elements.fullscreenToggle.addEventListener("click", () => {
-    isFullscreen = !isFullscreen;
     const svg = elements.fullscreenToggle.querySelector("svg use");
     svg.setAttribute("href", isFullscreen ? "sprite.svg#compress" : "sprite.svg#fullscreen");
+    isFullscreen = !isFullscreen;
     saveState();
     chrome.runtime.sendMessage({ action: "toggleFullscreen" });
   });
@@ -461,6 +461,8 @@ document.addEventListener("DOMContentLoaded", () => {
           div.textContent = tmpl.favorite ? `${tmpl.name} (${tmpl.tags})` : `${tmpl.name} (${tmpl.tags})`;
           div.setAttribute("role", "option");
           div.setAttribute("aria-selected", selectedTemplateName === tmpl.name);
+          elements.overlay.style.display = 'block';
+          elements.dropdownResults.style.display = 'block';
           div.addEventListener("click", (event) => {
             if (!event.target.classList.contains("favorite-toggle")) {
               selectedTemplateName = tmpl.name;
@@ -470,6 +472,8 @@ document.addEventListener("DOMContentLoaded", () => {
               elements.searchBox.value = "";
               elements.dropdownResults.innerHTML = "";
               elements.fetchBtn2.style.display = tmpl.content ? "none" : "block";
+              elements.overlay.style.display = 'none';
+              elements.dropdownResults.style.display = 'none';
               saveState();
               elements.promptArea.focus();
             }
@@ -541,6 +545,8 @@ document.addEventListener("DOMContentLoaded", () => {
   document.addEventListener("click", (event) => {
     if (!elements.searchBox.contains(event.target) && !elements.dropdownResults.contains(event.target) && !elements.themeToggle.contains(event.target) && !elements.typeSelect.contains(event.target)) {
       elements.dropdownResults.innerHTML = "";
+      elements.overlay.style.display = 'none';
+      elements.dropdownResults.style.display = 'none';
     }
   });
 
@@ -847,7 +853,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const isSearchActive = elements.searchBox.contains(event.target) || elements.dropdownResults.contains(event.target);
     
     // Show/hide overlay
-    elements.overlay.style.display = isSearchActive ? 'block' : 'none';
     
   });
 });
