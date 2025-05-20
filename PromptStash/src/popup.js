@@ -4,6 +4,15 @@ import defaultTemplates from './defaultTemplates.mjs';
 // Extension version for schema validation
 const EXTENSION_VERSION = "1.0.0";
 
+// Lightweight debounce function
+function debounce(func, wait) {
+  let timeout;
+  return function (...args) {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(this, args), wait);
+  };
+}
+
 // Initialize DOM elements
 document.addEventListener("DOMContentLoaded", () => {
   // DOM elements
@@ -46,7 +55,7 @@ document.addEventListener("DOMContentLoaded", () => {
     .map(([key]) => key);
   if (missingElements.length > 0) {
     console.error("Missing DOM elements:", missingElements);
-    showToast("Extension UI failed to load. Please reload the extension.");
+    showToast("Error: Extension UI failed to load. Please reload the extension.");
   } else {
     console.log("All DOM elements found:", Object.keys(elements));
   }
@@ -69,7 +78,7 @@ document.addEventListener("DOMContentLoaded", () => {
         chrome.storage.local.set({ extensionVersion: EXTENSION_VERSION }, () => {
           if (chrome.runtime.lastError) {
             console.error("Failed to save extension version:", chrome.runtime.lastError.message);
-            showToast("Error saving extension version. Some data may not persist.");
+            showToast("Error: Failed to save extension version. Some data may not persist.");
           }
         });
       }
@@ -91,7 +100,7 @@ document.addEventListener("DOMContentLoaded", () => {
         chrome.storage.sync.set({ templates }, () => {
           if (chrome.runtime.lastError) {
             console.error("Failed to initialize templates:", chrome.runtime.lastError.message);
-            showToast("Error initializing templates. Some data may not be saved.");
+            showToast("Error: Failed to initialize templates. Some data may not be saved.");
           }
         });
       }
@@ -103,7 +112,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Save popup state and recent indices
+  // Save popup state
   function saveState() {
     const state = {
       popupState: {
@@ -120,15 +129,17 @@ document.addEventListener("DOMContentLoaded", () => {
     chrome.storage.local.set(state, () => {
       if (chrome.runtime.lastError) {
         console.error("Failed to save state:", chrome.runtime.lastError.message);
-        showToast("Error saving extension state. Some data may not persist.");
+        showToast("Error: Failed to save extension state. Some data may not persist.");
       }
     });
+  }
 
-    // Save nextIndex to sync storage
+  // Save nextIndex to sync storage
+  function saveNextIndex() {
     chrome.storage.sync.set({ nextIndex }, () => {
       if (chrome.runtime.lastError) {
         console.error("Failed to save nextIndex:", chrome.runtime.lastError.message);
-        // showToast("Error saving nextIndex. Some data may not persist.");
+        showToast("Error: Failed to save nextIndex. Some data may not persist.");
       }
     });
   }
@@ -151,51 +162,98 @@ document.addEventListener("DOMContentLoaded", () => {
     setTimeout(() => elements.toast.classList.remove("show"), 4000);
   }
 
-/*   // Adjust prompt area height
-  function adjustPromptAreaHeight() {
-    const header = document.querySelector("header");
-    const searchSelect = document.querySelector(".search-select");
-    const templateNameTags = document.querySelector("#template > .row.g-2");
-    const buttons = document.querySelector("#buttons");
-
-    if (!header || !searchSelect || !templateNameTags || !buttons) {
-      console.warn("One or more elements not found for height adjustment");
-      return;
+  // Validate template name
+  function validateTemplateName(name, templates, isSaveAs = false) {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      showToast("Error: Template name is required.");
+      return { isValid: false, sanitizedName: null };
     }
-
-    const headerHeight = header.offsetHeight;
-    const searchHeight = searchSelect.offsetHeight;
-    const nameTagsHeight = templateNameTags.offsetHeight;
-    const buttonsHeight = buttons.offsetHeight;
-
-    const totalFixedHeight = headerHeight + searchHeight + nameTagsHeight + buttonsHeight;
-    const availableHeight = window.innerHeight - totalFixedHeight;
-
-    elements.promptArea.style.height = `${Math.max(80, availableHeight - 50)}px`;
-    elements.promptArea.style.marginBottom = `${buttonsHeight + 20}px`;
+    if (trimmedName.length > 50) {
+      showToast("Error: Template name must be 50 characters or less.");
+      return { isValid: false, sanitizedName: null };
+    }
+    const sanitizedName = trimmedName.replace(/[^a-zA-Z0-9\s]/g, "");
+    if (sanitizedName !== trimmedName) {
+      showToast("Error: Template name can only contain letters, numbers, and spaces.");
+      return { isValid: false, sanitizedName: null };
+    }
+    // Check for duplicate names, excluding the current template only for save operations
+    const isDuplicate = templates.some(t => t.name === sanitizedName && (isSaveAs || t.name !== selectedTemplateName));
+    if (isDuplicate) {
+      showToast("Error: Template name must be unique.");
+      return { isValid: false, sanitizedName: null };
+    }
+    return { isValid: true, sanitizedName };
   }
- */
+
+  // Validate and sanitize tags
+  function sanitizeTags(input) {
+    if (!input) return "";
+    const tags = input.split(",").map(tag => tag.trim()).filter(tag => tag);
+    if (tags.length > 5) {
+      showToast("Error: Maximum of 5 tags allowed per template.");
+      return null;
+    }
+    const sanitizedTags = tags.map(tag => tag.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20));
+    if (sanitizedTags.some(tag => tag.length === 0)) {
+      showToast("Error: Each tag must contain only letters or numbers and be 20 characters or less.");
+      return null;
+    }
+    return sanitizedTags.join(", ");
+  }
+
+  // Sanitize content to prevent XSS
+  function sanitizeContent(content) {
+    if (!content) return "";
+    // Remove script tags and event handlers
+    const div = document.createElement("div");
+    div.textContent = content;
+    return div.innerHTML.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
+  }
+
+  // Validate individual template size
+  function validateTemplateSize(template) {
+    const serialized = JSON.stringify(template);
+    const sizeInBytes = new TextEncoder().encode(serialized).length;
+    const maxSize = 8 * 1024; // 8KB
+    return { isValid: sizeInBytes <= maxSize, size: sizeInBytes };
+  }
+
+  // Check total sync storage usage
+  function checkTotalStorageUsage(templates, callback) {
+    chrome.storage.sync.get(null, (items) => {
+      const serialized = JSON.stringify(items);
+      const totalSizeInBytes = new TextEncoder().encode(serialized).length;
+      const maxTotalSize = 100 * 1024; // 100KB
+      if (totalSizeInBytes > 0.9 * maxTotalSize) {
+        showToast("Warning: Storage is nearly full (90% of 100KB limit). Please delete unused templates.");
+      }
+      callback(totalSizeInBytes <= maxTotalSize);
+    });
+  }
+
   // Update recent indices
   function updateRecentIndices(index) {
     recentIndices.unshift(index); // Add to start
     recentIndices = [...new Set(recentIndices)]; // Remove duplicates
-    if (recentIndices.length > 20) {
-      recentIndices = recentIndices.slice(0, 20); // Trim to 20
+    // Prune to 10 most recent entries to reduce storage usage
+    if (recentIndices.length > 10) {
+      recentIndices = recentIndices.slice(0, 10);
     }
     // Save recentIndices explicitly
     const serializedRecentIndices = JSON.stringify({ recentIndices });
     const sizeInBytes = new TextEncoder().encode(serializedRecentIndices).length;
     if (sizeInBytes > 8 * 1024) {
       console.warn("Recent indices size exceeds sync quota, pruning older entries.");
-      recentIndices = recentIndices.slice(0, 10);
+      recentIndices = recentIndices.slice(0, 5);
     }
     chrome.storage.sync.set({ recentIndices }, () => {
       if (chrome.runtime.lastError) {
         console.error("Failed to save recent indices:", chrome.runtime.lastError.message);
-        showToast("Error saving recent indices. Some data may not persist.");
       }
     });
- }
+  }
 
   // Debounced resize observer for responsive font sizing
   let resizeTimeout;
@@ -209,20 +267,44 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   resizeObserver.observe(document.body);
 
-  /*
-  // Hamburger menu toggle
-  elements.menuBtn.addEventListener("click", (event) => {
-    event.stopPropagation();
-    elements.menuDropdown.style.display = elements.menuDropdown.style.display === "none" ? "block" : "none";
-  });
-
-  // Close menu when clicking outside
-  document.addEventListener("click", (event) => {
-    if (!elements.menuBtn.contains(event.target) && !elements.menuDropdown.contains(event.target)) {
-      elements.menuDropdown.style.display = "none";
+  // Real-time template name validation
+  elements.templateName.addEventListener("input", debounce(() => {
+    let value = elements.templateName.value;
+    if (value.length > 50) {
+      value = value.slice(0, 50);
+      elements.templateName.value = value;
     }
-  });
-  */
+    const sanitizedValue = value.replace(/[^a-zA-Z0-9\s]/g, "");
+    if (sanitizedValue !== value) {
+      elements.templateName.value = sanitizedValue;
+      showToast("Error: Template name can only contain letters, numbers, and spaces.");
+    }
+    saveState();
+  }, 10));
+
+  // Real-time tags validation
+  elements.templateTags.addEventListener("input", debounce(() => {
+    storeLastState();
+    let value = elements.templateTags.value;
+    if (value) {
+      value = value.replace(/^[,\s]+/g, "");
+      value = value.replace(/,[,\s]*/g, ", ");
+      value = value.replace(/\s+/g, " ");
+      const tags = value.split(", ").map(tag => tag.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20));
+      if (tags.length > 5) {
+        showToast("Error: Maximum of 5 tags allowed per template.");
+        tags.length = 5;
+      }
+      value = tags.join(", ");
+      elements.templateTags.value = value;
+    }
+    // Snap cursor if between "," and " "
+    const cursorPos = elements.templateTags.selectionStart;
+    if (value[cursorPos] === " " && value[cursorPos - 1] === ",") {
+      elements.templateTags.selectionStart = elements.templateTags.selectionEnd = cursorPos - 1;
+    }
+    saveState();
+  }, 10));
 
   // Theme toggle
   elements.themeToggle.addEventListener("click", () => {
@@ -230,21 +312,6 @@ document.addEventListener("DOMContentLoaded", () => {
     document.body.className = currentTheme;
     saveState();
   });
-  /*
-  // Placeholder menu options
-  elements.menuDropdown.querySelector('#saveLocally').addEventListener('click', () => {
-    showToast('Save locally functionality may or may not be implemented in the future..');
-  });
-  elements.menuDropdown.querySelector('#toggleMarkdown').addEventListener('click', () => {
-    showToast('Toggle markdown functionality may or may not be implemented in the future..');
-  });
-  elements.menuDropdown.querySelector('#exportData').addEventListener('click', () => {
-    showToast('Export data functionality may or may not be implemented in the future..');
-  });
-  elements.menuDropdown.querySelector('#importData').addEventListener('click', () => {
-    showToast('Import data functionality may or may not be implemented in the future..');
-  }); 
-  */
 
   // Toggle fullscreen
   elements.fullscreenToggle.addEventListener("click", () => {
@@ -284,7 +351,7 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.searchBox.value = "";
     loadTemplates(elements.typeSelect.value, "", false);
     saveState();
-    // showToast("New template created.");
+    showToast("New template created.");
   });
 
   // Clear search input
@@ -314,8 +381,8 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.searchBox.value = "";
     loadTemplates(elements.typeSelect.value, "", false);
     saveState();
+    showToast("All fields cleared.");
   });
-  
 
   // Handle ESC key to close popup
   document.addEventListener("keydown", (event) => {
@@ -340,6 +407,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Control fetchBtn2 visibility on input
   elements.promptArea.addEventListener("input", () => {
     storeLastState();
+    elements.promptArea.value = sanitizeContent(elements.promptArea.value);
     elements.fetchBtn2.style.display = elements.promptArea.value ? "none" : "block";
     saveState();
   });
@@ -391,36 +459,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Normalize tags input
-  elements.templateTags.addEventListener("input", () => {
-    storeLastState();
-    let value = elements.templateTags.value;
-    if (value) {
-      value = value.replace(/^[,\s]+/g, "");      
-      value = value.replace(/,[,\s]*/g, ", ");
-      value = value.replace(/\s+/g, " ");
-      value = value.replace(/[^a-zA-Z0-9_, ]/g, "");
-      elements.templateTags.value = value;
-    }
-    // Snap cursor if between "," and " "
-    const cursorPos = elements.templateTags.selectionStart;
-    if (value[cursorPos] === " " && value[cursorPos - 1] === ",") {
-      elements.templateTags.selectionStart = elements.templateTags.selectionEnd = cursorPos - 1;
-    }
-    saveState();
-  });
-
-  // Sanitize tags
-  function sanitizeTags(input) {
-    if (!input) return "";
-    const tags = input.split(",").map(tag => tag.trim());
-    return tags.filter(tag => tag).join(", ");
-  }
-
   // Get target tab ID
   function getTargetTabId(callback) {
     const timeout = setTimeout(() => {
-      showToast("No response from tab. Please activate a supported webpage.");
+      showToast("Error: No response from tab. Please activate a supported webpage.");
       callback(null);
     }, 5000);
     chrome.runtime.sendMessage({ action: "getTargetTabId" }, (response) => {
@@ -428,7 +470,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (response && response.tabId) {
         callback(response.tabId);
       } else {
-        showToast("No valid tab selected. Please activate a supported webpage.");
+        showToast("Error: No valid tab selected. Please activate a supported webpage.");
         callback(null);
       }
     });
@@ -563,30 +605,32 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Validate template size
-  function validateTemplateSize(template) {
-    const serialized = JSON.stringify(template);
-    const sizeInBytes = new TextEncoder().encode(serialized).length;
-    const maxSize = 8 * 1024; // 8KB
-    return { isValid: sizeInBytes <= maxSize, size: sizeInBytes };
-  }
-
   // Save templates
   function saveTemplates(templates, callback, isNewTemplate = false) {
-    const validation = validateTemplateSize({ templates });
+    // Validate individual template size
+    const newOrUpdatedTemplate = isNewTemplate ? templates[templates.length - 1] : templates.find(t => t.name === elements.templateName.value);
+    const validation = validateTemplateSize(newOrUpdatedTemplate);
     if (!validation.isValid) {
-      showToast(`Template size (${(validation.size / 1024).toFixed(2)} KB) exceeds sync limit of 8 KB per item. Please reduce the size.`);
+      showToast(`Error: Template size (${(validation.size / 1024).toFixed(2)} KB) exceeds 8 KB limit. Please reduce the size.`);
       return;
     }
 
-    chrome.storage.sync.set({ templates }, () => {
-      if (chrome.runtime.lastError) {
-        showToast("Failed to save template: " + chrome.runtime.lastError.message);
-        console.error("Sync storage error:", chrome.runtime.lastError);
-      } else {
-        showToast(isNewTemplate ? "Template saved. Press Ctrl+Z to undo." : "Template updated. Press Ctrl+Z to undo.");
-        callback();
+    // Check total storage usage
+    checkTotalStorageUsage(templates, (isStorageAvailable) => {
+      if (!isStorageAvailable) {
+        showToast("Error: Total storage limit (100KB) exceeded. Please delete unused templates.");
+        return;
       }
+
+      chrome.storage.sync.set({ templates }, () => {
+        if (chrome.runtime.lastError) {
+          showToast("Error: Failed to save template: " + chrome.runtime.lastError.message);
+          console.error("Sync storage error:", chrome.runtime.lastError);
+        } else {
+          showToast(isNewTemplate ? "Success: Template saved. Press Ctrl+Z to undo." : "Success: Template updated. Press Ctrl+Z to undo.");
+          callback();
+        }
+      });
     });
   }
 
@@ -594,37 +638,48 @@ document.addEventListener("DOMContentLoaded", () => {
   elements.saveBtn.addEventListener("click", () => {
     chrome.storage.sync.get(["templates"], (result) => {
       let templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
-      let name = elements.templateName.value.trim();
-      const tags = sanitizeTags(elements.templateTags.value);
+      const nameValidation = validateTemplateName(elements.templateName.value, templates);
+      if (!nameValidation.isValid) {
+        elements.templateName.focus();
+        return;
+      }
+      const name = nameValidation.sanitizedName;
+      const tagsInput = elements.templateTags.value;
+      const tags = sanitizeTags(tagsInput);
+      if (tags === null) {
+        showToast("Warning: No tags provided. You can add tags in the tags field now or later.");
+        elements.templateTags.focus();
+        return;
+      }
+      const content = sanitizeContent(elements.promptArea.value);
+
+      // Prevent saving with empty content
+      if (!content.trim()) {
+        showToast("Error: Prompt content is required to save a template.");
+        elements.promptArea.focus();
+        return;
+      }
+
+      // Notify if tags are empty
+      if (!tagsInput.trim()) {
+        showToast("Warning: No tags provided. You can add tags in the tags field now or later.");
+        elements.templateTags.focus();
+      }
+
+      if (!elements.templateTags.value.trim()) {
+        showToast("Warning: No tags provided. You can add tags in the tags field now or later.");
+        elements.templateTags.focus();
+      }
 
       // If no template is selected, treat as a new template
       if (!selectedTemplateName) {
-        // Validate name
-        if (templates.some(t => t.name === name)) {
-          showToast("Name already exists.");
-          elements.templateName.focus();
-          return;
-        }
-        if (!name) {
-          showToast("Name is mandatory.");
-          name = "New template";
-          let i = 2;
-          const temp = name;
-          while (templates.some(t => t.name === name)) {
-            name = `${temp} ${i++}`;
-          }
-          elements.templateName.value = name;
-          elements.templateName.focus();
-          return;
-        }
-
         // Save new template
         storeLastState();
         lastState.templates = [...templates];
         const newTemplate = {
           name,
           tags,
-          content: elements.promptArea.value,
+          content,
           type: "custom",
           favorite: false,
           index: nextIndex
@@ -636,17 +691,18 @@ document.addEventListener("DOMContentLoaded", () => {
           selectedTemplateName = name;
           loadTemplates(elements.typeSelect.value, "", false);
           saveState();
+          saveNextIndex();
         }, true);
       } else {
         // Update existing template
         const template = templates.find(t => t.name === selectedTemplateName);
         if (!template) {
-          showToast("Selected template not found.");
+          showToast("Error: Selected template not found.");
           return;
         }
         const isEdited = elements.templateName.value !== template.name || sanitizeTags(elements.templateTags.value) !== template.tags || elements.promptArea.value !== template.content;
         if (!isEdited) {
-          showToast("No changes to save.");
+          showToast("Info: No changes to save.");
           return;
         }
         storeLastState();
@@ -654,15 +710,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const templateIndex = templates.findIndex(t => t.name === selectedTemplateName);
         templates[templateIndex] = {
-          name: elements.templateName.value,
-          tags: sanitizeTags(elements.templateTags.value),
-          content: elements.promptArea.value,
+          name,
+          tags,
+          content,
           type: "custom",
           favorite: template.favorite || false,
           index: template.index
         };
 
         saveTemplates(templates, () => {
+          selectedTemplateName = name; // Update selectedTemplateName to new name
           loadTemplates(elements.typeSelect.value, "", false);
           saveState();
         });
@@ -674,29 +731,33 @@ document.addEventListener("DOMContentLoaded", () => {
   elements.saveAsBtn.addEventListener("click", () => {
     chrome.storage.sync.get(["templates"], (result) => {
       const templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
-      storeLastState();
-      let name = elements.templateName.value;
-      name = name.trim();
-      if (templates.some(t => t.name === name)) {
-        showToast("Name already exists.");
+      const nameValidation = validateTemplateName(elements.templateName.value, templates, true);
+      if (!nameValidation.isValid) {
         elements.templateName.focus();
         return;
       }
-      if (!name) {
-        showToast("Name is mandatory.");
-        name = "New template";
-        let i = 2;
-        const temp = name;
-        while (templates.some(t => t.name === name)) {
-          name = `${temp} ${i++}`;
-        }
-        elements.templateName.value = name;
-        elements.templateName.focus();
+      const name = nameValidation.sanitizedName;
+      const tagsInput = elements.templateTags.value;
+      const tags = sanitizeTags(tagsInput);
+      if (tags === null) {
+        elements.templateTags.focus();
+        return;
+      }
+      const content = sanitizeContent(elements.promptArea.value);
+
+      // Prevent saving with empty content
+      if (!content.trim()) {
+        showToast("Error: Prompt content is required to save a template.");
+        elements.promptArea.focus();
         return;
       }
 
-      let tagsInput = elements.templateTags.value;
-      const tags = sanitizeTags(tagsInput);
+      // Notify if tags are empty
+      if (!tagsInput.trim()) {
+        showToast("Warning: No tags provided. You can add tags in the tags field now or later.");
+        elements.templateTags.focus();
+      }
+
       saveNewTemplate(name, tags);
     });
   });
@@ -711,7 +772,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const newTemplate = {
         name,
         tags,
-        content: elements.promptArea.value,
+        content: sanitizeContent(elements.promptArea.value),
         type: "custom",
         favorite: false,
         index: nextIndex
@@ -723,10 +784,9 @@ document.addEventListener("DOMContentLoaded", () => {
       saveTemplates(templates, () => {
         selectedTemplateName = name;
         elements.templateName.value = name;
-        updateRecentIndices(nextIndex);
-        nextIndex++;
         loadTemplates(elements.typeSelect.value, "", false);
         saveState();
+        saveNextIndex();
       }, true);
     });
   }
@@ -736,22 +796,22 @@ document.addEventListener("DOMContentLoaded", () => {
     btn.addEventListener("click", () => {
       getTargetTabId((tabId) => {
         if (!tabId) {
-          showToast("No valid tab selected. Please activate a supported webpage.");
+          showToast("Error: No valid tab selected. Please activate a supported webpage.");
           return;
         }
         chrome.tabs.sendMessage(tabId, { action: "getPrompt" }, (response) => {
           if (chrome.runtime.lastError) {
             console.error("Fetch error:", chrome.runtime.lastError.message);
-            showToast("Failed to fetch prompt.\nTry refreshing the page");
+            showToast("Error: Failed to fetch prompt. Please refresh the page.");
             return;
           }
           if (response && response.prompt) {
             storeLastState();
-            elements.promptArea.value = response.prompt;
+            elements.promptArea.value = sanitizeContent(response.prompt);
             elements.fetchBtn2.style.display = "none";
             saveState();
           } else {
-            showToast("No input found on the page.");
+            showToast("Error: No input found on the page.");
           }
         });
       });
@@ -762,16 +822,16 @@ document.addEventListener("DOMContentLoaded", () => {
   elements.sendBtn.addEventListener("click", () => {
     getTargetTabId((tabId) => {
       if (!tabId) {
-        showToast("No valid tab selected. Please activate a supported webpage.");
+        showToast("Error: No valid tab selected. Please activate a supported webpage.");
         return;
       }
       chrome.tabs.sendMessage(tabId, {
         action: "sendPrompt",
-        prompt: elements.promptArea.value
+        prompt: sanitizeContent(elements.promptArea.value)
       }, (response) => {
         if (chrome.runtime.lastError) {
-          console.error("Send error:", chrome.runtime.lastError.message);
-          showToast("Failed to send prompt.\nTry refreshing the page");
+          console.error("fleet error:", chrome.runtime.lastError.message);
+          showToast("Error: Failed to send prompt. Please refresh the page.");
           return;
         }
         if (response && response.success) {
@@ -789,7 +849,7 @@ document.addEventListener("DOMContentLoaded", () => {
             chrome.runtime.sendMessage({ action: "closePopup" });
           }
         } else {
-          showToast("Failed to send prompt.\nTry refreshing the page");
+          showToast("Error: Failed to send prompt. Please refresh the page.");
         }
       });
     });
@@ -798,7 +858,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Delete selected template
   elements.deleteBtn.addEventListener("click", () => {
     if (!selectedTemplateName) {
-      showToast("Please select a template to delete.");
+      showToast("Error: Please select a template to delete.");
       return;
     }
     chrome.storage.sync.get(["templates"], (result) => {
@@ -817,7 +877,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // Remove deleted index from recentIndices
       recentIndices = recentIndices.filter(idx => idx !== deletedIndex);
       chrome.storage.sync.set({ templates }, () => {
-        showToast("Template deleted. Press Ctrl+Z to undo.");
+        showToast("Template deleted successfully. Press Ctrl+Z to undo.");
         selectedTemplateName = null;
         elements.templateName.value = "";
         elements.templateTags.value = "";
@@ -843,7 +903,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       }
       elements.fetchBtn2.style.display = elements.promptArea.value ? "none" : "block";
-      showToast("Action undone.");
+      showToast("Action undone successfully.");
       lastState = null;
       saveState();
     }
@@ -857,6 +917,10 @@ document.addEventListener("DOMContentLoaded", () => {
         const templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
         const template = templates.find(t => t.name === name);
         if (template) {
+          if (!template.favorite && templates.filter(t => t.favorite).length >= 10) {
+            showToast("Error: Maximum of 10 favorite templates allowed.");
+            return;
+          }
           template.favorite = !template.favorite;
           chrome.storage.sync.set({ templates }, () => {
             loadTemplates(elements.typeSelect.value, elements.searchBox.value.toLowerCase(), true);
@@ -891,9 +955,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-/*   // Handle window resize for prompt area
-  window.addEventListener("resize", adjustPromptAreaHeight);
- */
   // Show the clear button only when the field contains text
   let timeout;
   document.addEventListener("mousemove", () => {
@@ -904,11 +965,4 @@ document.addEventListener("DOMContentLoaded", () => {
     }, 50);
   });
 
-  // Toggle overlay and adjust z-index when clicking searchBox, dropdownResults, or elsewhere
-  document.addEventListener('click', (event) => {
-    const isSearchActive = elements.searchBox.contains(event.target) || elements.dropdownResults.contains(event.target);
-    
-    // Show/hide overlay
-    
-  });
 });
