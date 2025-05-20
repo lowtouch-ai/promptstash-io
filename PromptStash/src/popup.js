@@ -647,7 +647,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const tagsInput = elements.templateTags.value;
       const tags = sanitizeTags(tagsInput);
       if (tags === null) {
-        showToast("Warning: No tags provided. You can add tags in the tags field now or later.");
         elements.templateTags.focus();
         return;
       }
@@ -662,13 +661,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Notify if tags are empty
       if (!tagsInput.trim()) {
-        showToast("Warning: No tags provided. You can add tags in the tags field now or later.");
         elements.templateTags.focus();
-      }
-
-      if (!elements.templateTags.value.trim()) {
         showToast("Warning: No tags provided. You can add tags in the tags field now or later.");
-        elements.templateTags.focus();
       }
 
       // If no template is selected, treat as a new template
@@ -754,8 +748,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Notify if tags are empty
       if (!tagsInput.trim()) {
-        showToast("Warning: No tags provided. You can add tags in the tags field now or later.");
         elements.templateTags.focus();
+        showToast("Warning: No tags provided. You can add tags in the tags field now or later.");
       }
 
       saveNewTemplate(name, tags);
@@ -830,7 +824,7 @@ document.addEventListener("DOMContentLoaded", () => {
         prompt: sanitizeContent(elements.promptArea.value)
       }, (response) => {
         if (chrome.runtime.lastError) {
-          console.error("fleet error:", chrome.runtime.lastError.message);
+          console.error("Send error:", chrome.runtime.lastError.message);
           showToast("Error: Failed to send prompt. Please refresh the page.");
           return;
         }
