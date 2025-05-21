@@ -13,6 +13,10 @@ function debounce(func, wait) {
   };
 }
 
+// Toast message queue
+let toastQueue = [];
+let isToastShowing = false;
+
 // Initialize DOM elements
 document.addEventListener("DOMContentLoaded", () => {
   // DOM elements
@@ -31,8 +35,6 @@ document.addEventListener("DOMContentLoaded", () => {
     saveAsBtn: document.getElementById("saveAsBtn"),
     deleteBtn: document.getElementById("deleteBtn"),
     clearSearch: document.getElementById("clearSearch"),
-    // clearName: document.getElementById("clearName"),
-    // clearTags: document.getElementById("clearTags"),
     clearPrompt: document.getElementById("clearPrompt"),
     clearAllBtn: document.getElementById("clearAllBtn"),
     sendBtn: document.getElementById("sendBtn"),
@@ -55,7 +57,7 @@ document.addEventListener("DOMContentLoaded", () => {
     .map(([key]) => key);
   if (missingElements.length > 0) {
     console.error("Missing DOM elements:", missingElements);
-    showToast("Error: Extension UI failed to load. Please reload the extension.");
+    showToast("Error: Extension UI failed to load. Please reload the extension.", 3000, "red");
   } else {
     console.log("All DOM elements found:", Object.keys(elements));
   }
@@ -78,7 +80,7 @@ document.addEventListener("DOMContentLoaded", () => {
         chrome.storage.local.set({ extensionVersion: EXTENSION_VERSION }, () => {
           if (chrome.runtime.lastError) {
             console.error("Failed to save extension version:", chrome.runtime.lastError.message);
-            showToast("Error: Failed to save extension version. Some data may not persist.");
+            showToast("Error: Failed to save extension version. Some data may not persist.", 3000, "red");
           }
         });
       }
@@ -100,7 +102,7 @@ document.addEventListener("DOMContentLoaded", () => {
         chrome.storage.sync.set({ templates }, () => {
           if (chrome.runtime.lastError) {
             console.error("Failed to initialize templates:", chrome.runtime.lastError.message);
-            showToast("Error: Failed to initialize templates. Some data may not be saved.");
+            showToast("Error: Failed to initialize templates. Some data may not be saved.", 3000, "red");
           }
         });
       }
@@ -108,7 +110,6 @@ document.addEventListener("DOMContentLoaded", () => {
       document.body.className = currentTheme;
       elements.fetchBtn2.style.display = elements.promptArea.value ? "none" : "block";
       loadTemplates(elements.typeSelect.value, "", false);
-      // adjustPromptAreaHeight(); // Adjust prompt area height on load
     });
   });
 
@@ -129,7 +130,7 @@ document.addEventListener("DOMContentLoaded", () => {
     chrome.storage.local.set(state, () => {
       if (chrome.runtime.lastError) {
         console.error("Failed to save state:", chrome.runtime.lastError.message);
-        showToast("Error: Failed to save extension state. Some data may not persist.");
+        showToast("Error: Failed to save extension state. Some data may not persist.", 3000, "red");
       }
     });
   }
@@ -139,7 +140,7 @@ document.addEventListener("DOMContentLoaded", () => {
     chrome.storage.sync.set({ nextIndex }, () => {
       if (chrome.runtime.lastError) {
         console.error("Failed to save nextIndex:", chrome.runtime.lastError.message);
-        showToast("Error: Failed to save nextIndex. Some data may not persist.");
+        showToast("Error: Failed to save nextIndex. Some data may not persist.", 3000, "red");
       }
     });
   }
@@ -155,33 +156,55 @@ document.addEventListener("DOMContentLoaded", () => {
     };
   }
 
-  // Show toast notification
-  function showToast(message) {
+  // Show toast notification with queueing
+  function showToast(message, duration = 4000, type = "red") {
+    toastQueue.push({ message, duration, type });
+    if (!isToastShowing) {
+      displayNextToast();
+    }
+  }
+
+  // Display the next toast in the queue
+  function displayNextToast() {
+    if (toastQueue.length === 0) {
+      isToastShowing = false;
+      return;
+    }
+    isToastShowing = true;
+    const { message, duration, type } = toastQueue.shift();
     elements.toast.textContent = message;
+    elements.toast.className = `toast ${type}`; // Set toast class based on type
     elements.toast.classList.add("show");
-    setTimeout(() => elements.toast.classList.remove("show"), 4000);
+    setTimeout(() => {
+      elements.toast.classList.remove("show");
+      elements.toast.classList.add("hide");
+      setTimeout(() => {
+        elements.toast.classList.remove("hide");
+        displayNextToast();
+      }, 300); // Match transition duration
+    }, duration);
   }
 
   // Validate template name
   function validateTemplateName(name, templates, isSaveAs = false) {
     const trimmedName = name.trim();
     if (!trimmedName) {
-      showToast("Error: Template name is required.");
+      showToast("Template name is required.", 3000, "red");
       return { isValid: false, sanitizedName: null };
     }
     if (trimmedName.length > 50) {
-      showToast("Error: Template name must be 50 characters or less.");
+      showToast("Template name must be 50 characters or less.", 3000, "red");
       return { isValid: false, sanitizedName: null };
     }
     const sanitizedName = trimmedName.replace(/[^a-zA-Z0-9\s]/g, "");
     if (sanitizedName !== trimmedName) {
-      showToast("Error: Template name can only contain letters, numbers, and spaces.");
+      showToast("Template name can only contain letters, numbers, and spaces.", 3000, "red");
       return { isValid: false, sanitizedName: null };
     }
     // Check for duplicate names, excluding the current template only for save operations
     const isDuplicate = templates.some(t => t.name === sanitizedName && (isSaveAs || t.name !== selectedTemplateName));
     if (isDuplicate) {
-      showToast("Error: Template name must be unique.");
+      showToast("Template name must be unique.", 3000, "red");
       return { isValid: false, sanitizedName: null };
     }
     return { isValid: true, sanitizedName };
@@ -192,12 +215,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!input) return "";
     const tags = input.split(",").map(tag => tag.trim()).filter(tag => tag);
     if (tags.length > 5) {
-      showToast("Error: Maximum of 5 tags allowed per template.");
+      showToast("Maximum of 5 tags allowed per template.", 3000, "red");
       return null;
     }
     const sanitizedTags = tags.map(tag => tag.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20));
     if (sanitizedTags.some(tag => tag.length === 0)) {
-      showToast("Error: Each tag must contain only letters or numbers and be 20 characters or less.");
+      showToast("Each tag must contain only letters or numbers and be 20 characters or less.", 3000, "red");
       return null;
     }
     return sanitizedTags.join(", ");
@@ -227,7 +250,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const totalSizeInBytes = new TextEncoder().encode(serialized).length;
       const maxTotalSize = 100 * 1024; // 100KB
       if (totalSizeInBytes > 0.9 * maxTotalSize) {
-        showToast("Warning: Storage is nearly full (90% of 100KB limit). Please delete unused templates.");
+        showToast("Warning: Storage is nearly full (90% of 100KB limit). Please delete unused templates.", 5000, "red");
       }
       callback(totalSizeInBytes <= maxTotalSize);
     });
@@ -277,7 +300,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const sanitizedValue = value.replace(/[^a-zA-Z0-9\s]/g, "");
     if (sanitizedValue !== value) {
       elements.templateName.value = sanitizedValue;
-      showToast("Error: Template name can only contain letters, numbers, and spaces.");
+      showToast("Template name can only contain letters, numbers, and spaces.", 3000, "red");
     }
     saveState();
   }, 10));
@@ -292,7 +315,7 @@ document.addEventListener("DOMContentLoaded", () => {
       value = value.replace(/\s+/g, " ");
       const tags = value.split(", ").map(tag => tag.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20));
       if (tags.length > 5) {
-        showToast("Error: Maximum of 5 tags allowed per template.");
+        showToast("Maximum of 5 tags allowed per template.", 3000, "red");
         tags.length = 5;
       }
       value = tags.join(", ");
@@ -351,7 +374,7 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.searchBox.value = "";
     loadTemplates(elements.typeSelect.value, "", false);
     saveState();
-    showToast("New template created.");
+    showToast("New template created.", 3000, "green");
   });
 
   // Clear search input
@@ -381,7 +404,7 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.searchBox.value = "";
     loadTemplates(elements.typeSelect.value, "", false);
     saveState();
-    showToast("All fields cleared.");
+    showToast("All fields cleared.", 3000, "green");
   });
 
   // Handle ESC key to close popup
@@ -462,7 +485,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Get target tab ID
   function getTargetTabId(callback) {
     const timeout = setTimeout(() => {
-      showToast("Error: No response from tab. Please activate a supported webpage.");
+      showToast("Error: No response from tab. Please activate a supported webpage.", 3000, "red");
       callback(null);
     }, 5000);
     chrome.runtime.sendMessage({ action: "getTargetTabId" }, (response) => {
@@ -470,7 +493,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (response && response.tabId) {
         callback(response.tabId);
       } else {
-        showToast("Error: No valid tab selected. Please activate a supported webpage.");
+        showToast("Error: No valid tab selected. Please activate a supported webpage.", 3000, "red");
         callback(null);
       }
     });
@@ -518,6 +541,7 @@ document.addEventListener("DOMContentLoaded", () => {
           div.setAttribute("aria-selected", selectedTemplateName === tmpl.name);
           elements.overlay.style.display = 'block';
           elements.dropdownResults.style.display = 'block';
+          elements.dropdownResults.classList.add("show"); // Add show class for animation
           div.addEventListener("click", (event) => {
             if (!event.target.classList.contains("favorite-toggle")) {
               selectedTemplateName = tmpl.name;
@@ -529,6 +553,7 @@ document.addEventListener("DOMContentLoaded", () => {
               elements.fetchBtn2.style.display = tmpl.content ? "none" : "block";
               elements.overlay.style.display = 'none';
               elements.dropdownResults.style.display = 'none';
+              elements.dropdownResults.classList.remove("show"); // Remove show class
               saveState();
               elements.promptArea.focus();
             }
@@ -602,6 +627,7 @@ document.addEventListener("DOMContentLoaded", () => {
       elements.dropdownResults.innerHTML = "";
       elements.overlay.style.display = 'none';
       elements.dropdownResults.style.display = 'none';
+      elements.dropdownResults.classList.remove("show"); // Remove show class
     }
   });
 
@@ -611,23 +637,23 @@ document.addEventListener("DOMContentLoaded", () => {
     const newOrUpdatedTemplate = isNewTemplate ? templates[templates.length - 1] : templates.find(t => t.name === elements.templateName.value);
     const validation = validateTemplateSize(newOrUpdatedTemplate);
     if (!validation.isValid) {
-      showToast(`Error: Template size (${(validation.size / 1024).toFixed(2)} KB) exceeds 8 KB limit. Please reduce the size.`);
+      showToast(`Template size (${(validation.size / 1024).toFixed(2)} KB) exceeds 8 KB limit. Please reduce the size.`, 3000, "red");
       return;
     }
 
     // Check total storage usage
     checkTotalStorageUsage(templates, (isStorageAvailable) => {
       if (!isStorageAvailable) {
-        showToast("Error: Total storage limit (100KB) exceeded. Please delete unused templates.");
+        showToast("Total storage limit (100KB) exceeded. Please delete unused templates.", 3000, "red");
         return;
       }
 
       chrome.storage.sync.set({ templates }, () => {
         if (chrome.runtime.lastError) {
-          showToast("Error: Failed to save template: " + chrome.runtime.lastError.message);
+          showToast("Failed to save template: " + chrome.runtime.lastError.message, 3000, "red");
           console.error("Sync storage error:", chrome.runtime.lastError);
         } else {
-          showToast(isNewTemplate ? "Success: Template saved. Press Ctrl+Z to undo." : "Success: Template updated. Press Ctrl+Z to undo.");
+          showToast(isNewTemplate ? "Template saved. Press Ctrl+Z to undo." : "Template updated. Press Ctrl+Z to undo.", 3000, "green");
           callback();
         }
       });
@@ -654,7 +680,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Prevent saving with empty content
       if (!content.trim()) {
-        showToast("Error: Prompt content is required to save a template.");
+        showToast("Prompt content is required to save a template.", 3000, "red");
         elements.promptArea.focus();
         return;
       }
@@ -662,7 +688,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // Notify if tags are empty
       if (!tagsInput.trim()) {
         elements.templateTags.focus();
-        showToast("Warning: No tags provided. You can add tags in the tags field now or later.");
+        showToast("No tags provided. You can add tags in the tags field now or later.", 3000, "red");
       }
 
       // If no template is selected, treat as a new template
@@ -691,12 +717,12 @@ document.addEventListener("DOMContentLoaded", () => {
         // Update existing template
         const template = templates.find(t => t.name === selectedTemplateName);
         if (!template) {
-          showToast("Error: Selected template not found.");
+          showToast("Selected template not found.", 3000, "red");
           return;
         }
         const isEdited = elements.templateName.value !== template.name || sanitizeTags(elements.templateTags.value) !== template.tags || elements.promptArea.value !== template.content;
         if (!isEdited) {
-          showToast("Info: No changes to save.");
+          showToast("No changes to save.", 3000, "red");
           return;
         }
         storeLastState();
@@ -741,7 +767,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Prevent saving with empty content
       if (!content.trim()) {
-        showToast("Error: Prompt content is required to save a template.");
+        showToast("Prompt content is required to save a template.", 3000, "red");
         elements.promptArea.focus();
         return;
       }
@@ -749,7 +775,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // Notify if tags are empty
       if (!tagsInput.trim()) {
         elements.templateTags.focus();
-        showToast("Warning: No tags provided. You can add tags in the tags field now or later.");
+        showToast("No tags provided. You can add tags in the tags field now or later.", 3000, "red");
       }
 
       saveNewTemplate(name, tags);
@@ -790,13 +816,13 @@ document.addEventListener("DOMContentLoaded", () => {
     btn.addEventListener("click", () => {
       getTargetTabId((tabId) => {
         if (!tabId) {
-          showToast("Error: No valid tab selected. Please activate a supported webpage.");
+          showToast("Error: No valid tab selected. Please activate a supported webpage.", 3000, "red");
           return;
         }
         chrome.tabs.sendMessage(tabId, { action: "getPrompt" }, (response) => {
           if (chrome.runtime.lastError) {
             console.error("Fetch error:", chrome.runtime.lastError.message);
-            showToast("Error: Failed to fetch prompt. Please refresh the page.");
+            showToast("Failed to fetch prompt. Please refresh the page.", 3000, "red");
             return;
           }
           if (response && response.prompt) {
@@ -805,7 +831,7 @@ document.addEventListener("DOMContentLoaded", () => {
             elements.fetchBtn2.style.display = "none";
             saveState();
           } else {
-            showToast("Error: No input found on the page.");
+            showToast("No input found on the page.", 3000, "red");
           }
         });
       });
@@ -816,7 +842,7 @@ document.addEventListener("DOMContentLoaded", () => {
   elements.sendBtn.addEventListener("click", () => {
     getTargetTabId((tabId) => {
       if (!tabId) {
-        showToast("Error: No valid tab selected. Please activate a supported webpage.");
+        showToast("Error: No valid tab selected. Please activate a supported webpage.", 3000, "red");
         return;
       }
       chrome.tabs.sendMessage(tabId, {
@@ -825,7 +851,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }, (response) => {
         if (chrome.runtime.lastError) {
           console.error("Send error:", chrome.runtime.lastError.message);
-          showToast("Error: Failed to send prompt. Please refresh the page.");
+          showToast("Failed to send prompt. Please refresh the page.", 3000, "red");
           return;
         }
         if (response && response.success) {
@@ -843,7 +869,7 @@ document.addEventListener("DOMContentLoaded", () => {
             chrome.runtime.sendMessage({ action: "closePopup" });
           }
         } else {
-          showToast("Error: Failed to send prompt. Please refresh the page.");
+          showToast("Failed to send prompt. Please refresh the page.", 3000, "red");
         }
       });
     });
@@ -852,7 +878,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Delete selected template
   elements.deleteBtn.addEventListener("click", () => {
     if (!selectedTemplateName) {
-      showToast("Error: Please select a template to delete.");
+      showToast("Please select a template to delete.", 3000, "red");
       return;
     }
     chrome.storage.sync.get(["templates"], (result) => {
@@ -871,7 +897,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // Remove deleted index from recentIndices
       recentIndices = recentIndices.filter(idx => idx !== deletedIndex);
       chrome.storage.sync.set({ templates }, () => {
-        showToast("Template deleted successfully. Press Ctrl+Z to undo.");
+        showToast("Template deleted successfully. Press Ctrl+Z to undo.", 3000, "green");
         selectedTemplateName = null;
         elements.templateName.value = "";
         elements.templateTags.value = "";
@@ -897,7 +923,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       }
       elements.fetchBtn2.style.display = elements.promptArea.value ? "none" : "block";
-      showToast("Action undone successfully.");
+      showToast("Action undone successfully.", 3000, "green");
       lastState = null;
       saveState();
     }
@@ -912,7 +938,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const template = templates.find(t => t.name === name);
         if (template) {
           if (!template.favorite && templates.filter(t => t.favorite).length >= 10) {
-            showToast("Error: Maximum of 10 favorite templates allowed.");
+            showToast("Maximum of 10 favorite templates allowed.", 3000, "red");
             return;
           }
           template.favorite = !template.favorite;
@@ -924,15 +950,15 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-/*   // Initialize tooltips
+  // Initialize tooltips
   const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
   tooltipTriggerList.forEach(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl, {
     delay: { show: 500, hide: 50 }
-  })); */
+  }));
 
   // Keyboard navigation for dropdown
   elements.dropdownResults.addEventListener("keydown", (event) => {
-    const items = elements.dropdownResults.querySelectorAll("div[role='option']");
+    const items = elements.dropdownResults.querySelectorAll("div");
     const focused = document.activeElement;
     let index = Array.from(items).indexOf(focused);
     if (event.key === "ArrowDown") {

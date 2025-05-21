@@ -12,7 +12,7 @@ body.light {
 }
 
 body.dark {
-  background: #000;
+  background: #1f1f1f;
   color: #e8eaed;
 }
 
@@ -25,22 +25,42 @@ header, .search-select, #template, #buttons {
   position: fixed;
   top: 20px;
   right: 20px;
-  background: #333;
-  color: #eee;
   padding: 10px 20px;
-  border-radius: 4px;
-  opacity: 0;
-  transition: opacity 0.3s;
+  border-radius: 6px;
+  opacity: 1; /* Default for browsers without animation support */
+  transition: opacity 0.3s ease, transform 0.3s ease; /* Added transform for animation */
+  transform: translateY(-20px); /* Initial position for fade-in from above */
   z-index: 10000;
-}
-
-body.dark .toast {
-  background: #eee;
-  color: #333;
 }
 
 .toast.show {
   opacity: 1;
+  transform: translateY(0); /* Move to final position */
+}
+
+.toast.hide {
+  opacity: 0;
+  transform: translateY(-20px);
+}
+
+.toast.red {
+  background: #fdd;
+  color: #800;
+}
+
+body.dark .toast.red {
+  background: #800;
+  color: #fff;
+}
+
+.toast.green {
+  background: #dfd;
+  color: #050;
+}
+
+body.dark .toast.green {
+  background: #050;
+  color: #fff;
 }
 
 .logo {
@@ -151,7 +171,15 @@ body.dark #typeSelect option {
   border: 1px solid #888;
   border-radius: 5px;
   z-index: 9999;
-  transition: 0.3s;
+  opacity: 1; /* Default for browsers without animation support */
+  transform: scaleY(0); /* Initial scale for dropdown animation */
+  transform-origin: top; /* Anchor animation at top */
+  transition: opacity 0.2s ease, transform 0.2s ease; /* Animation for dropdown */
+}
+
+.dropdown.show {
+  opacity: 1;
+  transform: scaleY(1); /* Expand to full size */
 }
 
 .dropdown::-webkit-scrollbar {
@@ -438,14 +466,8 @@ body.dark #buttons .btn svg {
 }
 
 .tooltip-inner {
-  background: #202124;
-  margin: 0;
+  background: #000000;
   color: #e8eaed;
-  border-radius: 5px;
-}
-
-.tooltip-arrow::before {
-  color: #202124;
 }
 
 body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
@@ -508,5 +530,18 @@ body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
   #buttons .btn svg{
     width: calc(8px + 4vh);
     height: calc(8px + 4vh);
+  }
+}
+
+/* Fallback for browsers without animation support */
+@supports not (animation: fadeIn 0.3s) {
+  .toast {
+    transform: none; /* Remove transform for no animation */
+  }
+  .dropdown {
+    transform: none; /* Remove transform for no animation */
+  }
+  .toast.show, .toast.hide, .dropdown.show {
+    opacity: 1; /* Ensure visibility */
   }
 }

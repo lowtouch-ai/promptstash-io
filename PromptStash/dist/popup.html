@@ -77,16 +77,10 @@
     <div id="template" class="p-0 mt-0 gap-2">
       <div class="position-relative">
         <input type="text" id="templateName" class="form-control rounded-2 px-3 py-2" placeholder="Template Name" aria-label="Template name">
-        <!-- <button id="clearName" class="clrbtn position-absolute top-0 end-0" aria-label="Clear Name" data-bs-toggle="tooltip" data-bs-placement="top" title="Clear name">
-          <svg width="15" height="15"><use href="sprite.svg#clear"></use></svg>
-        </button> -->
       </div>
       <div class="position-relative">
         <span id="tags-label" class="position-absolute ps-3" aria-hidden="true"> Tags:</span>
         <input type="text" id="templateTags" class="form-control rounded-2 pe-3 py-2" placeholder="(comma-separated)" aria-label="Template tags">
-        <!-- <button id="clearTags" class="clrbtn position-absolute top-0 end-0" aria-label="Clear tags" data-bs-toggle="tooltip" data-bs-placement="top" title="Clear tags">
-          <svg width="15" height="15"><use href="sprite.svg#clear"></use></svg>
-        </button> -->
       </div>
       <div class="position-relative">
         <textarea id="promptArea" class="form-control rounded-2 px-3 py-2" placeholder="Edit your prompt here..." style="resize: none;" aria-label="Prompt text"></textarea>
@@ -136,11 +130,8 @@
       </div>
     </div>
 
-<!-- Overlay for dimming background when search is active -->
   <div class="overlay position-absolute top-0 start-0" id="overlay" style="width: 100%; height: 100%; background: inherit; z-index: 0; display: none;"></div>
   <div id="toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true"></div>
-  <!-- <div id="goodToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true"></div>
-  <div id="badToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true"></div> -->
 
   <script src="bootstrap.bundle.min.js"></script>
   <script type="module" src="popup.js"></script>
