@@ -77,12 +77,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (storedVersion !== EXTENSION_VERSION) {
         // Handle schema migration if needed (currently no changes required)
         console.log(`Version updated from ${storedVersion} to ${EXTENSION_VERSION}. No schema migration needed.`);
-        chrome.storage.local.set({ extensionVersion: EXTENSION_VERSION }, () => {
-          if (chrome.runtime.lastError) {
-            console.error("Failed to save extension version:", chrome.runtime.lastError.message);
-            showToast("Error: Failed to save extension version. Some data may not persist.", 3000, "red");
-          }
-        });
+        chrome.storage.local.set({ extensionVersion: EXTENSION_VERSION });
       }
 
       // Initialize state, falling back to defaults if not present
@@ -99,12 +94,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Save templates if they were initialized from defaults
       if (!syncResult.templates) {
-        chrome.storage.sync.set({ templates }, () => {
-          if (chrome.runtime.lastError) {
-            console.error("Failed to initialize templates:", chrome.runtime.lastError.message);
-            showToast("Error: Failed to initialize templates. Some data may not be saved.", 3000, "red");
-          }
-        });
+        chrome.storage.sync.set({ templates });
       }
 
       document.body.className = currentTheme;
@@ -126,23 +116,12 @@ document.addEventListener("DOMContentLoaded", () => {
       isFullscreen,
       extensionVersion: EXTENSION_VERSION
     };
-
-    chrome.storage.local.set(state, () => {
-      if (chrome.runtime.lastError) {
-        console.error("Failed to save state:", chrome.runtime.lastError.message);
-        showToast("Error: Failed to save extension state. Some data may not persist.", 3000, "red");
-      }
-    });
+    chrome.storage.local.set(state);
   }
 
   // Save nextIndex to sync storage
   function saveNextIndex() {
-    chrome.storage.sync.set({ nextIndex }, () => {
-      if (chrome.runtime.lastError) {
-        console.error("Failed to save nextIndex:", chrome.runtime.lastError.message);
-        showToast("Error: Failed to save nextIndex. Some data may not persist.", 3000, "red");
-      }
-    });
+    chrome.storage.sync.set({ nextIndex });
   }
 
   // Store last state for undo
@@ -173,7 +152,7 @@ document.addEventListener("DOMContentLoaded", () => {
     isToastShowing = true;
     const { message, duration, type } = toastQueue.shift();
     elements.toast.textContent = message;
-    elements.toast.className = `toast ${type}`; // Set toast class based on type
+    elements.toast.className = `toast ${type}`;
     elements.toast.classList.add("show");
     setTimeout(() => {
       elements.toast.classList.remove("show");
@@ -181,7 +160,7 @@ document.addEventListener("DOMContentLoaded", () => {
       setTimeout(() => {
         elements.toast.classList.remove("hide");
         displayNextToast();
-      }, 300); // Match transition duration
+      }, 300);
     }, duration);
   }
 
@@ -235,16 +214,8 @@ document.addEventListener("DOMContentLoaded", () => {
     return div.innerHTML.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
   }
 
-  // Validate individual template size
-  function validateTemplateSize(template) {
-    const serialized = JSON.stringify(template);
-    const sizeInBytes = new TextEncoder().encode(serialized).length;
-    const maxSize = 8 * 1024; // 8KB
-    return { isValid: sizeInBytes <= maxSize, size: sizeInBytes };
-  }
-
-  // Check total sync storage usage
-  function checkTotalStorageUsage(templates, callback) {
+  // Check total sync storage usage (for warning purposes)
+  function checkTotalStorageUsage(callback) {
     chrome.storage.sync.get(null, (items) => {
       const serialized = JSON.stringify(items);
       const totalSizeInBytes = new TextEncoder().encode(serialized).length;
@@ -252,7 +223,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (totalSizeInBytes > 0.9 * maxTotalSize) {
         showToast("Warning: Storage is nearly full (90% of 100KB limit). Please delete unused templates.", 5000, "red");
       }
-      callback(totalSizeInBytes <= maxTotalSize);
+      callback();
     });
   }
 
@@ -262,14 +233,7 @@ document.addEventListener("DOMContentLoaded", () => {
     recentIndices = [...new Set(recentIndices)]; // Remove duplicates
     // Prune to 10 most recent entries to reduce storage usage
     if (recentIndices.length > 10) {
-      recentIndices = recentIndices.slice(0, 10);
-    }
-    // Save recentIndices explicitly
-    const serializedRecentIndices = JSON.stringify({ recentIndices });
-    const sizeInBytes = new TextEncoder().encode(serializedRecentIndices).length;
-    if (sizeInBytes > 8 * 1024) {
-      console.warn("Recent indices size exceeds sync quota, pruning older entries.");
-      recentIndices = recentIndices.slice(0, 5);
+      recentIndices = recentIndices.slice(0, 10); // Limit to 10 entries
     }
     chrome.storage.sync.set({ recentIndices }, () => {
       if (chrome.runtime.lastError) {
@@ -284,7 +248,7 @@ document.addEventListener("DOMContentLoaded", () => {
     clearTimeout(resizeTimeout);
     resizeTimeout = setTimeout(() => {
       const width = document.body.clientWidth;
-      const baseFontSize = Math.min(Math.max(width / 20, 14), 24); // Min 14px, max 24px
+      const baseFontSize = Math.min(Math.max(width / 20, 14), 24);
       document.documentElement.style.setProperty("--base-font-size", `${baseFontSize}px`);
     }, 100);
   });
@@ -528,7 +492,7 @@ document.addEventListener("DOMContentLoaded", () => {
           if (aIndex === -1 && bIndex === -1) return a.name.localeCompare(b.name);
           if (aIndex === -1) return 1;
           if (bIndex === -1) return -1;
-          return aIndex - bIndex; // Earlier index (more recent) comes first
+          return aIndex - bIndex;
         });
       }
 
@@ -541,7 +505,7 @@ document.addEventListener("DOMContentLoaded", () => {
           div.setAttribute("aria-selected", selectedTemplateName === tmpl.name);
           elements.overlay.style.display = 'block';
           elements.dropdownResults.style.display = 'block';
-          elements.dropdownResults.classList.add("show"); // Add show class for animation
+          elements.dropdownResults.classList.add("show");
           div.addEventListener("click", (event) => {
             if (!event.target.classList.contains("favorite-toggle")) {
               selectedTemplateName = tmpl.name;
@@ -553,7 +517,7 @@ document.addEventListener("DOMContentLoaded", () => {
               elements.fetchBtn2.style.display = tmpl.content ? "none" : "block";
               elements.overlay.style.display = 'none';
               elements.dropdownResults.style.display = 'none';
-              elements.dropdownResults.classList.remove("show"); // Remove show class
+              elements.dropdownResults.classList.remove("show");
               saveState();
               elements.promptArea.focus();
             }
@@ -627,31 +591,25 @@ document.addEventListener("DOMContentLoaded", () => {
       elements.dropdownResults.innerHTML = "";
       elements.overlay.style.display = 'none';
       elements.dropdownResults.style.display = 'none';
-      elements.dropdownResults.classList.remove("show"); // Remove show class
+      elements.dropdownResults.classList.remove("show");
     }
   });
 
   // Save templates
   function saveTemplates(templates, callback, isNewTemplate = false) {
-    // Validate individual template size
-    const newOrUpdatedTemplate = isNewTemplate ? templates[templates.length - 1] : templates.find(t => t.name === elements.templateName.value);
-    const validation = validateTemplateSize(newOrUpdatedTemplate);
-    if (!validation.isValid) {
-      showToast(`Template size (${(validation.size / 1024).toFixed(2)} KB) exceeds 8 KB limit. Please reduce the size.`, 3000, "red");
-      return;
-    }
-
-    // Check total storage usage
-    checkTotalStorageUsage(templates, (isStorageAvailable) => {
-      if (!isStorageAvailable) {
-        showToast("Total storage limit (100KB) exceeded. Please delete unused templates.", 3000, "red");
-        return;
-      }
-
+    checkTotalStorageUsage(() => {
+      // Attempt to save templates directly and handle errors
       chrome.storage.sync.set({ templates }, () => {
         if (chrome.runtime.lastError) {
-          showToast("Failed to save template: " + chrome.runtime.lastError.message, 3000, "red");
-          console.error("Sync storage error:", chrome.runtime.lastError);
+          const errorMessage = chrome.runtime.lastError.message;
+          if (errorMessage.includes("QUOTA_BYTES_PER_ITEM")) {
+            showToast("Template size exceeds 8KB limit. Please reduce the size.", 3000, "red");
+          } else if (errorMessage.includes("QUOTA_BYTES")) {
+            showToast("Total storage limit (100KB) exceeded. Please delete unused templates.", 3000, "red");
+          } else {
+            showToast("Failed to save template: " + errorMessage, 3000, "red");
+          }
+          console.error("Sync storage error:", errorMessage);
         } else {
           showToast(isNewTemplate ? "Template saved. Press Ctrl+Z to undo." : "Template updated. Press Ctrl+Z to undo.", 3000, "green");
           callback();
@@ -739,7 +697,7 @@ document.addEventListener("DOMContentLoaded", () => {
         };
 
         saveTemplates(templates, () => {
-          selectedTemplateName = name; // Update selectedTemplateName to new name
+          selectedTemplateName = name;
           loadTemplates(elements.typeSelect.value, "", false);
           saveState();
         });
@@ -881,7 +839,7 @@ document.addEventListener("DOMContentLoaded", () => {
       showToast("Please select a template to delete.", 3000, "red");
       return;
     }
-    chrome.storage.sync.get(["templates"], (result) => {
+    chrome.storage.sync.get(["templates", "recentIndices"], (result) => {
       const templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
       const template = templates.find(t => t.name === selectedTemplateName);
       const isPreBuilt = template.type === "pre-built";
@@ -894,18 +852,21 @@ document.addEventListener("DOMContentLoaded", () => {
       const templateIndex = templates.findIndex(t => t.name === selectedTemplateName);
       const deletedIndex = templates[templateIndex].index;
       templates.splice(templateIndex, 1);
-      // Remove deleted index from recentIndices
-      recentIndices = recentIndices.filter(idx => idx !== deletedIndex);
-      chrome.storage.sync.set({ templates }, () => {
-        showToast("Template deleted successfully. Press Ctrl+Z to undo.", 3000, "green");
-        selectedTemplateName = null;
-        elements.templateName.value = "";
-        elements.templateTags.value = "";
-        elements.promptArea.value = "";
-        elements.searchBox.value = "";
-        elements.fetchBtn2.style.display = "block";
-        loadTemplates(elements.typeSelect.value, "", false);
-        saveState();
+      recentIndices = recentIndices.filter(idx => idx !== deletedIndex); // Remove deleted index
+      chrome.storage.sync.set({ templates, recentIndices }, () => {
+        if (chrome.runtime.lastError) {
+          showToast("Failed to delete template: " + chrome.runtime.lastError.message, 3000, "red");
+        } else {
+          showToast("Template deleted successfully. Press Ctrl+Z to undo.", 3000, "green");
+          selectedTemplateName = null;
+          elements.templateName.value = "";
+          elements.templateTags.value = "";
+          elements.promptArea.value = "";
+          elements.searchBox.value = "";
+          elements.fetchBtn2.style.display = "block";
+          loadTemplates(elements.typeSelect.value, "", false);
+          saveState();
+        }
       });
     });
   });
@@ -984,5 +945,4 @@ document.addEventListener("DOMContentLoaded", () => {
       elements.clearPrompt.style.display = elements.promptArea.value ? "block" : "none";
     }, 50);
   });
-
 });
