@@ -136,8 +136,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // Show toast notification with queueing
-  function showToast(message, duration = 4000, type = "red") {
-    toastQueue.push({ message, duration, type });
+  function showToast(message, duration = 4000, type = "red", buttons = []) {
+    toastQueue.push({ message, duration, type, buttons });
     if (!isToastShowing) {
       displayNextToast();
     }
@@ -150,18 +150,88 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     isToastShowing = true;
-    const { message, duration, type } = toastQueue.shift();
-    elements.toast.textContent = message;
-    elements.toast.className = `toast ${type}`;
-    elements.toast.classList.add("show");
-    setTimeout(() => {
+    const { message, duration, type, buttons } = toastQueue.shift();
+    elements.toast.innerHTML = message;
+
+    // Add close button
+    const closeBtn = document.createElement("button");
+    closeBtn.textContent = "×";
+    closeBtn.className = "toast-close-btn";
+    closeBtn.setAttribute("aria-label", "Close toast");
+    closeBtn.addEventListener("click", () => {
       elements.toast.classList.remove("show");
       elements.toast.classList.add("hide");
       setTimeout(() => {
         elements.toast.classList.remove("hide");
+        elements.toast.innerHTML = "";
+        isToastShowing = false;
         displayNextToast();
       }, 300);
-    }, duration);
+    });
+    elements.toast.appendChild(closeBtn);
+
+    // Add confirmation buttons if provided
+    if (buttons.length > 0) {
+      const buttonContainer = document.createElement("div");
+      buttonContainer.className = "toast-button-container";
+      buttons.forEach(({ text, callback }) => {
+        const btn = document.createElement("button");
+        btn.textContent = text;
+        btn.className = "toast-action-btn";
+        btn.setAttribute("aria-label", text === "Yes" ? "Confirm action" : "Cancel action");
+        btn.addEventListener("click", () => {
+          elements.toast.classList.remove("show");
+          elements.toast.classList.add("hide");
+          setTimeout(() => {
+            elements.toast.classList.remove("hide");
+            elements.toast.innerHTML = "";
+            isToastShowing = false;
+            displayNextToast();
+            callback();
+          }, 300);
+        });
+        buttonContainer.appendChild(btn);
+      });
+      elements.toast.appendChild(buttonContainer);
+
+      // Handle outside click to cancel confirmation toasts
+      const outsideClickListener = (event) => {
+        if (!elements.toast.contains(event.target)) {
+          elements.toast.classList.remove("show");
+          elements.toast.classList.add("hide");
+          setTimeout(() => {
+            elements.toast.classList.remove("hide");
+            elements.toast.innerHTML = "";
+            isToastShowing = false;
+            displayNextToast();
+            // Trigger the "No" callback if available
+            const noButton = buttons.find(b => b.text === "No");
+            if (noButton && noButton.callback) {
+              noButton.callback();
+            }
+          }, 300);
+          document.removeEventListener("click", outsideClickListener);
+        }
+      };
+      setTimeout(() => {
+        document.addEventListener("click", outsideClickListener);
+      }, 0);
+    } else {
+      // Auto-hide for non-confirmation toasts
+      setTimeout(() => {
+        elements.toast.classList.remove("show");
+        elements.toast.classList.add("hide");
+        setTimeout(() => {
+          elements.toast.classList.remove("hide");
+          elements.toast.innerHTML = "";
+          isToastShowing = false;
+          displayNextToast();
+        }, 300);
+      }, duration);
+    }
+
+    elements.toast.className = `toast ${type} ${buttons.length > 0 ? 'confirmation' : ''}`;
+    elements.toast.classList.add("show");
   }
 
   // Validate template name
@@ -643,13 +713,84 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      // Notify if tags are empty
+      // Check for empty tags and prompt for confirmation
       if (!tagsInput.trim()) {
         elements.templateTags.focus();
-        showToast("No tags provided. You can add tags in the tags field now or later.", 3000, "red");
+        showToast(
+          "No tags provided. Save without tags?",
+          0,
+          "red",
+          [
+            {
+              text: "Yes",
+              callback: () => {
+                // Proceed with saving
+                if (!selectedTemplateName) {
+                  // Save new template
+                  storeLastState();
+                  lastState.templates = [...templates];
+                  const newTemplate = {
+                    name,
+                    tags,
+                    content,
+                    type: "custom",
+                    favorite: false,
+                    index: nextIndex
+                  };
+                  templates.push(newTemplate);
+                  updateRecentIndices(nextIndex);
+                  nextIndex++;
+                  saveTemplates(templates, () => {
+                    selectedTemplateName = name;
+                    loadTemplates(elements.typeSelect.value, "", false);
+                    saveState();
+                    saveNextIndex();
+                  }, true);
+                } else {
+                  // Update existing template
+                  const template = templates.find(t => t.name === selectedTemplateName);
+                  if (!template) {
+                    showToast("Selected template not found.", 3000, "red");
+                    return;
+                  }
+                  const isEdited = elements.templateName.value !== template.name || sanitizeTags(elements.templateTags.value) !== template.tags || elements.promptArea.value !== template.content;
+                  if (!isEdited) {
+                    showToast("No changes to save.", 3000, "red");
+                    return;
+                  }
+                  storeLastState();
+                  lastState.templates = [...templates];
+
+                  const templateIndex = templates.findIndex(t => t.name === selectedTemplateName);
+                  templates[templateIndex] = {
+                    name,
+                    tags,
+                    content,
+                    type: "custom",
+                    favorite: template.favorite || false,
+                    index: template.index
+                  };
+
+                  saveTemplates(templates, () => {
+                    selectedTemplateName = name;
+                    loadTemplates(elements.typeSelect.value, "", false);
+                    saveState();
+                  });
+                }
+              }
+            },
+            {
+              text: "No",
+              callback: () => {
+                elements.templateTags.focus();
+              }
+            }
+          ]
+        );
+        return;
       }
 
-      // If no template is selected, treat as a new template
+      // Proceed with saving if tags are not empty
       if (!selectedTemplateName) {
         // Save new template
         storeLastState();
@@ -730,10 +871,29 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      // Notify if tags are empty
+      // Check for empty tags and prompt for confirmation
       if (!tagsInput.trim()) {
         elements.templateTags.focus();
-        showToast("No tags provided. You can add tags in the tags field now or later.", 3000, "red");
+        showToast(
+          "No tags provided. Save without tags?",
+          0,
+          "red",
+          [
+            {
+              text: "Yes",
+              callback: () => {
+                saveNewTemplate(name, tags);
+              }
+            },
+            {
+              text: "No",
+              callback: () => {
+                elements.templateTags.focus();
+              }
+            }
+          ]
+        );
+        return;
       }
 
       saveNewTemplate(name, tags);
@@ -843,31 +1003,46 @@ document.addEventListener("DOMContentLoaded", () => {
       const templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
       const template = templates.find(t => t.name === selectedTemplateName);
       const isPreBuilt = template.type === "pre-built";
-      const message = `Are you sure you want to delete "${selectedTemplateName}"?${isPreBuilt ? "\nThis is a pre-built template." : ""}`;
-      const confirmDelete = confirm(message);
-      if (!confirmDelete) return;
-
-      storeLastState();
-      lastState.templates = [...templates];
-      const templateIndex = templates.findIndex(t => t.name === selectedTemplateName);
-      const deletedIndex = templates[templateIndex].index;
-      templates.splice(templateIndex, 1);
-      recentIndices = recentIndices.filter(idx => idx !== deletedIndex); // Remove deleted index
-      chrome.storage.sync.set({ templates, recentIndices }, () => {
-        if (chrome.runtime.lastError) {
-          showToast("Failed to delete template: " + chrome.runtime.lastError.message, 3000, "red");
-        } else {
-          showToast("Template deleted successfully. Press Ctrl+Z to undo.", 3000, "green");
-          selectedTemplateName = null;
-          elements.templateName.value = "";
-          elements.templateTags.value = "";
-          elements.promptArea.value = "";
-          elements.searchBox.value = "";
-          elements.fetchBtn2.style.display = "block";
-          loadTemplates(elements.typeSelect.value, "", false);
-          saveState();
-        }
-      });
+      const message = `Are you sure you want to delete "${selectedTemplateName}"?${isPreBuilt ? "<br>This is a pre-built template." : ""}`;
+      showToast(
+        message,
+        0,
+        "red",
+        [
+          {
+            text: "Yes",
+            callback: () => {
+              storeLastState();
+              lastState.templates = [...templates];
+              const templateIndex = templates.findIndex(t => t.name === selectedTemplateName);
+              const deletedIndex = templates[templateIndex].index;
+              templates.splice(templateIndex, 1);
+              recentIndices = recentIndices.filter(idx => idx !== deletedIndex); // Remove deleted index
+              chrome.storage.sync.set({ templates, recentIndices }, () => {
+                if (chrome.runtime.lastError) {
+                  showToast("Failed to delete template: " + chrome.runtime.lastError.message, 3000, "red");
+                } else {
+                  showToast("Template deleted successfully. Press Ctrl+Z to undo.", 3000, "green");
+                  selectedTemplateName = null;
+                  elements.templateName.value = "";
+                  elements.templateTags.value = "";
+                  elements.promptArea.value = "";
+                  elements.searchBox.value = "";
+                  elements.fetchBtn2.style.display = "block";
+                  loadTemplates(elements.typeSelect.value, "", false);
+                  saveState();
+                }
+              });
+            }
+          },
+          {
+            text: "No",
+            callback: () => {
+              // No action needed on cancel
+            }
+          }
+        ]
+      );
     });
   });
 

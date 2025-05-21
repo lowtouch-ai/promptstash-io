@@ -31,11 +31,12 @@ header, .search-select, #template, #buttons {
   transition: opacity 0.3s ease, transform 0.3s ease; /* Added transform for animation */
   transform: translateY(-20px); /* Initial position for fade-in from above */
   z-index: 10000;
+
 }
 
 .toast.show {
   opacity: 1;
-  transform: translateY(0); /* Move to final position */
+  transform: translateY(0);
 }
 
 .toast.hide {
@@ -61,6 +62,59 @@ body.dark .toast.red {
 body.dark .toast.green {
   background: #050;
   color: #fff;
+}
+
+.toast-close-btn {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  background: none;
+  border: none;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: #444a;
+  padding: 0;
+  line-height: 1;
+}
+
+body.dark .toast-close-btn {
+  color: #fff;
+}
+
+.toast-close-btn:hover, .toast-close-btn:focus {
+  color: #000;
+}
+
+body.dark .toast-close-btn:hover, body.dark .toast-close-btn:focus {
+  color: #ccc;
+}
+
+.toast-button-container {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.toast-action-btn {
+  padding: 5px 10px;
+  border: 1px solid #888;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+body.dark .toast-action-btn {
+  background: #3a3c40;
+  color: #e8eaed;
+}
+
+.toast-action-btn:hover, .toast-action-btn:focus {
+  background: #f1f3f4;
+}
+
+body.dark .toast-action-btn:hover, body.dark .toast-action-btn:focus {
+  background: #4b4f57;
 }
 
 .logo {
@@ -171,15 +225,15 @@ body.dark #typeSelect option {
   border: 1px solid #888;
   border-radius: 5px;
   z-index: 9999;
-  opacity: 1; /* Default for browsers without animation support */
-  transform: scaleY(0); /* Initial scale for dropdown animation */
-  transform-origin: top; /* Anchor animation at top */
-  transition: opacity 0.2s ease, transform 0.2s ease; /* Animation for dropdown */
+  opacity: 1;
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
 .dropdown.show {
   opacity: 1;
-  transform: scaleY(1); /* Expand to full size */
+  transform: scaleY(1);
 }
 
 .dropdown::-webkit-scrollbar {
@@ -536,12 +590,12 @@ body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
 /* Fallback for browsers without animation support */
 @supports not (animation: fadeIn 0.3s) {
   .toast {
-    transform: none; /* Remove transform for no animation */
+    transform: none;
   }
   .dropdown {
-    transform: none; /* Remove transform for no animation */
+    transform: none;
   }
   .toast.show, .toast.hide, .dropdown.show {
-    opacity: 1; /* Ensure visibility */
+    opacity: 1;
   }
 }
