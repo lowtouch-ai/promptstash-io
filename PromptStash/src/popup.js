@@ -81,36 +81,34 @@ document.addEventListener("DOMContentLoaded", () => {
   let recentIndices = [];
 
   // Load popup state, recent indices, and initialize index with version check
-  chrome.storage.local.get(["popupState", "theme", "extensionVersion"], (localResult) => {
-    chrome.storage.sync.get(["recentIndices", "templates", "nextIndex"], (syncResult) => {
-      // Check if stored version matches current version
-      const storedVersion = localResult.extensionVersion || "0.0.0";
-      if (storedVersion !== EXTENSION_VERSION) {
-        console.log(`Version updated from ${storedVersion} to ${EXTENSION_VERSION}. No schema migration needed.`);
-        chrome.storage.local.set({ extensionVersion: EXTENSION_VERSION });
-      }
+  chrome.storage.local.get(["popupState", "theme", "extensionVersion", "recentIndices", "templates", "nextIndex"], (result) => {
+    // Check if stored version matches current version
+    const storedVersion = result.extensionVersion || "0.0.0";
+    if (storedVersion !== EXTENSION_VERSION) {
+      console.log(`Version updated from ${storedVersion} to ${EXTENSION_VERSION}. No schema migration needed.`);
+      chrome.storage.local.set({ extensionVersion: EXTENSION_VERSION });
+    }
 
-      // Initialize state, falling back to defaults if not present
-      const state = localResult.popupState || {};
-      elements.templateName.value = state.name || "";
-      elements.templateTags.value = state.tags || "";
-      elements.promptArea.value = state.content || "";
-      selectedTemplateName = state.selectedName || null;
-      currentTheme = localResult.theme || "light";
-      nextIndex = syncResult.nextIndex || defaultTemplates.length;
-      recentIndices = syncResult.recentIndices || [];
-      // Ensure templates are initialized
-      const templates = syncResult.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
+    // Initialize state, falling back to defaults if not present
+    const state = result.popupState || {};
+    elements.templateName.value = state.name || "";
+    elements.templateTags.value = state.tags || "";
+    elements.promptArea.value = state.content || "";
+    selectedTemplateName = state.selectedName || null;
+    currentTheme = result.theme || "light";
+    nextIndex = result.nextIndex || defaultTemplates.length;
+    recentIndices = result.recentIndices || [];
+    // Ensure templates are initialized
+    const templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
 
-      // Save templates if they were initialized from defaults
-      if (!syncResult.templates) {
-        chrome.storage.sync.set({ templates });
-      }
+    // Save templates if they were initialized from defaults
+    if (!result.templates) {
+      chrome.storage.local.set({ templates });
+    }
 
-      document.body.className = currentTheme;
-      elements.fetchBtn2.style.display = elements.promptArea.value ? "none" : "block";
-      loadTemplates(elements.typeSelect.value, "", false);
-    });
+    document.body.className = currentTheme;
+    elements.fetchBtn2.style.display = elements.promptArea.value ? "none" : "block";
+    loadTemplates(elements.typeSelect.value, "", false);
   });
 
   // Save popup state
@@ -129,9 +127,9 @@ document.addEventListener("DOMContentLoaded", () => {
     chrome.storage.local.set(state);
   }
 
-  // Save nextIndex to sync storage
+  // Save nextIndex to local storage
   function saveNextIndex() {
-    chrome.storage.sync.set({ nextIndex });
+    chrome.storage.local.set({ nextIndex });
   }
 
   // Store last state for undo
@@ -306,14 +304,14 @@ document.addEventListener("DOMContentLoaded", () => {
     return div.innerHTML.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
   }
 
-  // Check total sync storage usage
+  // Check total storage usage
   function checkTotalStorageUsage(callback) {
-    chrome.storage.sync.get(null, (items) => {
+    chrome.storage.local.get(null, (items) => {
       const serialized = JSON.stringify(items);
       const totalSizeInBytes = new TextEncoder().encode(serialized).length;
-      const maxTotalSize = 100 * 1024; // 100KB
+      const maxTotalSize = 5 * 1024 * 1024; // 5MB for local storage
       if (totalSizeInBytes > 0.9 * maxTotalSize) {
-        showToast("Warning: Storage is nearly full (90% of 100KB limit). Please delete unused templates.", 5000, "red");
+        showToast("Warning: Storage is nearly full (90% of 5MB limit). Please delete unused templates.", 5000, "red");
       }
       callback();
     });
@@ -326,7 +324,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (recentIndices.length > 10) {
       recentIndices = recentIndices.slice(0, 10);
     }
-    chrome.storage.sync.set({ recentIndices }, () => {
+    chrome.storage.local.set({ recentIndices }, () => {
       if (chrome.runtime.lastError) {
         console.error("Failed to save recent indices:", chrome.runtime.lastError.message);
       }
@@ -560,7 +558,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Load templates and suggestions
   function loadTemplates(filter, query = "", showDropdown = false) {
-    chrome.storage.sync.get(["templates"], (result) => {
+    chrome.storage.local.get(["templates"], (result) => {
       console.log(result);
       let templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
       elements.dropdownResults.innerHTML = "";
@@ -686,17 +684,17 @@ document.addEventListener("DOMContentLoaded", () => {
   // Save templates
   function saveTemplates(templates, callback, isNewTemplate = false) {
     checkTotalStorageUsage(() => {
-      chrome.storage.sync.set({ templates }, () => {
+      chrome.storage.local.set({ templates }, () => {
         if (chrome.runtime.lastError) {
           const errorMessage = chrome.runtime.lastError.message;
           if (errorMessage.includes("QUOTA_BYTES_PER_ITEM")) {
             showToast("Template size exceeds 8KB limit. Please reduce the size.", 3000, "red");
           } else if (errorMessage.includes("QUOTA_BYTES")) {
-            showToast("Total storage limit (100KB) exceeded. Please delete unused templates.", 3000, "red");
+            showToast("Total storage limit (5MB) exceeded. Please delete unused templates.", 3000, "red");
           } else {
             showToast("Failed to save template: " + errorMessage, 3000, "red");
           }
-          console.error("Sync storage error:", errorMessage);
+          console.error("Local storage error:", errorMessage);
         } else {
           showToast(isNewTemplate ? "Template saved. Press Ctrl+Z to undo." : "Template updated. Press Ctrl+Z to undo.", 3000, "green");
           callback();
@@ -707,7 +705,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Save changes to existing template or create new template
   elements.saveBtn.addEventListener("click", () => {
-    chrome.storage.sync.get(["templates"], (result) => {
+    chrome.storage.local.get(["templates"], (result) => {
       let templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
       const nameValidation = validateTemplateName(elements.templateName.value, templates);
       if (!nameValidation.isValid) {
@@ -857,7 +855,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Save as new template
   elements.saveAsBtn.addEventListener("click", () => {
-    chrome.storage.sync.get(["templates"], (result) => {
+    chrome.storage.local.get(["templates"], (result) => {
       const templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
       const nameValidation = validateTemplateName(elements.templateName.value, templates, true);
       if (!nameValidation.isValid) {
@@ -909,7 +907,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Helper function to save new template
   function saveNewTemplate(name, tags) {
-    chrome.storage.sync.get(["templates"], (result) => {
+    chrome.storage.local.get(["templates"], (result) => {
       let templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
       storeLastState();
       lastState.templates = [...templates];
@@ -981,7 +979,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         if (response && response.success) {
           if (selectedTemplateName) {
-            chrome.storage.sync.get(["templates"], (result) => {
+            chrome.storage.local.get(["templates"], (result) => {
               const templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
               const template = templates.find(t => t.name === selectedTemplateName);
               if (template) {
@@ -1005,7 +1003,7 @@ document.addEventListener("DOMContentLoaded", () => {
       showToast("Please select a template to delete.", 3000, "red");
       return;
     }
-    chrome.storage.sync.get(["templates", "recentIndices"], (result) => {
+    chrome.storage.local.get(["templates", "recentIndices"], (result) => {
       const templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
       const template = templates.find(t => t.name === selectedTemplateName);
       const isPreBuilt = template.type === "pre-built";
@@ -1024,7 +1022,7 @@ document.addEventListener("DOMContentLoaded", () => {
               const deletedIndex = templates[templateIndex].index;
               templates.splice(templateIndex, 1);
               recentIndices = recentIndices.filter(idx => idx !== deletedIndex);
-              chrome.storage.sync.set({ templates, recentIndices }, () => {
+              chrome.storage.local.set({ templates, recentIndices }, () => {
                 if (chrome.runtime.lastError) {
                   showToast("Failed to delete template: " + chrome.runtime.lastError.message, 3000, "red");
                 } else {
@@ -1060,7 +1058,7 @@ document.addEventListener("DOMContentLoaded", () => {
       elements.promptArea.value = lastState.content || "";
       selectedTemplateName = lastState.selectedName || null;
       if (lastState.templates) {
-        chrome.storage.sync.set({ templates: lastState.templates }, () => {
+        chrome.storage.local.set({ templates: lastState.templates }, () => {
           loadTemplates(elements.typeSelect.value, "", false);
         });
       }
@@ -1075,7 +1073,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.addEventListener("click", (event) => {
     if (event.target.classList.contains("favorite-toggle")) {
       const name = event.target.dataset.name;
-      chrome.storage.sync.get(["templates"], (result) => {
+      chrome.storage.local.get(["templates"], (result) => {
         const templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
         const template = templates.find(t => t.name === name);
         if (template) {
@@ -1084,7 +1082,7 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
           }
           template.favorite = !template.favorite;
-          chrome.storage.sync.set({ templates }, () => {
+          chrome.storage.local.set({ templates }, () => {
             loadTemplates(elements.typeSelect.value, elements.searchBox.value.toLowerCase(), true);
           });
         }
