@@ -27,11 +27,10 @@ header, .search-select, #template, #buttons {
   right: 20px;
   padding: 10px 20px;
   border-radius: 6px;
-  opacity: 1; /* Default for browsers without animation support */
-  transition: opacity 0.3s ease, transform 0.3s ease; /* Added transform for animation */
-  transform: translateY(-20px); /* Initial position for fade-in from above */
+  opacity: 0;
+  transform: translateY(-20px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
   z-index: 10000;
-
 }
 
 .toast.show {
@@ -99,22 +98,22 @@ body.dark .toast-close-btn:hover, body.dark .toast-close-btn:focus {
   padding: 5px 10px;
   border: 1px solid #888;
   border-radius: 4px;
-  background: #fff;
+  background: #fff8;
   cursor: pointer;
   font-size: 0.8rem;
 }
 
 body.dark .toast-action-btn {
-  background: #3a3c40;
+  background: #3a3c4088;
   color: #e8eaed;
 }
 
 .toast-action-btn:hover, .toast-action-btn:focus {
-  background: #f1f3f4;
+  background: #f1f3f488;
 }
 
 body.dark .toast-action-btn:hover, body.dark .toast-action-btn:focus {
-  background: #4b4f57;
+  background: #4b4f5788;
 }
 
 .logo {
@@ -138,6 +137,10 @@ body.light .title {
 
 body.dark #themeToggle, body.dark #fullscreenToggle, body.dark #minimizeBtn, body.dark #closeBtn, body.dark #newBtn {
   fill: #aaa;
+}
+
+#closeBtn:hover, body.dark #closeBtn:hover {
+  fill: rgb(220, 0, 0);
 }
 
 .input-group {
@@ -584,18 +587,5 @@ body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
   #buttons .btn svg{
     width: calc(8px + 4vh);
     height: calc(8px + 4vh);
-  }
-}
-
-/* Fallback for browsers without animation support */
-@supports not (animation: fadeIn 0.3s) {
-  .toast {
-    transform: none;
-  }
-  .dropdown {
-    transform: none;
-  }
-  .toast.show, .toast.hide, .dropdown.show {
-    opacity: 1;
   }
 }

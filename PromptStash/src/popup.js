@@ -13,9 +13,23 @@ function debounce(func, wait) {
   };
 }
 
+// Debounce specifically for toast-generating actions
+const debounceToast = (func, wait) => {
+  let lastCall = 0;
+  return function (...args) {
+    const now = Date.now();
+    if (now - lastCall >= wait) {
+      lastCall = now;
+      func.apply(this, args);
+    }
+  };
+};
+
 // Toast message queue
 let toastQueue = [];
 let isToastShowing = false;
+let autoHideTimeout = null; // Track the auto-hide timeout
+let outsideClickListener = null; // Track the outside click listener
 
 // Initialize DOM elements
 document.addEventListener("DOMContentLoaded", () => {
@@ -45,9 +59,6 @@ document.addEventListener("DOMContentLoaded", () => {
     newBtn: document.getElementById("newBtn"),
     overlay: document.getElementById("overlay"),
     toast: document.getElementById("toast"),
-    // favoriteStar: document.getElementsByClassName("favoriteStar"),
-    // menuBtn: document.getElementById("menuBtn"),
-    // menuDropdown: document.getElementById("menuDropdown"),
     themeToggle: document.getElementById("themeToggle")
   };
 
@@ -75,7 +86,6 @@ document.addEventListener("DOMContentLoaded", () => {
       // Check if stored version matches current version
       const storedVersion = localResult.extensionVersion || "0.0.0";
       if (storedVersion !== EXTENSION_VERSION) {
-        // Handle schema migration if needed (currently no changes required)
         console.log(`Version updated from ${storedVersion} to ${EXTENSION_VERSION}. No schema migration needed.`);
         chrome.storage.local.set({ extensionVersion: EXTENSION_VERSION });
       }
@@ -137,20 +147,45 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Show toast notification with queueing
   function showToast(message, duration = 4000, type = "red", buttons = []) {
+    console.log("Queueing toast:", { message, duration, type, hasButtons: buttons.length > 0 });
     toastQueue.push({ message, duration, type, buttons });
     if (!isToastShowing) {
       displayNextToast();
     }
   }
 
+  // Close toast function
+  function closeToast(onClose) {
+    console.log("Closing toast, clearing autoHideTimeout");
+    clearTimeout(autoHideTimeout);
+    autoHideTimeout = null;
+    if (outsideClickListener) {
+      document.removeEventListener("click", outsideClickListener);
+      outsideClickListener = null;
+      console.log("Outside click listener removed in closeToast");
+    }
+    elements.toast.classList.remove("show");
+    elements.toast.classList.add("hide");
+    setTimeout(() => {
+      elements.toast.classList.remove("hide");
+      elements.toast.innerHTML = "";
+      isToastShowing = false;
+      console.log("Toast closed, executing callback:", !!onClose);
+      if (onClose) onClose();
+      setTimeout(displayNextToast, 100);
+    }, 300);
+  }
+
   // Display the next toast in the queue
   function displayNextToast() {
     if (toastQueue.length === 0) {
       isToastShowing = false;
+      console.log("No toasts in queue, stopping display");
       return;
     }
     isToastShowing = true;
     const { message, duration, type, buttons } = toastQueue.shift();
+    console.log("Displaying toast:", { message, duration, type, hasButtons: buttons.length > 0 });
     elements.toast.innerHTML = message;
 
     // Add close button
@@ -158,15 +193,16 @@ document.addEventListener("DOMContentLoaded", () => {
     closeBtn.textContent = "×";
     closeBtn.className = "toast-close-btn";
     closeBtn.setAttribute("aria-label", "Close toast");
-    closeBtn.addEventListener("click", () => {
-      elements.toast.classList.remove("show");
-      elements.toast.classList.add("hide");
-      setTimeout(() => {
-        elements.toast.classList.remove("hide");
-        elements.toast.innerHTML = "";
-        isToastShowing = false;
-        displayNextToast();
-      }, 300);
+    closeBtn.addEventListener("click", (event) => {
+      event.stopPropagation(); // Prevent the click from propagating to the document
+      console.log("Close button clicked");
+      if (outsideClickListener) {
+        document.removeEventListener("click", outsideClickListener);
+        outsideClickListener = null;
+        console.log("Outside click listener removed on close button click");
+      }
+      const noButton = buttons.find(b => b.text === "No");
+      closeToast(noButton?.callback);
     });
     elements.toast.appendChild(closeBtn);
 
@@ -179,54 +215,42 @@ document.addEventListener("DOMContentLoaded", () => {
         btn.textContent = text;
         btn.className = "toast-action-btn";
         btn.setAttribute("aria-label", text === "Yes" ? "Confirm action" : "Cancel action");
-        btn.addEventListener("click", () => {
-          elements.toast.classList.remove("show");
-          elements.toast.classList.add("hide");
-          setTimeout(() => {
-            elements.toast.classList.remove("hide");
-            elements.toast.innerHTML = "";
-            isToastShowing = false;
-            displayNextToast();
-            callback();
-          }, 300);
+        btn.addEventListener("click", (event) => {
+          event.stopPropagation(); // Prevent the click from propagating to the document
+          console.log(`Confirmation button clicked: ${text}`);
+          if (outsideClickListener) {
+            document.removeEventListener("click", outsideClickListener);
+            outsideClickListener = null;
+            console.log("Outside click listener removed on confirmation button click");
+          }
+          closeToast(callback);
         });
         buttonContainer.appendChild(btn);
       });
       elements.toast.appendChild(buttonContainer);
 
       // Handle outside click to cancel confirmation toasts
-      const outsideClickListener = (event) => {
+      outsideClickListener = (event) => {
         if (!elements.toast.contains(event.target)) {
-          elements.toast.classList.remove("show");
-          elements.toast.classList.add("hide");
-          setTimeout(() => {
-            elements.toast.classList.remove("hide");
-            elements.toast.innerHTML = "";
-            isToastShowing = false;
-            displayNextToast();
-            // Trigger the "No" callback if available
-            const noButton = buttons.find(b => b.text === "No");
+          console.log("Outside click detected");
+          const noButton = buttons.find(b => b.text === "No");
+          closeToast(() => {
             if (noButton && noButton.callback) {
               noButton.callback();
             }
-          }, 300);
-          document.removeEventListener("click", outsideClickListener);
+          });
         }
       };
       setTimeout(() => {
+        console.log("Attaching outside click listener");
         document.addEventListener("click", outsideClickListener);
-      }, 0);
+      }, 50);
     } else {
       // Auto-hide for non-confirmation toasts
-      setTimeout(() => {
-        elements.toast.classList.remove("show");
-        elements.toast.classList.add("hide");
-        setTimeout(() => {
-          elements.toast.classList.remove("hide");
-          elements.toast.innerHTML = "";
-          isToastShowing = false;
-          displayNextToast();
-        }, 300);
+      console.log(`Setting auto-hide timeout for ${duration}ms`);
+      autoHideTimeout = setTimeout(() => {
+        console.log("Auto-hide timeout triggered");
+        closeToast();
       }, duration);
     }
 
@@ -250,7 +274,6 @@ document.addEventListener("DOMContentLoaded", () => {
       showToast("Template name can only contain letters, numbers, and spaces.", 3000, "red");
       return { isValid: false, sanitizedName: null };
     }
-    // Check for duplicate names, excluding the current template only for save operations
     const isDuplicate = templates.some(t => t.name === sanitizedName && (isSaveAs || t.name !== selectedTemplateName));
     if (isDuplicate) {
       showToast("Template name must be unique.", 3000, "red");
@@ -278,13 +301,12 @@ document.addEventListener("DOMContentLoaded", () => {
   // Sanitize content to prevent XSS
   function sanitizeContent(content) {
     if (!content) return "";
-    // Remove script tags and event handlers
     const div = document.createElement("div");
     div.textContent = content;
     return div.innerHTML.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
   }
 
-  // Check total sync storage usage (for warning purposes)
+  // Check total sync storage usage
   function checkTotalStorageUsage(callback) {
     chrome.storage.sync.get(null, (items) => {
       const serialized = JSON.stringify(items);
@@ -299,11 +321,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Update recent indices
   function updateRecentIndices(index) {
-    recentIndices.unshift(index); // Add to start
-    recentIndices = [...new Set(recentIndices)]; // Remove duplicates
-    // Prune to 10 most recent entries to reduce storage usage
+    recentIndices.unshift(index);
+    recentIndices = [...new Set(recentIndices)];
     if (recentIndices.length > 10) {
-      recentIndices = recentIndices.slice(0, 10); // Limit to 10 entries
+      recentIndices = recentIndices.slice(0, 10);
     }
     chrome.storage.sync.set({ recentIndices }, () => {
       if (chrome.runtime.lastError) {
@@ -355,7 +376,6 @@ document.addEventListener("DOMContentLoaded", () => {
       value = tags.join(", ");
       elements.templateTags.value = value;
     }
-    // Snap cursor if between "," and " "
     const cursorPos = elements.templateTags.selectionStart;
     if (value[cursorPos] === " " && value[cursorPos - 1] === ",") {
       elements.templateTags.selectionStart = elements.templateTags.selectionEnd = cursorPos - 1;
@@ -397,7 +417,11 @@ document.addEventListener("DOMContentLoaded", () => {
     chrome.runtime.sendMessage({ action: "closePopup" });
   });
 
-  // New template button: Clear template area and reset selection
+  // New template button
+  const debouncedShowToastNew = debounceToast((message, duration, type) => {
+    showToast(message, duration, type);
+  }, 2000);
+
   elements.newBtn.addEventListener("click", () => {
     storeLastState();
     elements.templateName.value = "";
@@ -408,7 +432,7 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.searchBox.value = "";
     loadTemplates(elements.typeSelect.value, "", false);
     saveState();
-    showToast("New template created.", 3000, "green");
+    debouncedShowToastNew("New template created.", 3000, "green");
   });
 
   // Clear search input
@@ -428,6 +452,10 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Clear all
+  const debouncedShowToastClearAll = debounceToast((message, duration, type) => {
+    showToast(message, duration, type);
+  }, 2000);
+
   elements.clearAllBtn.addEventListener("click", () => {
     storeLastState();
     elements.templateName.value = "";
@@ -438,7 +466,7 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.searchBox.value = "";
     loadTemplates(elements.typeSelect.value, "", false);
     saveState();
-    showToast("All fields cleared.", 3000, "green");
+    debouncedShowToastClearAll("All fields cleared.", 3000, "green");
   });
 
   // Handle ESC key to close popup
@@ -469,12 +497,11 @@ document.addEventListener("DOMContentLoaded", () => {
     saveState();
   });
 
-  // Handle key events for templateTags to treat ", " as a single unit
+  // Handle key events for templateTags
   elements.templateTags.addEventListener("keydown", (event) => {
     const cursorPos = elements.templateTags.selectionStart;
     const value = elements.templateTags.value;
 
-    // Handle Backspace at the end of ", "
     if (event.key === "Backspace" && cursorPos > 0 && value[cursorPos - 1] === " " && value[cursorPos - 2] === ",") {
       event.preventDefault();
       elements.templateTags.value = value.slice(0, cursorPos - 2) + value.slice(cursorPos);
@@ -484,7 +511,6 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    // Handle Delete at the start of ", "
     if (event.key === "Delete" && cursorPos < value.length && value[cursorPos] === "," && value[cursorPos + 1] === " ") {
       event.preventDefault();
       elements.templateTags.value = value.slice(0, cursorPos) + value.slice(cursorPos + 2);
@@ -494,7 +520,6 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    // Handle arrow keys to skip over ", "
     if (event.key === "ArrowLeft" && cursorPos > 1 && value[cursorPos - 1] === " " && value[cursorPos - 2] === ",") {
       event.preventDefault();
       elements.templateTags.selectionStart = elements.templateTags.selectionEnd = cursorPos - 2;
@@ -507,7 +532,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Snap cursor to start of ", " if placed between "," and " "
+  // Snap cursor to start of ", "
   elements.templateTags.addEventListener("click", () => {
     const cursorPos = elements.templateTags.selectionStart;
     const value = elements.templateTags.value;
@@ -541,7 +566,6 @@ document.addEventListener("DOMContentLoaded", () => {
       elements.dropdownResults.innerHTML = "";
       elements.favoriteSuggestions.innerHTML = "";
 
-      // Filter templates
       let filteredTemplates = templates.filter(tmpl => filter === "all" || tmpl.type === filter);
       if (query) {
         filteredTemplates = filteredTemplates.filter(t =>
@@ -554,11 +578,9 @@ document.addEventListener("DOMContentLoaded", () => {
           return a.name.localeCompare(b.name);
         });
       } else {
-        // Sort by recency when searchBox is empty
         filteredTemplates.sort((a, b) => {
           const aIndex = recentIndices.indexOf(a.index);
           const bIndex = recentIndices.indexOf(b.index);
-          // Templates not in recentIndices go to the end
           if (aIndex === -1 && bIndex === -1) return a.name.localeCompare(b.name);
           if (aIndex === -1) return 1;
           if (bIndex === -1) return -1;
@@ -566,7 +588,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       }
 
-      // Populate dropdown only if showDropdown is true
       if (showDropdown) {
         filteredTemplates.forEach((tmpl, idx) => {
           const div = document.createElement("div");
@@ -599,7 +620,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const favorites = templates.filter(tmpl => tmpl.favorite);
       if (favorites.length > 0) {
-        // Sort favorites by recency
         favorites.sort((a, b) => {
           const aIndex = recentIndices.indexOf(a.index);
           const bIndex = recentIndices.indexOf(b.index);
@@ -608,7 +628,6 @@ document.addEventListener("DOMContentLoaded", () => {
           if (bIndex === -1) return -1;
           return aIndex - bIndex;
         });
-        // elements.favoriteStar.classList.remove("d-none");
         elements.favoriteSuggestions.classList.remove("d-none");
         favorites.forEach((tmpl) => {
           const span = document.createElement("span");
@@ -634,7 +653,6 @@ document.addEventListener("DOMContentLoaded", () => {
           elements.favoriteSuggestions.appendChild(span);
         });
       } else {
-        // elements.favoriteStar.classList.add("d-none");
         elements.favoriteSuggestions.classList.add("d-none");
       }
     });
@@ -668,7 +686,6 @@ document.addEventListener("DOMContentLoaded", () => {
   // Save templates
   function saveTemplates(templates, callback, isNewTemplate = false) {
     checkTotalStorageUsage(() => {
-      // Attempt to save templates directly and handle errors
       chrome.storage.sync.set({ templates }, () => {
         if (chrome.runtime.lastError) {
           const errorMessage = chrome.runtime.lastError.message;
@@ -706,14 +723,12 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       const content = sanitizeContent(elements.promptArea.value);
 
-      // Prevent saving with empty content
       if (!content.trim()) {
         showToast("Prompt content is required to save a template.", 3000, "red");
         elements.promptArea.focus();
         return;
       }
 
-      // Check for empty tags and prompt for confirmation
       if (!tagsInput.trim()) {
         elements.templateTags.focus();
         showToast(
@@ -724,9 +739,7 @@ document.addEventListener("DOMContentLoaded", () => {
             {
               text: "Yes",
               callback: () => {
-                // Proceed with saving
                 if (!selectedTemplateName) {
-                  // Save new template
                   storeLastState();
                   lastState.templates = [...templates];
                   const newTemplate = {
@@ -747,7 +760,6 @@ document.addEventListener("DOMContentLoaded", () => {
                     saveNextIndex();
                   }, true);
                 } else {
-                  // Update existing template
                   const template = templates.find(t => t.name === selectedTemplateName);
                   if (!template) {
                     showToast("Selected template not found.", 3000, "red");
@@ -790,9 +802,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      // Proceed with saving if tags are not empty
       if (!selectedTemplateName) {
-        // Save new template
         storeLastState();
         lastState.templates = [...templates];
         const newTemplate = {
@@ -813,7 +823,6 @@ document.addEventListener("DOMContentLoaded", () => {
           saveNextIndex();
         }, true);
       } else {
-        // Update existing template
         const template = templates.find(t => t.name === selectedTemplateName);
         if (!template) {
           showToast("Selected template not found.", 3000, "red");
@@ -864,14 +873,12 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       const content = sanitizeContent(elements.promptArea.value);
 
-      // Prevent saving with empty content
       if (!content.trim()) {
         showToast("Prompt content is required to save a template.", 3000, "red");
         elements.promptArea.focus();
         return;
       }
 
-      // Check for empty tags and prompt for confirmation
       if (!tagsInput.trim()) {
         elements.templateTags.focus();
         showToast(
@@ -973,7 +980,6 @@ document.addEventListener("DOMContentLoaded", () => {
           return;
         }
         if (response && response.success) {
-          // Update recent indices if a template is selected
           if (selectedTemplateName) {
             chrome.storage.sync.get(["templates"], (result) => {
               const templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
@@ -1017,7 +1023,7 @@ document.addEventListener("DOMContentLoaded", () => {
               const templateIndex = templates.findIndex(t => t.name === selectedTemplateName);
               const deletedIndex = templates[templateIndex].index;
               templates.splice(templateIndex, 1);
-              recentIndices = recentIndices.filter(idx => idx !== deletedIndex); // Remove deleted index
+              recentIndices = recentIndices.filter(idx => idx !== deletedIndex);
               chrome.storage.sync.set({ templates, recentIndices }, () => {
                 if (chrome.runtime.lastError) {
                   showToast("Failed to delete template: " + chrome.runtime.lastError.message, 3000, "red");
