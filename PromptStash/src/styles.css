@@ -12,7 +12,7 @@ body.light {
 }
 
 body.dark {
-  background: #1f1f1f;
+  background: #222;
   color: #e8eaed;
 }
 
@@ -167,7 +167,7 @@ body.dark #searchIcon {
 
 body.dark #searchBox {
   background-color: #151515;
-  border-color: #5f6368;
+  border-color: #333;
   color: #e8eaed;
 }
 
@@ -366,11 +366,6 @@ body.dark .favorite-suggestion:hover, body.dark .favorite-suggestion:focus {
   flex-shrink: 0;
 }
 
-body.dark #templateName {
-  border-color: #5f6368;
-  background: #3a3c40;
-}
-
 #templateName::placeholder {
   color: #888;
 }
@@ -390,11 +385,6 @@ body.dark #templateName {
   font-size: 0.9rem;
   width: 100%;
   flex-shrink: 0;
-}
-
-body.dark #templateTags {
-  border-color: #5f6368;
-  background: #303134;
 }
 
 #templateTags::placeholder {
@@ -429,11 +419,6 @@ body.dark #templateTags {
   background-color: #8888;
   border-radius: 4px;
   cursor: pointer;
-}
-
-body.dark #promptArea {
-  border-color: #5f6368;
-  background: #303134;
 }
 
 #promptArea::placeholder {
@@ -490,6 +475,12 @@ body.dark .clrbtn:hover {
 
 #buttons .btn {
   border: none;
+  position: relative; /* Enable positioning for spinner */
+}
+
+#buttons .btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 #buttons .btn-label {
@@ -522,15 +513,40 @@ body.dark #buttons .btn svg {
   transform: scale(1.1);
 }
 
+/* Spinner styles for loading indicator */
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #888;
+  border-top: 2px solid #202124;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+}
+
+body.dark .spinner {
+  border: 2px solid #aaa;
+  border-top: 2px solid #e8eaed;
+}
+
+@keyframes spin {
+  0% { transform: translateY(-50%) rotate(0deg); }
+  100% { transform: translateY(-50%) rotate(360deg); }
+}
+
 .tooltip-inner {
   background: #000000;
   color: #e8eaed;
 }
 
 body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
-  border-color: #5f6368;
-  background: #3a3c40;
-  color: #e8eaed;
+  border-color: #333;
+  background: #151515;
+  color: #edede8;
 }
 
 :root {
@@ -554,7 +570,7 @@ body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
     margin-inline: 2vw;
   }  
   
-  #buttons .btn svg{
+  #buttons .btn svg {
     width: 10vw;
     height: 10vw;
   }
@@ -584,7 +600,7 @@ body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
     padding-bottom: 1vh;
   }  
   
-  #buttons .btn svg{
+  #buttons .btn svg {
     width: calc(8px + 4vh);
     height: calc(8px + 4vh);
   }
