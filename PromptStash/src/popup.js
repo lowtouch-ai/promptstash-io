@@ -339,14 +339,6 @@ document.addEventListener("DOMContentLoaded", () => {
     return sanitizedTags.join(", ");
   }
 
-  // Sanitize content to prevent XSS
-  function sanitizeContent(content) {
-    if (!content) return "";
-    const div = document.createElement("div");
-    div.textContent = content;
-    return div.innerHTML.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
-  }
-
   // Check total storage usage
   function checkTotalStorageUsage(callback) {
     chrome.storage.local.get(null, (items) => {
@@ -540,7 +532,6 @@ document.addEventListener("DOMContentLoaded", () => {
   // Control fetchBtn2 visibility on input
   elements.promptArea.addEventListener("input", () => {
     storeLastState();
-    elements.promptArea.value = sanitizeContent(elements.promptArea.value);
     elements.fetchBtn2.style.display = elements.promptArea.value ? "none" : "block";
     saveState();
   });
@@ -778,7 +769,7 @@ document.addEventListener("DOMContentLoaded", () => {
         toggleButtonState(elements.saveBtn, false);
         return;
       }
-      const content = sanitizeContent(elements.promptArea.value);
+      const content = elements.promptArea.value;
 
       if (!content.trim()) {
         showToast("Prompt content is required to save a template.", 3000, "red", [], "save");
@@ -938,7 +929,7 @@ document.addEventListener("DOMContentLoaded", () => {
         toggleButtonState(elements.saveAsBtn, false);
         return;
       }
-      const content = sanitizeContent(elements.promptArea.value);
+      const content = elements.promptArea.value;
 
       if (!content.trim()) {
         showToast("Prompt content is required to save a template.", 3000, "red", [], "saveAs");
@@ -987,7 +978,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const newTemplate = {
         name,
         tags,
-        content: sanitizeContent(elements.promptArea.value),
+        content: elements.promptArea.value,
         type: "custom",
         favorite: false,
         index: nextIndex
@@ -1031,7 +1022,7 @@ document.addEventListener("DOMContentLoaded", () => {
           }
           if (response && response.prompt) {
             storeLastState();
-            elements.promptArea.value = sanitizeContent(response.prompt);
+            elements.promptArea.value = response.prompt;
             elements.fetchBtn2.style.display = "none";
             saveState();
           } else {
@@ -1059,7 +1050,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       chrome.tabs.sendMessage(tabId, {
         action: "sendPrompt",
-        prompt: sanitizeContent(elements.promptArea.value)
+        prompt: elements.promptArea.value
       }, (response) => {
         clearTimeout(timeout);
         if (chrome.runtime.lastError) {
