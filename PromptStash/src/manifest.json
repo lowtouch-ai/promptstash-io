@@ -3,7 +3,13 @@
   "name": "PromptStash by lowtouch.ai",
   "version": "1.0.0",
   "description": "A Chrome extension to manage and deploy AI prompt templates.",
-  "permissions": ["storage", "tabs", "activeTab", "scripting", "clipboardWrite", "system.display"],
+  "permissions": [
+    "storage",
+    "tabs",
+    "activeTab",
+    "scripting",
+    "contextMenus"
+  ],
   "action": {
     "default_icon": {
       "16": "icon16.png",
@@ -17,16 +23,25 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content.js"]
+      "js": ["content.js"],
+      "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["popup.html", "styles.css", "sprite.svg", "defaultTemplates.mjs"],
-      "matches": ["<all_urls>"],
-      "run_at": "document_idle"
+      "resources": [
+        "popup.html",
+        "styles.css",
+        "sprite.svg",
+        "defaultTemplates.mjs",
+        "bootstrap.bundle.min.js"
+      ],
+      "matches": ["<all_urls>"]
     }
   ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
   "icons": {
     "16": "icon16.png",
     "48": "icon48.png",
