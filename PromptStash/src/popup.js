@@ -331,7 +331,7 @@ document.addEventListener("DOMContentLoaded", () => {
       showToast("Maximum of 5 tags allowed per template.", 3000, "red", [], "save");
       return null;
     }
-    const sanitizedTags = tags.map(tag => tag.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20));
+    const sanitizedTags = tags.map(tag => tag.replace(/[^a-zA-Z0-9\s]/g, "").slice(0, 20));
     if (sanitizedTags.some(tag => tag.length === 0)) {
       showToast("Each tag must contain only letters or numbers and be 20 characters or less.", 3000, "red", [], "save");
       return null;
@@ -399,9 +399,9 @@ document.addEventListener("DOMContentLoaded", () => {
     let value = elements.templateTags.value;
     if (value) {
       value = value.replace(/^[,\s]+/g, "");
-      value = value.replace(/,[,\s]*/g, ", ");
+      value = value.replace(/[\s]*,[,\s]*/g, ", ");
       value = value.replace(/\s+/g, " ");
-      const tags = value.split(", ").map(tag => tag.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20));
+      const tags = value.split(", ").map(tag => tag.replace(/[^a-zA-Z0-9\s]/g, "").slice(0, 20));
       if (tags.length > 5) {
         showToast("Maximum of 5 tags allowed per template.", 3000, "red", [], "input");
         tags.length = 5;
