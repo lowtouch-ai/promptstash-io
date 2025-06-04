@@ -53,8 +53,6 @@ function togglePopup() {
         overflow: "hidden",
         transition: "width 0.3s ease, height 0.3s ease, top 0.3s ease, left 0.3s ease"
       });
-
-
     });
 
     // Universal close functionality
@@ -72,7 +70,7 @@ function togglePopup() {
   }
 }
 
-// Handle messages for closing popup and fullscreen
+// Handle messages for closing popup, fullscreen, and re-injecting content script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "closePopup") {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -135,6 +133,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ tabId: tabs[0].id });
       } else {
         sendResponse({ tabId: null });
+      }
+    });
+    return true; // Keep message channel open for async response
+  } else if (message.action === "reInjectContentScript") {
+    // Re-inject content.js into the specified tab
+    chrome.scripting.executeScript({
+      target: { tabId: message.tabId },
+      files: ["content.js"]
+    }, () => {
+      if (chrome.runtime.lastError) {
+        console.error("Content script re-injection error:", chrome.runtime.lastError.message);
+        sendResponse({ success: false });
+      } else {
+        console.log("Content script re-injected successfully");
+        sendResponse({ success: true });
       }
     });
     return true; // Keep message channel open for async response

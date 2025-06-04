@@ -54,13 +54,22 @@ function processMessage(message, inputField, sendResponse) {
   if (message.action === "sendPrompt") {
     if (inputField) {
       console.log("Setting prompt:", message.prompt);
-      if (inputField.tagName === "DIV" && inputField.contentEditable === "true") {
-        // Preserve newlines by setting innerHTML with <br> for contenteditable
+      if (inputField.tagName === "DIV" && inputField.contentEditable === "true" && inputField.classList.contains("ProseMirror")) {
+        // Handle ChatGPT's ProseMirror: clear existing content, then set prompt with <p> and <br> tags, preserving empty lines
+        inputField.innerHTML = ""; // Clear existing content to prevent submission
+        const lines = message.prompt.split("\n"); // Split by newlines, keep empty lines
+        inputField.innerHTML = lines.map(line => `<p>${line}<br></p>`).join("");
+        console.log("Cleared and set innerHTML for ChatGPT ProseMirror div with <p> and <br> tags, preserving empty lines.");
+      } else if (inputField.tagName === "DIV" && inputField.contentEditable === "true") {
+        // Other contenteditable divs: clear content and use <br> for newlines
+        inputField.innerHTML = "";
         inputField.innerHTML = message.prompt.replace(/\n/g, "<br>");
-        console.log("Set innerHTML for contenteditable div with <br> for newlines.");
+        console.log("Cleared and set innerHTML for contenteditable div with <br> for newlines.");
       } else {
+        // Clear input/textarea before setting value
+        inputField.value = "";
         inputField.value = message.prompt;
-        console.log("Set value for input/textarea.");
+        console.log("Cleared and set value for input/textarea.");
       }
       // Dispatch input and change events to ensure compatibility
       inputField.dispatchEvent(new Event("input", { bubbles: true }));
@@ -75,9 +84,20 @@ function processMessage(message, inputField, sendResponse) {
   } else if (message.action === "getPrompt") {
     if (inputField) {
       let prompt;
-      if (inputField.tagName === "DIV" && inputField.contentEditable === "true") {
-        // Handle ChatGPT's ProseMirror div, preserving newlines from <br> and stripping other tags
-        prompt = inputField.innerHTML.replace(/<br\s*\/?>/gi, "\n").replace(/<\/?[^>]+(>|$)/g, "");
+      if (inputField.tagName === "DIV" && inputField.contentEditable === "true" && inputField.classList.contains("ProseMirror")) {
+        // Handle ChatGPT's ProseMirror: extract text from <p> tags, preserving empty lines
+        const paragraphs = Array.from(inputField.querySelectorAll("p"));
+        if (paragraphs.length > 0) {
+          prompt = paragraphs.map(p => p.textContent.trimEnd()).join("\n"); // Preserve empty lines, trim trailing spaces
+          console.log("Retrieved prompt from ChatGPT ProseMirror div with empty lines preserved:", prompt);
+        } else {
+          // Fallback for other contenteditable structures
+          prompt = inputField.textContent.replace(/\n+/g, "\n").trimEnd();
+          console.log("Retrieved prompt from ChatGPT ProseMirror div (fallback):", prompt);
+        }
+      } else if (inputField.tagName === "DIV" && inputField.contentEditable === "true") {
+        // Handle other contenteditable divs, preserving newlines from <br>
+        prompt = inputField.innerHTML.replace(/<br\s*\/?>/gi, "\n").replace(/<\/?[^>]+(>|$)/g, "").trimEnd();
         console.log("Retrieved prompt from contenteditable div:", prompt);
       } else {
         prompt = inputField.value || "";

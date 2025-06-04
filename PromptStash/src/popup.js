@@ -1012,24 +1012,43 @@ document.addEventListener("DOMContentLoaded", () => {
           toggleButtonState(btn, false);
           return;
         }
-        chrome.tabs.sendMessage(tabId, { action: "getPrompt" }, (response) => {
-          clearTimeout(timeout);
-          if (chrome.runtime.lastError) {
-            console.error("Fetch error:", chrome.runtime.lastError.message);
-            showToast("Failed to fetch prompt. Please refresh the page.", 3000, "red", [], "fetch");
+        let hasRetried = false;
+        function tryFetchPrompt() {
+          chrome.tabs.sendMessage(tabId, { action: "getPrompt" }, (response) => {
+            clearTimeout(timeout);
+            if (chrome.runtime.lastError) {
+              const errorMessage = chrome.runtime.lastError.message;
+              console.error("Fetch error:", errorMessage);
+              if (!hasRetried && (errorMessage.includes("Cannot access contents of the page") || errorMessage.includes("Could not establish connection"))) {
+                hasRetried = true;
+                console.log("Content script unresponsive, attempting to re-inject...");
+                chrome.runtime.sendMessage({ action: "reInjectContentScript", tabId }, (reInjectResponse) => {
+                  if (reInjectResponse && reInjectResponse.success) {
+                    console.log("Content script re-injected, retrying fetch...");
+                    setTimeout(tryFetchPrompt, 100); // Short delay to ensure script is loaded
+                  } else {
+                    showToast("Failed to fetch prompt. Please try again or refresh the page.", 3000, "red", [], "fetch");
+                    toggleButtonState(btn, false);
+                  }
+                });
+              } else {
+                showToast("Failed to fetch prompt. Please try again or refresh the page.", 3000, "red", [], "fetch");
+                toggleButtonState(btn, false);
+              }
+              return;
+            }
+            if (response && response.prompt) {
+              storeLastState();
+              elements.promptArea.value = response.prompt;
+              elements.fetchBtn2.style.display = "none";
+              saveState();
+            } else {
+              showToast("No input found on the page.", 3000, "red", [], "fetch");
+            }
             toggleButtonState(btn, false);
-            return;
-          }
-          if (response && response.prompt) {
-            storeLastState();
-            elements.promptArea.value = response.prompt;
-            elements.fetchBtn2.style.display = "none";
-            saveState();
-          } else {
-            showToast("No input found on the page.", 3000, "red", [], "fetch");
-          }
-          toggleButtonState(btn, false);
-        });
+          });
+        }
+        tryFetchPrompt();
       });
     });
   });
@@ -1048,37 +1067,57 @@ document.addEventListener("DOMContentLoaded", () => {
         toggleButtonState(elements.sendBtn, false);
         return;
       }
-      chrome.tabs.sendMessage(tabId, {
-        action: "sendPrompt",
-        prompt: elements.promptArea.value
-      }, (response) => {
-        clearTimeout(timeout);
-        if (chrome.runtime.lastError) {
-          console.error("Send error:", chrome.runtime.lastError.message);
-          showToast("Failed to send prompt. Please refresh the page.", 3000, "red", [], "send");
-          toggleButtonState(elements.sendBtn, false);
-          return;
-        }
-        if (response && response.success) {
-          if (selectedTemplateName) {
-            chrome.storage.local.get(["templates"], (result) => {
-              const templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
-              const template = templates.find(t => t.name === selectedTemplateName);
-              if (template) {
-                updateRecentIndices(template.index);
-              }
+      let hasRetried = false;
+      function trySendPrompt() {
+        chrome.tabs.sendMessage(tabId, {
+          action: "sendPrompt",
+          prompt: elements.promptArea.value
+        }, (response) => {
+          clearTimeout(timeout);
+          if (chrome.runtime.lastError) {
+            const errorMessage = chrome.runtime.lastError.message;
+            console.error("Send error:", errorMessage);
+            if (!hasRetried && (errorMessage.includes("Cannot access contents of the page") || errorMessage.includes("Could not establish connection"))) {
+              hasRetried = true;
+              console.log("Content script unresponsive, attempting to re-inject...");
+              chrome.runtime.sendMessage({ action: "reInjectContentScript", tabId }, (reInjectResponse) => {
+                if (reInjectResponse && reInjectResponse.success) {
+                  console.log("Content script re-injected, retrying send...");
+                  setTimeout(trySendPrompt, 100); // Short delay to ensure script is loaded
+                } else {
+                  showToast("Failed to send prompt. Please try again or refresh the page.", 3000, "red", [], "send");
+                  toggleButtonState(elements.sendBtn, false);
+                }
+              });
+              return;
+            } else {
+              showToast("Failed to send prompt. Please try again or refresh the page.", 3000, "red", [], "send");
+              toggleButtonState(elements.sendBtn, false);
+              return;
+            }
+          }
+          if (response && response.success) {
+            if (selectedTemplateName) {
+              chrome.storage.local.get(["templates"], (result) => {
+                const templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
+                const template = templates.find(t => t.name === selectedTemplateName);
+                if (template) {
+                  updateRecentIndices(template.index);
+                }
+                chrome.runtime.sendMessage({ action: "closePopup" });
+                toggleButtonState(elements.sendBtn, false);
+              });
+            } else {
               chrome.runtime.sendMessage({ action: "closePopup" });
               toggleButtonState(elements.sendBtn, false);
-            });
+            }
           } else {
-            chrome.runtime.sendMessage({ action: "closePopup" });
+            showToast("Failed to send prompt. Please try again or refresh the page.", 3000, "red", [], "send");
             toggleButtonState(elements.sendBtn, false);
           }
-        } else {
-          showToast("Failed to send prompt. Please refresh the page.", 3000, "red", [], "send");
-          toggleButtonState(elements.sendBtn, false);
-        }
-      });
+        });
+      }
+      trySendPrompt();
     });
   });
 
