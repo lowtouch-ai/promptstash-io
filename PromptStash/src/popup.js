@@ -161,6 +161,14 @@ document.addEventListener("DOMContentLoaded", () => {
         console.log("Duplicate confirmation toast found, skipping");
         return;
       }
+    } else {
+      // Check for duplicate non-confirmation toasts from the same operation
+      const duplicateIndex = toastQueue.findIndex(toast => toast.message === message && toast.buttons.length === 0 && toast.operationId === operationId);
+      if (duplicateIndex !== -1) {
+        console.log("Duplicate non-confirmation toast found for operation", operationId, "updating duration to", duration);
+        toastQueue[duplicateIndex].duration = duration; // Update duration to the latest
+        return;
+      }
     }
     // If new operation, close current toast, clear queue, and update operationId
     if (operationId !== currentOperationId) {
@@ -393,26 +401,44 @@ document.addEventListener("DOMContentLoaded", () => {
     saveState();
   }, 10));
 
-  // Real-time tags validation
+// Real-time tags validation
   elements.templateTags.addEventListener("input", debounce(() => {
     storeLastState();
     let value = elements.templateTags.value;
     if (value) {
-      value = value.replace(/^[,\s]+/g, "");
-      value = value.replace(/[\s]*,[,\s]*/g, ", ");
-      value = value.replace(/\s+/g, " ");
-      const tags = value.split(", ").map(tag => tag.replace(/[^a-zA-Z0-9\s]/g, "").slice(0, 20));
+      // Normalize input: remove leading/trailing commas/spaces, standardize comma-space separator
+      value = value.replace(/^[,\s]+/g, "").replace(/[\s]*,[,\s]*/g, ", ");
+      value = value.replace(/\s+/g, " "); // Replace multiple spaces with single space
+      const tags = value.split(", ");
+      
+      // Validate tag count
       if (tags.length > 5) {
         showToast("Maximum of 5 tags allowed per template.", 3000, "red", [], "input");
-        tags.length = 5;
+        value = tags.slice(0, 5).join(", ");
       }
-      value = tags.join(", ");
+      
+      // Validate and sanitize tags
+      if (tags.some(tag => tag.length > 20)) {
+        showToast("Each tag must be 20 characters or less.", 3000, "red", [], "input");
+      }
+      const trimmedTags = tags.map(tag => tag.slice(0, 20));
+      
+      const sanitizedTags = trimmedTags.map(tag => tag.replace(/[^a-zA-Z0-9\s]/g, ""));
+      if (sanitizedTags.some((tag, i) => tag !== trimmedTags[i])) {
+        showToast("Each tag must contain only letters, numbers, or spaces.", 3000, "red", [], "input");
+      }
+      
+      // Update input value with sanitized tags
+      value = sanitizedTags.join(", ");
       elements.templateTags.value = value;
     }
+    
+    // Adjust cursor position to avoid landing on comma or space
     const cursorPos = elements.templateTags.selectionStart;
-    if (value[cursorPos] === " " && value[cursorPos - 1] === ",") {
+    if (value && cursorPos > 0 && value[cursorPos] === " " && value[cursorPos - 1] === ",") {
       elements.templateTags.selectionStart = elements.templateTags.selectionEnd = cursorPos - 1;
     }
+    
     saveState();
   }, 10));
 
