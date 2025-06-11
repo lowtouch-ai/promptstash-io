@@ -609,7 +609,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Get target tab ID with timeout
   function getTargetTabId(callback) {
     const timeout = setTimeout(() => {
-      showToast("Error: No response from tab. Please activate a supported webpage.", 3000, "red", [], "fetch");
+      showToast("Error: No response from tab. Please navigate to a supported AI platform (e.g., grok.com, perplexity.ai, or chatgpt.com).", 3000, "red", [], "fetch");
       callback(null);
     }, 5000);
     chrome.runtime.sendMessage({ action: "getTargetTabId" }, (response) => {
@@ -617,7 +617,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (response && response.tabId) {
         callback(response.tabId);
       } else {
-        showToast("Error: No valid tab selected. Please activate a supported webpage.", 3000, "red", [], "fetch");
+        showToast("Error: This page is not supported. Please navigate to a supported AI platform (e.g., grok.com, perplexity.ai, or chatgpt.com).", 3000, "red", [], "fetch");
         callback(null);
       }
     });
@@ -1034,7 +1034,7 @@ document.addEventListener("DOMContentLoaded", () => {
       getTargetTabId((tabId) => {
         if (!tabId) {
           clearTimeout(timeout);
-          showToast("Error: No valid tab selected. Please activate a supported webpage.", 3000, "red", [], "fetch");
+          showToast("Error: This page is not supported. Please navigate to a supported AI platform (e.g., grok.com, perplexity.ai, or chatgpt.com).", 3000, "red", [], "fetch");
           toggleButtonState(btn, false);
           return;
         }
@@ -1089,7 +1089,7 @@ document.addEventListener("DOMContentLoaded", () => {
     getTargetTabId((tabId) => {
       if (!tabId) {
         clearTimeout(timeout);
-        showToast("Error: No valid tab selected. Please activate a supported webpage.", 3000, "red", [], "send");
+        showToast("Error: This page is not supported. Please navigate to a supported AI platform (e.g., grok.com, perplexity.ai, or chatgpt.com).", 3000, "red", [], "send");
         toggleButtonState(elements.sendBtn, false);
         return;
       }
