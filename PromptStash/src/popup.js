@@ -13,25 +13,15 @@ function debounce(func, wait) {
   };
 }
 
-// Debounce specifically for toast-generating actions
-const debounceToast = (func, wait) => {
-  let lastCall = 0;
-  return function (...args) {
-    const now = Date.now();
-    if (now - lastCall >= wait) {
-      lastCall = now;
-      func.apply(this, args);
-    }
-  };
-};
-
-// Toast message queue
+// Toast message queue and timestamp tracking
 let toastQueue = [];
 let isToastShowing = false;
 let autoHideTimeout = null; // Track the auto-hide timeout
 let outsideClickListener = null; // Track the outside click listener
 let currentOperationId = null; // Track the current operation
 let nextToastTimeout = null; // Track the scheduled displayNextToast timeout
+const toastTimestamps = {}; // Track last display time for each toast (message + operationId)
+let overrideAnimation = false; // Flag to skip animation delay for overriding toasts
 
 // Utility to toggle button disabled state
 function toggleButtonState(button, disabled) {
@@ -151,9 +141,30 @@ document.addEventListener("DOMContentLoaded", () => {
     };
   }
 
-  // Show toast notification with operation-based queueing
+  // Show toast notification with operation-based queueing and duplicate debouncing
   function showToast(message, duration = 4000, type = "red", buttons = [], operationId) {
     console.log("Queueing toast:", { message, duration, type, hasButtons: buttons.length > 0, operationId });
+    
+    // Create a unique key for the toast based on message and operationId
+    const toastKey = `${message}|${operationId}`;
+    const now = Date.now();
+    
+    // Debounce duplicate non-confirmation toasts (ignore within 2 seconds)
+    if (buttons.length === 0 && toastTimestamps[toastKey] && now - toastTimestamps[toastKey] < 2000) {
+      console.log(`Duplicate toast debounced for key: ${toastKey}`);
+      return;
+    }
+    
+    // Update timestamp for this toast
+    toastTimestamps[toastKey] = now;
+    
+    // Clean up old timestamps to prevent memory leak
+    Object.keys(toastTimestamps).forEach(key => {
+      if (now - toastTimestamps[key] > 10000) {
+        delete toastTimestamps[key];
+      }
+    });
+    
     // Check for duplicate confirmation toasts
     if (buttons.length > 0) {
       const duplicateIndex = toastQueue.findIndex(toast => toast.message === message && toast.buttons.length > 0);
@@ -161,19 +172,13 @@ document.addEventListener("DOMContentLoaded", () => {
         console.log("Duplicate confirmation toast found, skipping");
         return;
       }
-    } else {
-      // Check for duplicate non-confirmation toasts from the same operation
-      const duplicateIndex = toastQueue.findIndex(toast => toast.message === message && toast.buttons.length === 0 && toast.operationId === operationId);
-      if (duplicateIndex !== -1) {
-        console.log("Duplicate non-confirmation toast found for operation", operationId, "updating duration to", duration);
-        toastQueue[duplicateIndex].duration = duration; // Update duration to the latest
-        return;
-      }
     }
+    
     // If new operation, close current toast, clear queue, and update operationId
     if (operationId !== currentOperationId) {
       if (isToastShowing) {
         console.log(`New operation ${operationId}, closing current toast and clearing queue`);
+        overrideAnimation = true; // Flag to skip animation delay
         // If the current toast is a confirmation toast, execute the "No" callback to re-enable buttons
         const currentToast = elements.toast.className.includes("confirmation") ? toastQueue[0] || { buttons: [] } : { buttons: [] };
         const noButtonCallback = currentToast.buttons.find(b => b.text === "No")?.callback;
@@ -182,6 +187,7 @@ document.addEventListener("DOMContentLoaded", () => {
       toastQueue = [];
       currentOperationId = operationId;
     }
+    
     // Only queue toasts from the current operation
     if (operationId === currentOperationId) {
       toastQueue.push({ message, duration, type, buttons, operationId });
@@ -214,8 +220,13 @@ document.addEventListener("DOMContentLoaded", () => {
       isToastShowing = false;
       console.log("Toast closed, executing callback:", !!onClose);
       if (onClose) onClose();
-      // Schedule displayNextToast after animation completes
-      nextToastTimeout = setTimeout(displayNextToast, 350);
+      // Schedule displayNextToast immediately if overriding, else after animation
+      if (overrideAnimation) {
+        overrideAnimation = false; // Reset flag
+        displayNextToast();
+      } else {
+        nextToastTimeout = setTimeout(displayNextToast, 350);
+      }
     }, 300);
   }
 
@@ -401,7 +412,7 @@ document.addEventListener("DOMContentLoaded", () => {
     saveState();
   }, 10));
 
-// Real-time tags validation
+  // Real-time tags validation
   elements.templateTags.addEventListener("input", debounce(() => {
     storeLastState();
     let value = elements.templateTags.value;
@@ -477,10 +488,6 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // New template button
-  const debouncedShowToastNew = debounceToast((message, duration, type) => {
-    showToast(message, duration, type, [], "new");
-  }, 2000);
-
   elements.newBtn.addEventListener("click", () => {
     storeLastState();
     elements.templateName.value = "";
@@ -491,7 +498,7 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.searchBox.value = "";
     loadTemplates(elements.typeSelect.value, "", false);
     saveState();
-    debouncedShowToastNew("New template created.", 3000, "green");
+    showToast("New template created.", 3000, "green", [], "new");
   });
 
   // Clear search input
@@ -511,10 +518,6 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Clear all
-  const debouncedShowToastClearAll = debounceToast((message, duration, type) => {
-    showToast(message, duration, type, [], "clearAll");
-  }, 2000);
-
   elements.clearAllBtn.addEventListener("click", () => {
     storeLastState();
     elements.templateName.value = "";
@@ -525,7 +528,7 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.searchBox.value = "";
     loadTemplates(elements.typeSelect.value, "", false);
     saveState();
-    debouncedShowToastClearAll("All fields cleared.", 3000, "green");
+    showToast("All fields cleared.", 3000, "green", [], "clearAll");
   });
 
   // Handle ESC key for popup and confirmation toasts
@@ -609,7 +612,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Get target tab ID with timeout
   function getTargetTabId(callback) {
     const timeout = setTimeout(() => {
-      showToast("Error: No response from tab. Please activate a supported webpage.", 3000, "red", [], "fetch");
+      showToast("Error: No response from tab. Please navigate to a supported AI platform (e.g., grok.com, perplexity.ai, or chatgpt.com).", 3000, "red", [], "fetch");
       callback(null);
     }, 5000);
     chrome.runtime.sendMessage({ action: "getTargetTabId" }, (response) => {
@@ -617,7 +620,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (response && response.tabId) {
         callback(response.tabId);
       } else {
-        showToast("Error: No valid tab selected. Please activate a supported webpage.", 3000, "red", [], "fetch");
+        showToast("Error: This page is not supported. Please navigate to a supported AI platform (e.g., grok.com, perplexity.ai, or chatgpt.com).", 3000, "red", [], "fetch");
         callback(null);
       }
     });
@@ -1034,7 +1037,7 @@ document.addEventListener("DOMContentLoaded", () => {
       getTargetTabId((tabId) => {
         if (!tabId) {
           clearTimeout(timeout);
-          showToast("Error: No valid tab selected. Please activate a supported webpage.", 3000, "red", [], "fetch");
+          showToast("Error: This page is not supported. Please navigate to a supported AI platform (e.g., grok.com, perplexity.ai, or chatgpt.com).", 3000, "red", [], "fetch");
           toggleButtonState(btn, false);
           return;
         }
@@ -1089,7 +1092,7 @@ document.addEventListener("DOMContentLoaded", () => {
     getTargetTabId((tabId) => {
       if (!tabId) {
         clearTimeout(timeout);
-        showToast("Error: No valid tab selected. Please activate a supported webpage.", 3000, "red", [], "send");
+        showToast("Error: This page is not supported. Please navigate to a supported AI platform (e.g., grok.com, perplexity.ai, or chatgpt.com).", 3000, "red", [], "send");
         toggleButtonState(elements.sendBtn, false);
         return;
       }
@@ -1251,25 +1254,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Initialize tooltips
   const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
-  tooltipTriggerList.forEach(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl, {
-    delay: { show: 500, hide: 50 }
+  tooltipTriggerList.forEach(tooltipTriggerElm => new bootstrap.Tooltip(tooltipTriggerElm, {
+    duration: 300
   }));
 
   // Keyboard navigation for dropdown
-  elements.dropdownResults.addEventListener("keydown", (event) => {
+  elements.dropdownResults.addEventListener("keydown", (e) => {
     const items = elements.dropdownResults.querySelectorAll("div");
     const focused = document.activeElement;
     let index = Array.from(items).indexOf(focused);
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
       index = (index + 1) % items.length;
       items[index].focus();
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
       index = (index - 1 + items.length) % items.length;
       items[index].focus();
-    } else if (event.key === "Enter") {
-      event.preventDefault();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
       focused.click();
     }
   });

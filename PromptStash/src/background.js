@@ -1,16 +1,48 @@
 // Listen for extension icon click to toggle popup
 chrome.action.onClicked.addListener((tab) => {
-  if (tab.url.startsWith("chrome://")) {
-    console.error("Cannot inject into chrome:// URLs");
-    alert("Cannot inject into chrome:// URLs");
+  // Check for restricted protocols
+  if (tab.url.match(/^(chrome|file|about):\/\//)) {
+    console.error("Cannot inject into restricted URLs:", tab.url);
+    chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      function: showUnsupportedSiteToast,
+      args: ["PromptStash cannot be used on restricted URLs (e.g., chrome://, file://, about://). Please navigate to a supported AI platform (e.g., grok.com, perplexity.ai, or chatgpt.com)."]
+    });
     return;
   }
+
+  // Check if the tab URL matches supported hosts
+  const supportedHosts = [
+    "https://grok.com/",
+    "https://www.perplexity.ai/",
+    "https://chatgpt.com/"
+  ];
+  const isSupported = supportedHosts.some(host => {
+    const regex = new RegExp(`^${host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}.*`);
+    return regex.test(tab.url);
+  });
+
+  if (!isSupported) {
+    console.error("Tab URL not supported:", tab.url);
+    chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      function: showUnsupportedSiteToast,
+      args: ["PromptStash is only supported on grok.com, perplexity.ai, and chatgpt.com. Please navigate to a supported site."]
+    });
+    return;
+  }
+
   chrome.scripting.executeScript({
     target: { tabId: tab.id },
     function: togglePopup
   }, () => {
     if (chrome.runtime.lastError) {
       console.error("Injection error:", chrome.runtime.lastError.message);
+      chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        function: showUnsupportedSiteToast,
+        args: ["Failed to open PromptStash: " + chrome.runtime.lastError.message]
+      });
     }
   });
 });
@@ -30,7 +62,7 @@ function togglePopup() {
     `;
     document.body.appendChild(popup);
 
-    // Check if fullscreen mode is active
+    // Retrieve stored fullscreen state and apply styles
     chrome.storage.local.get(["isFullscreen"], (result) => {
       const isFullscreen = result.isFullscreen || false;
       const isSmallScreen = window.innerWidth <= 768;
@@ -59,15 +91,59 @@ function togglePopup() {
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && popup) {
         popup.remove();
+        chrome.storage.local.set({ isFullscreen: false });
       }
     });
 
     document.addEventListener("click", (e) => {
       if (popup && !popup.contains(e.target)) {
         popup.remove();
+        chrome.storage.local.set({ isFullscreen: false });
       }
     });
   }
+}
+
+// Function to display toast notification for unsupported sites
+function showUnsupportedSiteToast(message) {
+  let toast = document.getElementById("promptstash-toast");
+  if (toast) {
+    toast.remove();
+  }
+
+  toast = document.createElement("div");
+  toast.id = "promptstash-toast";
+  toast.className = "promptstash-toast";
+  toast.textContent = message;
+  document.body.appendChild(toast);
+
+  // Apply styles to match popup.js toast
+  Object.assign(toast.style, {
+    position: "fixed",
+    top: "20px",
+    right: "20px",
+    padding: "10px 20px",
+    borderRadius: "6px",
+    background: "#fdd",
+    color: "#800",
+    zIndex: "10001",
+    opacity: "0",
+    transform: "translateY(-20px)",
+    transition: "opacity 0.3s ease, transform 0.3s ease"
+  });
+
+  // Show toast
+  setTimeout(() => {
+    toast.style.opacity = "1";
+    toast.style.transform = "translateY(0)";
+  }, 10);
+
+  // Auto-hide after 3 seconds
+  setTimeout(() => {
+    toast.style.opacity = "0";
+    toast.style.transform = "translateY(-20px)";
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
 }
 
 // Handle messages for closing popup, fullscreen, and re-injecting content script
@@ -91,13 +167,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
         });
       });
-      // Reset fullscreen state
-      chrome.storage.local.set({ isFullscreen: false });
     });
   } else if (message.action === "toggleFullscreen") {
     chrome.storage.local.get(["isFullscreen"], (result) => {
       const isFullscreen = !result.isFullscreen;
       chrome.storage.local.set({ isFullscreen }, () => {
+        if (chrome.runtime.lastError) {
+          console.error("Storage set error:", chrome.runtime.lastError.message);
+          return;
+        }
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
           if (!tabs[0]) return;
           chrome.scripting.executeScript({
@@ -113,8 +191,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   top: isFullscreen ? "0" : isSmallScreen ? "0" : "2vh",
                   borderRadius: isFullscreen ? "0" : "10px",
                   boxShadow: isFullscreen ? "none" : "0 4px 15px rgba(0, 0, 0, 0.2)",
-                  transition: "width 0.3s ease, height 0.3s ease, top 0.3s ease, left 0.3s ease",
-                  transform: "none"
+                  transition: "width 0.3s ease, height 0.3s ease, top 0.3s ease, left 0.3s ease"
                 });
               }
             },
@@ -129,9 +206,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
   } else if (message.action === "getTargetTabId") {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0] && !tabs[0].url.startsWith("chrome://")) {
-        sendResponse({ tabId: tabs[0].id });
+      if (tabs[0] && !tabs[0].url.match(/^(chrome|file|about):\/\//)) {
+        // Check if the tab URL matches supported hosts
+        const supportedHosts = [
+          "https://grok.com/",
+          "https://www.perplexity.ai/",
+          "https://chatgpt.com/"
+        ];
+        const isSupported = supportedHosts.some(host => {
+          const regex = new RegExp(`^${host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}.*`);
+          return regex.test(tabs[0].url);
+        });
+
+        if (isSupported) {
+          sendResponse({ tabId: tabs[0].id });
+        } else {
+          console.error("Tab URL not supported:", tabs[0].url);
+          chrome.scripting.executeScript({
+            target: { tabId: tabs[0].id },
+            function: showUnsupportedSiteToast,
+            args: ["PromptStash is only supported on grok.com, perplexity.ai, and chatgpt.com. Please navigate to a supported site."]
+          });
+          sendResponse({ tabId: null });
+        }
       } else {
+        console.error("Restricted URL:", tabs[0]?.url || "No active tab");
+        chrome.scripting.executeScript({
+          target: { tabId: tabs[0]?.id },
+          function: showUnsupportedSiteToast,
+          args: ["PromptStash cannot be used on restricted URLs (e.g., chrome://, file://, about://). Please navigate to a supported AI platform (e.g., grok.com, perplexity.ai, or chatgpt.com)."]
+        });
         sendResponse({ tabId: null });
       }
     });
