@@ -176,7 +176,7 @@ body.dark #searchBox {
   box-shadow: 0 0 0.5rem 1px rgba(0, 0, 0, 0.15);
 }
 
-body.dark #searchBox:hover, #searchBox:focus {
+body.dark #searchBox:hover, body.dark #searchBox:focus {
   border: 1px solid rgb(208, 208, 208);
 }
 
@@ -610,23 +610,22 @@ body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
 #promptstash-widget {
   position: absolute;
   z-index: 10000;
-  cursor: grab;
 }
 
 .widget-container {
   position: relative;
   width: 40px;
-  height: 40px; /* Fixed height for single button */
+  height: 40px;
   background: #fff;
   border: 1px solid #ccc;
-  border-radius: 20px; /* Pill shape */
+  border-radius: 20px;
   overflow: hidden;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Subtle shadow for visibility */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
 .extension-button {
   position: absolute;
-  top: 0;
+  top: 50%;
   left: 0;
   width: 40px;
   height: 40px;
@@ -636,6 +635,7 @@ body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
   display: flex;
   align-items: center;
   justify-content: center;
+  transform: translateY(-50%); /* Center vertically */
 }
 
 .extension-button img {
@@ -644,6 +644,6 @@ body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
 }
 
 .extension-button:focus {
-  outline: 2px solid #000; /* Focus style for accessibility */
-  outline-offset: 2px;
+  outline: 2px solid #474747;
+  outline-offset: 1px;
 }

@@ -42,7 +42,8 @@
         "styles.css",
         "sprite.svg",
         "defaultTemplates.mjs",
-        "bootstrap.bundle.min.js"
+        "bootstrap.bundle.min.js",
+        "icon48.png"
       ],
       "matches": [
         "https://grok.com/*",

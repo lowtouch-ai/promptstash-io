@@ -139,58 +139,66 @@ function findInputField() {
   return Array.from(potentialFields).find(field => field.offsetParent !== null);
 }
 
-// Create the movable widget with only the extension button
+// Create the fixed widget with only the extension button
 function createWidget(inputField) {
   const widget = document.createElement('div');
   widget.id = 'promptstash-widget';
   widget.innerHTML = `
     <div class="widget-container">
-      <button class="extension-button" aria-label="Open PromptStash" title="Open PromptStash">
-        <img src="${chrome.runtime.getURL('icon48.png')}" alt="PromptStash Icon" aria-hidden="true">
+      <button class="extension-button" aria-label="PromptStash" title="PromptStash">
+        <img src="${chrome.runtime.getURL('icon48.png')}" alt="PromptStash" style="width:30px; height:30px; margin:10px;" aria-hidden="true" draggable="false">
       </button>
     </div>
   `;
   document.body.appendChild(widget);
 
-  // Position widget below the input field with a small offset
+  // Position widget inside the right end of the input field
   const inputRect = inputField.getBoundingClientRect();
   widget.style.position = 'absolute';
-  widget.style.top = `${inputRect.bottom + window.scrollY + 10}px`;
-  widget.style.left = `${inputRect.left + window.scrollX}px`;
+  widget.style.top = `${inputRect.top + window.scrollY}px`;
+  widget.style.left = `${inputRect.right + window.scrollX - 40}px`; // 40px is widget width
   widget.style.zIndex = '10000';
+  widget.style.height = `${inputRect.height}px`; // Match input field height
 
-  // Enable dragging
-  makeDraggable(widget);
-
-  // Event listener for extension button
+  // Event listener for extension button with click prevention
   const extensionButton = widget.querySelector('.extension-button');
-  extensionButton.addEventListener('click', () => {
-    chrome.runtime.sendMessage({ action: 'togglePopup' });
-  });
-}
-
-// Make the widget draggable
-function makeDraggable(element) {
   let isDragging = false;
-  let offsetX, offsetY;
+  let startX, startY;
+  let holdTimeout;
 
-  element.addEventListener('mousedown', (e) => {
-    isDragging = true;
-    offsetX = e.clientX - element.getBoundingClientRect().left;
-    offsetY = e.clientY - element.getBoundingClientRect().top;
-    element.style.cursor = 'grabbing';
+  extensionButton.addEventListener('mousedown', (e) => {
+    startX = e.clientX;
+    startY = e.clientY;
+    isDragging = false;
+    // Set isDragging to true after holding for 200ms
+    holdTimeout = setTimeout(() => {
+      isDragging = true;
+    }, 400);
   });
 
-  document.addEventListener('mousemove', (e) => {
-    if (isDragging) {
-      element.style.left = `${e.clientX - offsetX}px`;
-      element.style.top = `${e.clientY - offsetY}px`;
+  extensionButton.addEventListener('mousemove', (e) => {
+    if (Math.abs(e.clientX - startX) > 1 || Math.abs(e.clientY - startY) > 1) {
+      isDragging = true;
     }
   });
 
-  document.addEventListener('mouseup', () => {
+  extensionButton.addEventListener('click', (e) => {
+    clearTimeout(holdTimeout); // Clear hold timeout
+    if (!isDragging) {
+      // Check if popup is open
+      const popup = document.getElementById("promptstash-popup");
+      if (popup) {
+        chrome.runtime.sendMessage({ action: "closePopup" });
+      } else {
+        chrome.runtime.sendMessage({ action: "togglePopup" });
+      }
+    }
     isDragging = false;
-    element.style.cursor = 'grab';
+  });
+
+  // Clear hold timeout if mouse leaves button
+  extensionButton.addEventListener('mouseleave', () => {
+    clearTimeout(holdTimeout);
   });
 }
 
