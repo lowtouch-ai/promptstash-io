@@ -605,3 +605,45 @@ body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
     height: calc(8px + 4vh);
   }
 }
+
+/* New Widget Styles */
+#promptstash-widget {
+  position: absolute;
+  z-index: 10000;
+  cursor: grab;
+}
+
+.widget-container {
+  position: relative;
+  width: 40px;
+  height: 40px; /* Fixed height for single button */
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 20px; /* Pill shape */
+  overflow: hidden;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Subtle shadow for visibility */
+}
+
+.extension-button {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 40px;
+  height: 40px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.extension-button img {
+  width: 24px;
+  height: 24px;
+}
+
+.extension-button:focus {
+  outline: 2px solid #000; /* Focus style for accessibility */
+  outline-offset: 2px;
+}

@@ -255,5 +255,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
     });
     return true; // Keep message channel open for async response
+  } else if (message.action === "togglePopup") {
+    // Open the popup normally
+    chrome.storage.local.set({ openWithSearch: false }, () => {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs[0]) {
+          chrome.scripting.executeScript({
+            target: { tabId: tabs[0].id },
+            function: togglePopup
+          });
+        }
+      });
+    });
   }
 });

@@ -122,3 +122,95 @@ document.addEventListener("click", (event) => {
     chrome.runtime.sendMessage({ action: "closePopup" });
   }
 });
+
+// --- New Widget Functionality ---
+
+// Find the primary input field using existing selectors
+function findInputField() {
+  const potentialFields = document.querySelectorAll(
+    "div#prompt-textarea.ProseMirror[contenteditable='true'], " +
+    "[contenteditable='true'][role='textbox'], " +
+    "textarea:not([disabled]), " +
+    "input[type='text']:not([disabled]), " +
+    "[contenteditable='true'][aria-label*='prompt' i], " +
+    "textarea[aria-label*='prompt' i], " +
+    "input[aria-label*='prompt' i]"
+  );
+  return Array.from(potentialFields).find(field => field.offsetParent !== null);
+}
+
+// Create the movable widget with only the extension button
+function createWidget(inputField) {
+  const widget = document.createElement('div');
+  widget.id = 'promptstash-widget';
+  widget.innerHTML = `
+    <div class="widget-container">
+      <button class="extension-button" aria-label="Open PromptStash" title="Open PromptStash">
+        <img src="${chrome.runtime.getURL('icon48.png')}" alt="PromptStash Icon" aria-hidden="true">
+      </button>
+    </div>
+  `;
+  document.body.appendChild(widget);
+
+  // Position widget below the input field with a small offset
+  const inputRect = inputField.getBoundingClientRect();
+  widget.style.position = 'absolute';
+  widget.style.top = `${inputRect.bottom + window.scrollY + 10}px`;
+  widget.style.left = `${inputRect.left + window.scrollX}px`;
+  widget.style.zIndex = '10000';
+
+  // Enable dragging
+  makeDraggable(widget);
+
+  // Event listener for extension button
+  const extensionButton = widget.querySelector('.extension-button');
+  extensionButton.addEventListener('click', () => {
+    chrome.runtime.sendMessage({ action: 'togglePopup' });
+  });
+}
+
+// Make the widget draggable
+function makeDraggable(element) {
+  let isDragging = false;
+  let offsetX, offsetY;
+
+  element.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    offsetX = e.clientX - element.getBoundingClientRect().left;
+    offsetY = e.clientY - element.getBoundingClientRect().top;
+    element.style.cursor = 'grabbing';
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (isDragging) {
+      element.style.left = `${e.clientX - offsetX}px`;
+      element.style.top = `${e.clientY - offsetY}px`;
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    isDragging = false;
+    element.style.cursor = 'grab';
+  });
+}
+
+// Track widget creation to avoid duplicates
+let widgetCreated = false;
+
+// Attempt to create widget when input field is found
+function tryCreateWidget() {
+  const inputField = findInputField();
+  if (inputField && !widgetCreated) {
+    createWidget(inputField);
+    widgetCreated = true;
+  }
+}
+
+// Initial widget creation
+tryCreateWidget();
+
+// Observe DOM changes for dynamic content
+const observer = new MutationObserver(() => {
+  tryCreateWidget();
+});
+observer.observe(document.body, { childList: true, subtree: true });
