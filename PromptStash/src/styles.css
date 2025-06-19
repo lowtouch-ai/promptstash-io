@@ -608,42 +608,14 @@ body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
 
 /* New Widget Styles */
 #promptstash-widget {
-  position: absolute;
-  z-index: 10000;
-}
-
-.widget-container {
-  position: relative;
-  width: 40px;
-  height: 40px;
-  background: #fff;
-  border: 1px solid #ccc;
-  border-radius: 20px;
-  overflow: hidden;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-}
-
-.extension-button {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  width: 40px;
-  height: 40px;
-  border: none;
-  background: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transform: translateY(-50%); /* Center vertically */
-}
-
-.extension-button img {
-  width: 24px;
-  height: 24px;
+  transition: opacity 0.3s ease;
 }
 
 .extension-button:focus {
   outline: 2px solid #474747;
   outline-offset: 1px;
+}
+
+.widget:focus {
+  opacity: 1
 }

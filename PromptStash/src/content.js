@@ -139,26 +139,52 @@ function findInputField() {
   return Array.from(potentialFields).find(field => field.offsetParent !== null);
 }
 
-// Create the fixed widget with only the extension button
+// Create the movable widget with only the extension button
 function createWidget(inputField) {
-  const widget = document.createElement('div');
+  widget = document.createElement('div');
   widget.id = 'promptstash-widget';
   widget.innerHTML = `
-    <div class="widget-container">
-      <button class="extension-button" aria-label="PromptStash" title="PromptStash">
-        <img src="${chrome.runtime.getURL('icon48.png')}" alt="PromptStash" style="width:30px; height:30px; margin:10px;" aria-hidden="true" draggable="false">
+      <button class="extension-button" aria-label="Open PromptStash" title="Open PromptStash">
+        <img src="${chrome.runtime.getURL('icon48.png')}" alt="PromptStash Icon" aria-hidden="true" draggable="false" style="width: 30px; height: 30px;">
       </button>
-    </div>
   `;
   document.body.appendChild(widget);
 
-  // Position widget inside the right end of the input field
-  const inputRect = inputField.getBoundingClientRect();
-  widget.style.position = 'absolute';
-  widget.style.top = `${inputRect.top + window.scrollY}px`;
-  widget.style.left = `${inputRect.right + window.scrollX - 40}px`; // 40px is widget width
-  widget.style.zIndex = '10000';
-  widget.style.height = `${inputRect.height}px`; // Match input field height
+  // Position widget dynamically
+  function updateWidgetPosition() {
+    const inputRect = inputField.getBoundingClientRect();
+    widget.style.position = 'absolute';
+    widget.style.top = `${inputRect.top + window.scrollY + 10}px`;
+    widget.style.left = `${inputRect.right + window.scrollX - 50}px`;
+    widget.style.zIndex = '10000';
+    widget.style.opacity = '0.6';
+  }
+  updateWidgetPosition();
+
+  // Add hover event listeners for opacity toggle
+  widget.addEventListener('mouseenter', () => {
+    widget.style.opacity = '1'; // Set full opacity on hover
+  });
+  widget.addEventListener('mouseleave', () => {
+    widget.style.opacity = '0.6'; // Revert to idle opacity when not hovered
+  });
+
+  // Observe input field resizing
+  const resizeObserver = new ResizeObserver(() => {
+    updateWidgetPosition();
+  });
+  resizeObserver.observe(inputField);
+  widget.resizeObserver = resizeObserver;
+
+  // Update position on window resize and scroll
+  const resizeListener = () => updateWidgetPosition();
+  const scrollListener = () => updateWidgetPosition();
+  window.addEventListener('resize', resizeListener);
+  window.addEventListener('scroll', scrollListener);
+  widget.resizeListener = resizeListener;
+  widget.scrollListener = scrollListener;
+
+  makeDraggable(widget, inputField);
 
   // Event listener for extension button with click prevention
   const extensionButton = widget.querySelector('.extension-button');
@@ -173,7 +199,7 @@ function createWidget(inputField) {
     // Set isDragging to true after holding for 200ms
     holdTimeout = setTimeout(() => {
       isDragging = true;
-    }, 400);
+    }, 200);
   });
 
   extensionButton.addEventListener('mousemove', (e) => {
@@ -182,7 +208,7 @@ function createWidget(inputField) {
     }
   });
 
-  extensionButton.addEventListener('click', (e) => {
+  extensionButton.addEventListener('mouseup', (e) => {
     clearTimeout(holdTimeout); // Clear hold timeout
     if (!isDragging) {
       // Check if popup is open
@@ -202,17 +228,102 @@ function createWidget(inputField) {
   });
 }
 
-// Track widget creation to avoid duplicates
+// Make the widget draggable within input field bounds
+function makeDraggable(element, inputField) {
+  let isDragging = false;
+  let offsetX, offsetY;
+
+  element.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    offsetX = e.clientX - element.getBoundingClientRect().left;
+    offsetY = e.clientY - element.getBoundingClientRect().top;
+    element.style.cursor = 'grabbing';
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (isDragging) {
+      const inputRect = inputField.getBoundingClientRect();
+      const widgetRect = element.getBoundingClientRect();
+      
+      // Calculate new position
+      let newLeft = e.clientX - offsetX;
+      let newTop = e.clientY - offsetY;
+
+      // Restrict within input field bounds
+      newLeft = Math.max(inputRect.left + window.scrollX, Math.min(newLeft, inputRect.right + window.scrollX - widgetRect.width));
+      newTop = Math.max(inputRect.top + window.scrollY, Math.min(newTop, inputRect.bottom + window.scrollY - widgetRect.height));
+
+      element.style.left = `${newLeft}px`;
+      element.style.top = `${newTop}px`;
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    isDragging = false;
+    element.style.cursor = 'grab';
+  });
+}
+
+// Track widget creation and current input field
+let currentInputField = null;
+let widget = null;
 let widgetCreated = false;
 
-// Attempt to create widget when input field is found
-function tryCreateWidget() {
-  const inputField = findInputField();
-  if (inputField && !widgetCreated) {
-    createWidget(inputField);
-    widgetCreated = true;
-  }
+// Debounce function to limit rapid widget creation/removal
+function debounce(func, wait) {
+  let timeout;
+  return function (...args) {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(this, args), wait);
+  };
 }
+
+// Attempt to create or update widget when input field changes
+const tryCreateWidget = debounce(function () {
+  const newInputField = findInputField();
+  
+  // If no input field is found and widget exists, retry after a delay instead of removing
+  if (!newInputField && widgetCreated && widget) {
+    console.log("Input field temporarily unavailable, retrying in 500ms...");
+    setTimeout(tryCreateWidget, 500);
+    return;
+  }
+
+  // If a new valid input field is found
+  if (newInputField) {
+    if (!widgetCreated) {
+      // Create widget for the first time
+      createWidget(newInputField);
+      currentInputField = newInputField;
+      widgetCreated = true;
+      console.log("Widget created for new input field:", newInputField);
+    } else if (newInputField !== currentInputField) {
+      // Input field changed, update widget
+      if (widget) {
+        // Clean up existing widget resources
+        if (widget.resizeObserver) {
+          widget.resizeObserver.disconnect();
+        }
+        if (widget.resizeListener) {
+          window.removeEventListener('resize', widget.resizeListener);
+        }
+        if (widget.scrollListener) {
+          window.removeEventListener('scroll', widget.scrollListener);
+        }
+        widget.remove();
+      }
+      // Create new widget for the updated input field
+      createWidget(newInputField);
+      currentInputField = newInputField;
+      console.log("Widget recreated for updated input field:", newInputField);
+    }
+    // If input field is the same, no action needed
+  } else if (widgetCreated && widget) {
+    // No input field found, but keep widget until confirmed unavailable
+    console.log("No input field found, retaining widget and retrying...");
+    setTimeout(tryCreateWidget, 500);
+  }
+}, 100);
 
 // Initial widget creation
 tryCreateWidget();
