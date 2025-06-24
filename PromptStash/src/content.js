@@ -252,11 +252,7 @@ function createWidget(inputField, inputContainer) {
     if (!isDragging) {
       // Check if popup is open
       const popup = document.getElementById("promptstash-popup");
-      if (popup) {
-        chrome.runtime.sendMessage({ action: "closePopup" });
-      } else {
-        chrome.runtime.sendMessage({ action: "togglePopup" });
-      }
+      chrome.runtime.sendMessage({ action: "togglePopup" });
     }
     isDragging = false;
   });

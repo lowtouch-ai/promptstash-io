@@ -401,6 +401,7 @@ document.addEventListener("DOMContentLoaded", () => {
   elements.templateName.addEventListener("input", debounce(() => {
     let value = elements.templateName.value;
     if (value.length > 50) {
+      showToast("Template name must be 50 characters or less.", 3000, "red", [], "save");
       value = value.slice(0, 50);
       elements.templateName.value = value;
     }
