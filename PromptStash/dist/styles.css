@@ -549,6 +549,10 @@ body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
   color: #edede8;
 }
 
+#promptstash-widget {
+  transition: top 0.2s ease, left 0.2s ease; /* Smooth transition for widget movement */
+}
+
 :root {
   --base-font-size: 16px; /* Default */
 }
@@ -604,18 +608,4 @@ body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
     width: calc(8px + 4vh);
     height: calc(8px + 4vh);
   }
-}
-
-/* New Widget Styles */
-#promptstash-widget {
-  transition: opacity 0.3s ease;
-}
-
-.extension-button:focus {
-  outline: 2px solid #474747;
-  outline-offset: 1px;
-}
-
-.widget:focus {
-  opacity: 1
 }
