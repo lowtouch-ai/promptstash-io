@@ -95,10 +95,11 @@ function processMessage(message, inputField, sendResponse) {
   }
 };
 
-// Detect clicks outside popup to close it
+// Detect clicks outside popup to close it, excluding widget clicks
 document.addEventListener("click", (event) => {
   const popup = document.getElementById("promptstash-popup");
-  if (popup && !popup.contains(event.target)) {
+  const widget = document.getElementById("promptstash-widget");
+  if (popup && !popup.contains(event.target) && !widget.contains(event.target)) {
     chrome.runtime.sendMessage({ action: "closePopup" });
   }
 });
@@ -225,12 +226,14 @@ function createWidget(inputField, inputContainer) {
     });
   });
 
-  // Event listener for extension button with click prevention
+  // Event listeners for extension button with click and touch support
   const extensionButton = widget.querySelector('.extension-button');
   let isDragging = false;
   let startX, startY;
   let holdTimeout;
+  let touchStartTime;
 
+  // Handle mousedown to initiate potential drag
   extensionButton.addEventListener('mousedown', (e) => {
     startX = e.clientX;
     startY = e.clientY;
@@ -241,25 +244,75 @@ function createWidget(inputField, inputContainer) {
     }, 300);
   });
 
+  // Track movement to detect drag
   extensionButton.addEventListener('mousemove', (e) => {
     if (Math.abs(e.clientX - startX) > 1 || Math.abs(e.clientY - startY) > 1) {
       isDragging = true;
     }
   });
 
-  extensionButton.addEventListener('mouseup', (e) => {
+  // Handle click to open popup
+  extensionButton.addEventListener('click', (e) => {
     clearTimeout(holdTimeout); // Clear hold timeout
     if (!isDragging) {
-      // Check if popup is open
-      const popup = document.getElementById("promptstash-popup");
       chrome.runtime.sendMessage({ action: "togglePopup" });
     }
     isDragging = false;
   });
 
+  // Handle touchstart to record start time
+  extensionButton.addEventListener('touchstart', (e) => {
+    touchStartTime = Date.now();
+    isDragging = false;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    // Prevent default touch behavior to avoid scrolling/zooming
+    e.preventDefault();
+    // Set isDragging to true after holding for 300ms
+    holdTimeout = setTimeout(() => {
+      isDragging = true;
+    }, 300);
+  });
+
+  // Handle touchmove to detect drag
+  extensionButton.addEventListener('touchmove', (e) => {
+    if (Math.abs(e.touches[0].clientX - startX) > 1 || Math.abs(e.touches[0].clientY - startY) > 1) {
+      isDragging = true;
+    }
+  });
+
+  // Debounced touchend handler to open popup on quick tap
+  const debouncedTouchEnd = debounce((e) => {
+    clearTimeout(holdTimeout); // Clear hold timeout
+    const touchDuration = Date.now() - touchStartTime;
+    if (!isDragging && touchDuration < 300) {
+      // Trigger popup open on quick tap
+      chrome.runtime.sendMessage({ action: "togglePopup" });
+    }
+    isDragging = false;
+    e.preventDefault(); // Prevent default to avoid unintended clicks
+  }, 100);
+
+  // Handle touchend with debounced logic
+  extensionButton.addEventListener('touchend', debouncedTouchEnd);
+
+  // Handle touchcancel to reset state on interrupted touches
+  extensionButton.addEventListener('touchcancel', () => {
+    clearTimeout(holdTimeout); // Clear hold timeout
+    isDragging = false; // Reset drag state
+  });
+
   // Clear hold timeout if mouse leaves button
   extensionButton.addEventListener('mouseleave', () => {
     clearTimeout(holdTimeout);
+  });
+
+  // Ensure keyboard accessibility
+  extensionButton.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === 'Space') {
+      e.preventDefault();
+      chrome.runtime.sendMessage({ action: "togglePopup" });
+    }
   });
 
   return widget;
