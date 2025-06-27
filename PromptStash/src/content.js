@@ -380,6 +380,7 @@ function makeDraggable(element, inputContainer, onPositionChange) {
   let isDragging = false;
   let offsetX, offsetY;
 
+  // Start dragging on mousedown
   element.addEventListener('mousedown', (e) => {
     isDragging = true;
     offsetX = e.clientX - element.getBoundingClientRect().left;
@@ -388,6 +389,7 @@ function makeDraggable(element, inputContainer, onPositionChange) {
     element.style.transition = 'none'; // Disable transition during drag for instant response
   });
 
+  // Update position during drag
   document.addEventListener('mousemove', (e) => {
     if (isDragging) {
       const containerRect = inputContainer.getBoundingClientRect();
@@ -412,11 +414,42 @@ function makeDraggable(element, inputContainer, onPositionChange) {
     }
   });
 
-  document.addEventListener('mouseup', () => {
-    isDragging = false;
-    // element.style.cursor = 'grab';
-    element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
+  // Stop dragging on mouseup, capturing events globally including over iframes
+  window.addEventListener('mouseup', () => {
+    if (isDragging) {
+      isDragging = false;
+      element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
+      console.log("Drag stopped on mouseup (global window listener)");
+    }
+  }, { capture: true }); // Use capture phase to ensure event is caught before iframe boundary
+
+  // Stop dragging when pointer enters the popup iframe to prevent unintended dragging
+  const popup = document.getElementById('promptstash-popup');
+  if (popup) {
+    popup.addEventListener('mouseenter', () => {
+      if (isDragging) {
+        isDragging = false;
+        element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
+        console.log("Drag stopped on mouseenter popup iframe");
+      }
+    });
+  }
+
+  // Observe popup creation to attach mouseenter listener dynamically
+  const observer = new MutationObserver(() => {
+    const popup = document.getElementById('promptstash-popup');
+    if (popup && !popup.dataset.mouseenterAttached) {
+      popup.addEventListener('mouseenter', () => {
+        if (isDragging) {
+          isDragging = false;
+          element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
+          console.log("Drag stopped on mouseenter popup iframe (dynamic listener)");
+        }
+      });
+      popup.dataset.mouseenterAttached = 'true'; // Prevent multiple listeners
+    }
   });
+  observer.observe(document.body, { childList: true, subtree: true });
 }
 
 // Find the chat container (scrollable parent of the input/edit container)
