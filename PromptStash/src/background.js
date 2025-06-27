@@ -1,3 +1,4 @@
+
 // Listen for extension icon click to toggle popup
 chrome.action.onClicked.addListener((tab) => {
   // Check for restricted protocols
@@ -96,10 +97,13 @@ function togglePopup() {
     });
 
     document.addEventListener("click", (e) => {
-      if (popup && !popup.contains(e.target)) {
+      const widget = document.getElementById("promptstash-widget");  
+      if (popup && !popup.contains(e.target) && !widget.contains(e.target)) {
         popup.remove();
+        console.log("Is widget targeted (background):" + !widget.contains(e.target))
         chrome.storage.local.set({ isFullscreen: false });
       }
+
     });
   }
 }

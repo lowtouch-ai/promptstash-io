@@ -1,28 +1,52 @@
+const SUPPORTED_HOSTS = {
+  "grok.com": {
+    selector: ".query-bar textarea, textarea[aria-label='Ask Grok anything']",
+    name: "Grok"
+  },
+  "perplexity.ai": {
+    selector: "textarea#ask-input, textarea[aria-placeholder='Ask anything or @ mention a Space'], div#ask-input", 
+    name: "Perplexity.ai"
+  },
+  "chatgpt.com": {
+    selector: "div#prompt-textarea.ProseMirror[contenteditable='true']",
+    name: "ChatGPT"
+  }
+};
+
 // Handle messages from popup/background
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log("Received message:", message);
 
-  // Use the last focused input field or find a visible one
-  let inputField = currentInputField || findInputField();
+  // Use the primary input field
+  let inputField = findPrimaryInputField();
 
   if (inputField) {
-    console.log("Input field found:", inputField, "Tag:", inputField.tagName, "Visible:", inputField.offsetParent !== null);
+    console.log("Primary input field found:", inputField, "Tag:", inputField.tagName, "Visible:", inputField.offsetParent !== null);
   } else {
-    console.log("No visible input field found with initial querySelector.");
+    console.log("No primary input field found with initial querySelector.");
   }
 
-  // Retry finding the input field after a short delay if not found
+  // Retry finding the input field up to 3 times if not found
   if (!inputField && (message.action === "sendPrompt" || message.action === "getPrompt")) {
-    console.log("Retrying to find input field after 500ms...");
-    setTimeout(() => {
-      inputField = currentInputField || findInputField();
+    console.log("Retrying to find primary input field...");
+    let retryCount = 0;
+    const maxRetries = 3;
+    const retryInterval = 500; // 500ms delay between retries
+    const retry = () => {
+      retryCount++;
+      inputField = findPrimaryInputField();
       if (inputField) {
-        console.log("Input field found on retry:", inputField, "Tag:", inputField.tagName, "Visible:", inputField.offsetParent !== null);
+        console.log(`Primary input field found on retry ${retryCount}:`, inputField, "Tag:", inputField.tagName, "Visible:", inputField.offsetParent !== null);
+        processMessage(message, inputField, sendResponse);
+      } else if (retryCount < maxRetries) {
+        console.log(`Retry ${retryCount} failed, retrying in ${retryInterval}ms...`);
+        setTimeout(retry, retryInterval);
       } else {
-        console.log("No visible input field found after retry.");
+        console.log("No primary input field found after max retries.");
+        processMessage(message, null, sendResponse);
       }
-      processMessage(message, inputField, sendResponse);
-    }, 500); // Wait 500ms for page elements to load
+    };
+    setTimeout(retry, retryInterval);
     return true; // Keep the message channel open for async response
   }
 
@@ -58,7 +82,7 @@ function processMessage(message, inputField, sendResponse) {
       console.log("Dispatched input and change events.");
       sendResponse({ success: true });
     } else {
-      console.log("No input field found for sendPrompt");
+      console.log("No primary input field found for sendPrompt");
       sendResponse({ success: false });
     }
   } else if (message.action === "getPrompt") {
@@ -85,7 +109,7 @@ function processMessage(message, inputField, sendResponse) {
       }
       sendResponse({ prompt });
     } else {
-      console.log("No input field found for getPrompt");
+      console.log("No primary input field found for getPrompt");
       sendResponse({ prompt: "" });
     }
   } else if (message.action === "getSelectedText") {
@@ -95,29 +119,24 @@ function processMessage(message, inputField, sendResponse) {
   }
 };
 
-// Detect clicks outside popup to close it, excluding widget clicks
-document.addEventListener("click", (event) => {
-  const popup = document.getElementById("promptstash-popup");
-  const widget = document.getElementById("promptstash-widget");
-  if (popup && !popup.contains(event.target) && !widget.contains(event.target)) {
-    chrome.runtime.sendMessage({ action: "closePopup" });
+// Find the primary input field based on platform-specific selectors
+function findPrimaryInputField() {
+  const hostname = window.location.hostname;
+  console.log("Checking hostname for platform detection:", hostname);
+  const platform = Object.keys(SUPPORTED_HOSTS).find(host => hostname.includes(host));
+  if (!platform) {
+    console.log("No supported platform detected for hostname:", hostname);
+    return null;
   }
-});
-
-// --- Widget Functionality ---
-
-// Find the primary input field using existing selectors
-function findInputField() {
-  const potentialFields = document.querySelectorAll(
-    "div#prompt-textarea.ProseMirror[contenteditable='true'], " +
-    "[contenteditable='true'][role='textbox'], " +
-    "textarea:not([disabled]), " +
-    "input[type='text']:not([disabled]), " +
-    "[contenteditable='true'][aria-label*='prompt' i], " +
-    "textarea[aria-label*='prompt' i], " +
-    "input[aria-label*='prompt' i]"
-  );
-  return Array.from(potentialFields).find(field => field.offsetParent !== null);
+  const { selector, name } = SUPPORTED_HOSTS[platform];
+  console.log(`Attempting to find primary input field for ${name} with selector: ${selector}`);
+  const inputField = document.querySelector(selector);
+  if (inputField) {
+    console.log(`Found primary input field for ${name}:`, inputField, "Visible:", inputField.offsetParent !== null);
+    return inputField.offsetParent !== null ? inputField : null;
+  }
+  console.log(`No primary input field found for ${name} with selector: ${selector}`);
+  return null;
 }
 
 // Find the input container (parent element containing input field and buttons)
@@ -147,15 +166,49 @@ function createWidget(inputField, inputContainer) {
         <img src="${chrome.runtime.getURL('icon48.png')}" alt="PromptStash Icon" aria-hidden="true" draggable="false" style="width: 30px; height: 30px;">
       </button>
   `;
-  document.body.appendChild(widget);
 
-  // Initialize widget position storage
+  // Initialize widget with hidden visibility to prevent flashing at default position
+  widget.style.position = 'absolute';
+  widget.style.zIndex = '9999';
+  widget.style.visibility = 'hidden'; // Hide until positioned
+  widget.style.transition = 'top 0.3s ease, left 0.3s ease'; // Smooth transition for position changes
+
+  // Initialize widget position with default offset
   let widgetOffset = { x: -100, y: -90 }; // Default offset from bottom-right corner
+
+  // Create an offscreen container to measure widget size
+  const offscreenContainer = document.createElement('div');
+  offscreenContainer.style.position = 'absolute';
+  offscreenContainer.style.top = '-9999px';
+  offscreenContainer.style.left = '-9999px';
+  offscreenContainer.appendChild(widget);
+  document.body.appendChild(offscreenContainer);
+
+  // Calculate initial position using input container and actual widget size
+  if (inputContainer && inputContainer.offsetParent) {
+    const containerRect = inputContainer.getBoundingClientRect();
+    const parentRect = inputContainer.parentElement.getBoundingClientRect();
+    const widgetRect = widget.getBoundingClientRect();
+    let newLeft = containerRect.right + window.scrollX + widgetOffset.x;
+    let newTop = containerRect.bottom + window.scrollY + widgetOffset.y;
+    // Enforce boundaries within parent element
+    newLeft = Math.max(parentRect.left + window.scrollX, Math.min(newLeft, parentRect.right + window.scrollX - widgetRect.width));
+    newTop = Math.max(parentRect.top + window.scrollY, Math.min(newTop, parentRect.bottom + window.scrollY - widgetRect.height));
+    widget.style.left = `${newLeft}px`;
+    widget.style.top = `${newTop}px`;
+  }
+
+  // Remove from offscreen container and append to body, then make visible
+  offscreenContainer.remove();
+  document.body.appendChild(widget);
+  widget.style.visibility = 'visible'; // Show widget after positioning
+
+  // Update position with saved offset if available
   chrome.storage.local.get(['widgetOffset'], (result) => {
     if (result.widgetOffset) {
       widgetOffset = result.widgetOffset;
+      updateWidgetPosition(); // Apply saved position
     }
-    updateWidgetPosition(); // Apply stored or default position
   });
 
   // Enforce widget position within container parent boundaries
@@ -180,13 +233,9 @@ function createWidget(inputField, inputContainer) {
     // Enforce boundaries within parent element
     const { newLeft, newTop } = enforceBoundaries(containerRect, parentRect, widgetRect);
 
-    widget.style.position = 'absolute';
     widget.style.top = `${newTop}px`;
     widget.style.left = `${newLeft}px`;
-    widget.style.zIndex = '9999';
-    widget.style.transition = 'top 0.3s ease, left 0.3s ease'; // Smooth transition for position changes
   }
-  updateWidgetPosition();
 
   // Add hover event listeners for opacity toggle
   widget.addEventListener('mouseenter', () => {
@@ -203,20 +252,22 @@ function createWidget(inputField, inputContainer) {
   resizeObserver.observe(inputContainer);
   widget.resizeObserver = resizeObserver;
 
-  // Update position on window resize and scroll (debounced for performance)
+  // Update position on window resize (debounced for performance)
   const updatePositionDebounced = debounce(() => updateWidgetPosition(), 50);
   const resizeListener = () => updatePositionDebounced();
-  const scrollListener = () => updatePositionDebounced();
   window.addEventListener('resize', resizeListener);
-  window.addEventListener('scroll', scrollListener);
-  // Add chat window scroll listener to track container movement
-  const chatContainer = findChatContainer(inputContainer);
-  if (chatContainer) {
-    chatContainer.addEventListener('scroll', scrollListener);
-  }
   widget.resizeListener = resizeListener;
-  widget.scrollListener = scrollListener;
-  widget.chatContainer = chatContainer;
+
+  // Obsolete: Widget repositioning for chat scrolling removed in v2.0
+  // Scroll listeners for window and chat container were previously used but are no longer needed
+  // const scrollListener = () => updatePositionDebounced();
+  // window.addEventListener('scroll', scrollListener);
+  // const chatContainer = findChatContainer(inputContainer);
+  // if (chatContainer) {
+  //   chatContainer.addEventListener('scroll', scrollListener);
+  // }
+  // widget.scrollListener = scrollListener;
+  // widget.chatContainer = chatContainer;
 
   // Make widget draggable and save new position
   makeDraggable(widget, inputContainer, (newOffset) => {
@@ -255,7 +306,13 @@ function createWidget(inputField, inputContainer) {
   extensionButton.addEventListener('click', (e) => {
     clearTimeout(holdTimeout); // Clear hold timeout
     if (!isDragging) {
-      chrome.runtime.sendMessage({ action: "togglePopup" });
+      // Check if popup is open
+      const popup = document.getElementById("promptstash-popup");
+      if (popup) {
+        return; //chrome.runtime.sendMessage({ action: "closePopup" });
+      } else {
+        chrome.runtime.sendMessage({ action: "togglePopup" });
+      }
     }
     isDragging = false;
   });
@@ -389,24 +446,24 @@ function debounce(func, wait) {
   };
 }
 
-// Attempt to create or update widget when input field/container changes
-const tryCreateWidget = debounce(function (focusedField = null) {
-  // Use focused field if provided, otherwise use currentInputField or find a visible input field
-  let newInputField = focusedField || currentInputField || findInputField();
+// Attempt to create or update widget for the primary input field
+const tryCreateWidget = debounce(function () {
+  // Find the primary input field and its container
+  let newInputField = findPrimaryInputField();
   let newInputContainer = findInputContainer(newInputField);
   
-  // If no input field or container is found and widget exists, retry after a delay
+  // If no primary input field or container is found and widget exists, retry after a delay
   if (!newInputField || !newInputContainer) {
     if (widgetCreated && widget) {
-      console.log("Input field/container temporarily unavailable, retrying in 500ms...");
+      console.log("Primary input field/container temporarily unavailable, retrying in 500ms...");
       setTimeout(tryCreateWidget, 500);
     } else {
-      console.log("No valid input field/container found, skipping widget creation.");
+      console.log("No primary input field/container found, skipping widget creation.");
     }
     return;
   }
 
-  // If a new valid input field and container are found
+  // If a new valid primary input field and container are found
   if (newInputField && newInputContainer) {
     if (!widgetCreated) {
       // Create widget for the first time
@@ -414,7 +471,7 @@ const tryCreateWidget = debounce(function (focusedField = null) {
       currentInputField = newInputField;
       currentInputContainer = newInputContainer;
       widgetCreated = true;
-      console.log("Widget created for new input field and container:", newInputField, newInputContainer);
+      console.log("Widget created for primary input field and container:", newInputField, newInputContainer);
     } else if (newInputField !== currentInputField || newInputContainer !== currentInputContainer) {
       // Input field or container changed, update widget
       if (widget) {
@@ -425,67 +482,30 @@ const tryCreateWidget = debounce(function (focusedField = null) {
         if (widget.resizeListener) {
           window.removeEventListener('resize', widget.resizeListener);
         }
-        if (widget.scrollListener && widget.chatContainer) {
-          widget.chatContainer.removeEventListener('scroll', widget.scrollListener);
-        }
-        if (widget.scrollListener) {
-          window.removeEventListener('scroll', widget.scrollListener);
-        }
+        // Obsolete: Widget repositioning for chat scrolling removed in v2.0
+        // if (widget.scrollListener && widget.chatContainer) {
+        //   widget.chatContainer.removeEventListener('scroll', widget.scrollListener);
+        // }
+        // if (widget.scrollListener) {
+        //   window.removeEventListener('scroll', widget.scrollListener);
+        // }
         widget.remove();
       }
-      // Create new widget for the updated input field and container
+      // Create new widget for the updated primary input field and container
       widget = createWidget(newInputField, newInputContainer);
       currentInputField = newInputField;
       currentInputContainer = newInputContainer;
-      console.log("Widget recreated for updated input field and container:", newInputField, newInputContainer);
+      console.log("Widget recreated for updated primary input field and container:", newInputField, newInputContainer);
     }
-    // If input field and container are the same, no action needed
+    // If primary input field and container are the same, no action needed
   }
-}, 100);
-
-// Handle focus and input events to track the last interacted input field
-function handleInputInteraction(event) {
-  const interactedField = event.target;
-  // Verify if the interacted element is a valid input/edit field
-  const isValidField = interactedField.matches(
-    "div#prompt-textarea.ProseMirror[contenteditable='true'], " +
-    "[contenteditable='true'][role='textbox'], " +
-    "textarea:not([disabled]), " +
-    "input[type='text']:not([disabled]), " +
-    "[contenteditable='true'][aria-label*='prompt' i], " +
-    "textarea[aria-label*='prompt' i], " +
-    "input[aria-label*='prompt' i]"
-  ) && interactedField.offsetParent !== null;
-
-  if (isValidField) {
-    console.log("Interaction detected on valid input/edit field:", interactedField);
-    currentInputField = interactedField; // Update the current input field
-    tryCreateWidget(interactedField); // Move widget to the interacted field
-  }
-}
-
-// Add focus and input event listeners with debouncing for efficiency
-const debouncedHandleInputInteraction = debounce(handleInputInteraction, 50);
-document.addEventListener('focusin', debouncedHandleInputInteraction, true); // Use focusin for broader compatibility
-document.addEventListener('input', debouncedHandleInputInteraction, true); // Track typing interactions
-document.addEventListener('click', debouncedHandleInputInteraction, true); // Track click interactions (e.g., edit mode)
+}, 150); // Debounce delay for dynamic DOM updates
 
 // Initial widget creation
 tryCreateWidget();
 
 // Observe DOM changes for dynamic content
 const observer = new MutationObserver(debounce(() => {
-  // Only trigger widget update if no focused field to avoid overriding interaction-based positioning
-  if (!document.activeElement || !document.activeElement.matches(
-    "div#prompt-textarea.ProseMirror[contenteditable='true'], " +
-    "[contenteditable='true'][role='textbox'], " +
-    "textarea:not([disabled]), " +
-    "input[type='text']:not([disabled]), " +
-    "[contenteditable='true'][aria-label*='prompt' i], " +
-    "textarea[aria-label*='prompt' i], " +
-    "input[aria-label*='prompt' i]"
-  )) {
-    tryCreateWidget();
-  }
-}, 100));
-observer.observe(document.body, { childList: true, subtree: true });
+  tryCreateWidget();
+}, 150)); // Debounce delay for dynamic DOM updates
+observer.observe(document.body, { childList: true, subtree: true, attributes: true });

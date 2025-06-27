@@ -493,9 +493,16 @@ document.addEventListener("DOMContentLoaded", () => {
     storeLastState();
     elements.templateName.value = "";
     elements.templateTags.value = "";
-    elements.promptArea.value = "";
+    elements.promptArea.value = `# Your Role
+* 
+
+# Background Information
+* 
+
+# Your Task
+* `;
     selectedTemplateName = null;
-    elements.fetchBtn2.style.display = "block";
+    elements.fetchBtn2.style.display = "none";
     elements.searchBox.value = "";
     loadTemplates(elements.typeSelect.value, "", false);
     saveState();
