@@ -1,24 +1,72 @@
+// Supported platforms with selectors for primary input and editable previous prompts
 const SUPPORTED_HOSTS = {
   "grok.com": {
-    selector: ".query-bar textarea, textarea[aria-label='Ask Grok anything']",
+    primarySelector: "div.query-bar textarea",
+    previousPromptSelector: "div.message-bubble textarea[placeholder='Enter prompt here']",
     name: "Grok"
   },
   "perplexity.ai": {
-    selector: "textarea#ask-input, textarea[aria-placeholder='Ask anything or @ mention a Space'], div#ask-input", 
+    primarySelector: "textarea#ask-input, textarea[aria-placeholder='Ask anything or @ mention a Space'], div#ask-input",
+    previousPromptSelector: "textarea:not(#ask-input)",
     name: "Perplexity.ai"
   },
   "chatgpt.com": {
-    selector: "div#prompt-textarea.ProseMirror[contenteditable='true']",
+    primarySelector: "div#prompt-textarea.ProseMirror[contenteditable='true']",
+    previousPromptSelector: "textarea:not(#prompt-textarea)",
     name: "ChatGPT"
   }
 };
+
+// Cache for input field, container, and last focused field to reduce DOM queries
+let cachedInputField = null;
+let cachedInputContainer = null;
+let lastFocusedField = null;
+
+// Track the last focused editable field across supported platforms
+function setupFocusTracking() {
+  const hostname = window.location.hostname;
+  const platform = Object.keys(SUPPORTED_HOSTS).find(host => hostname.includes(host));
+  if (!platform) return;
+
+  const { primarySelector, previousPromptSelector } = SUPPORTED_HOSTS[platform];
+
+  // Combine selectors for all editable fields
+  const allEditableSelectors = `${primarySelector}, ${previousPromptSelector}`;
+  document.querySelectorAll(allEditableSelectors).forEach(field => {
+    field.addEventListener('focus', () => {
+      lastFocusedField = field;
+      console.log(`Focused field updated:`, lastFocusedField);
+    });
+  });
+
+  // Use MutationObserver to detect new editable fields dynamically
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach(mutation => {
+      if (mutation.addedNodes.length) {
+        mutation.addedNodes.forEach(node => {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            const fields = node.matches(allEditableSelectors) ? [node] : node.querySelectorAll(allEditableSelectors);
+            fields.forEach(field => {
+              field.addEventListener('focus', () => {
+                lastFocusedField = field;
+                console.log(`Focused field updated (dynamic):`, lastFocusedField);
+              });
+            });
+          }
+        });
+      }
+    });
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+}
 
 // Handle messages from popup/background
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log("Received message:", message);
 
-  // Use the primary input field
-  let inputField = findPrimaryInputField();
+  // Use cached input field or find new one for widget positioning
+  let inputField = cachedInputField || findPrimaryInputField();
+  let targetField = lastFocusedField && isFieldValid(lastFocusedField) ? lastFocusedField : inputField;
 
   if (inputField) {
     console.log("Primary input field found:", inputField, "Tag:", inputField.tagName, "Visible:", inputField.offsetParent !== null);
@@ -26,90 +74,90 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log("No primary input field found with initial querySelector.");
   }
 
-  // Retry finding the input field up to 3 times if not found
+  // Retry finding the input field up to 3 times if not found for widget positioning
   if (!inputField && (message.action === "sendPrompt" || message.action === "getPrompt")) {
     console.log("Retrying to find primary input field...");
     let retryCount = 0;
     const maxRetries = 3;
-    const retryInterval = 500; // 500ms delay between retries
+    const retryInterval = 500;
     const retry = () => {
       retryCount++;
       inputField = findPrimaryInputField();
       if (inputField) {
         console.log(`Primary input field found on retry ${retryCount}:`, inputField, "Tag:", inputField.tagName, "Visible:", inputField.offsetParent !== null);
-        processMessage(message, inputField, sendResponse);
+        cachedInputField = inputField;
+        targetField = lastFocusedField && isFieldValid(lastFocusedField) ? lastFocusedField : inputField;
+        processMessage(message, targetField, sendResponse);
       } else if (retryCount < maxRetries) {
         console.log(`Retry ${retryCount} failed, retrying in ${retryInterval}ms...`);
         setTimeout(retry, retryInterval);
       } else {
         console.log("No primary input field found after max retries.");
-        processMessage(message, null, sendResponse);
+        processMessage(message, targetField, sendResponse);
       }
     };
     setTimeout(retry, retryInterval);
-    return true; // Keep the message channel open for async response
+    return true;
   }
 
-  processMessage(message, inputField, sendResponse);
+  processMessage(message, targetField, sendResponse);
+  return true; // Ensure async response
 });
 
-// Process the message with the found input field
-function processMessage(message, inputField, sendResponse) {
+// Validate if a field is still valid (exists and is visible)
+function isFieldValid(field) {
+  return field && field.offsetParent !== null && document.body.contains(field);
+}
+
+// Process the message with the target field (focused or primary)
+function processMessage(message, targetField, sendResponse) {
   if (message.action === "sendPrompt") {
-    if (inputField) {
-      console.log("Setting prompt:", message.prompt);
-      if (inputField.tagName === "DIV" && inputField.contentEditable === "true" && inputField.classList.contains("ProseMirror")) {
-        // Handle ChatGPT's ProseMirror: clear existing content, then set prompt with <p> and <br> tags, preserving empty lines
-        inputField.innerHTML = ""; // Clear existing content to prevent submission
-        const lines = message.prompt.split("\n"); // Split by newlines, keep empty lines
-        inputField.innerHTML = lines.map(line => `<p>${line}<br></p>`).join("");
-        console.log("Cleared and set innerHTML for ChatGPT ProseMirror div with <p> and <br> tags, preserving empty lines.");
-      } else if (inputField.tagName === "DIV" && inputField.contentEditable === "true") {
-        // Other contenteditable divs: clear content and use <br> for newlines
-        inputField.innerHTML = "";
-        inputField.innerHTML = message.prompt.replace(/\n/g, "<br>");
+    if (targetField) {
+      console.log("Setting prompt to target field:", message.prompt, targetField);
+      if (targetField.tagName === "DIV" && targetField.contentEditable === "true" && targetField.classList.contains("ProseMirror")) {
+        targetField.innerHTML = "";
+        const lines = message.prompt.split("\n");
+        targetField.innerHTML = lines.map(line => `<p>${line}<br></p>`).join("");
+        console.log("Cleared and set innerHTML for ChatGPT ProseMirror div with <p> and <br> tags.");
+      } else if (targetField.tagName === "DIV" && targetField.contentEditable === "true") {
+        targetField.innerHTML = "";
+        targetField.innerHTML = message.prompt.replace(/\n/g, "<br>");
         console.log("Cleared and set innerHTML for contenteditable div with <br> for newlines.");
       } else {
-        // Clear input/textarea before setting value
-        inputField.value = "";
-        inputField.value = message.prompt;
+        targetField.value = "";
+        targetField.value = message.prompt;
         console.log("Cleared and set value for input/textarea.");
       }
-      // Dispatch input and change events to ensure compatibility
-      inputField.dispatchEvent(new Event("input", { bubbles: true }));
-      inputField.dispatchEvent(new Event("change", { bubbles: true }));
-      inputField.focus();
-      console.log("Dispatched input and change events.");
+      targetField.dispatchEvent(new Event("input", { bubbles: true }));
+      targetField.dispatchEvent(new Event("change", { bubbles: true }));
+      targetField.focus(); // Restore focus to the target field
       sendResponse({ success: true });
     } else {
-      console.log("No primary input field found for sendPrompt");
+      console.log("No target field found for sendPrompt");
       sendResponse({ success: false });
     }
   } else if (message.action === "getPrompt") {
-    if (inputField) {
+    if (targetField) {
       let prompt;
-      if (inputField.tagName === "DIV" && inputField.contentEditable === "true" && inputField.classList.contains("ProseMirror")) {
-        // Handle ChatGPT's ProseMirror: extract text from <p> tags, preserving empty lines
-        const paragraphs = Array.from(inputField.querySelectorAll("p"));
+      if (targetField.tagName === "DIV" && targetField.contentEditable === "true" && targetField.classList.contains("ProseMirror")) {
+        const paragraphs = Array.from(targetField.querySelectorAll("p"));
         if (paragraphs.length > 0) {
-          prompt = paragraphs.map(p => p.textContent.trimEnd()).join("\n"); // Preserve empty lines, trim trailing spaces
-          console.log("Retrieved prompt from ChatGPT ProseMirror div with empty lines preserved:", prompt);
+          prompt = paragraphs.map(p => p.textContent.trimEnd()).join("\n");
+          console.log("Retrieved prompt from ChatGPT ProseMirror div:", prompt);
         } else {
-          // Fallback for other contenteditable structures
-          prompt = inputField.textContent.replace(/\n+/g, "\n").trimEnd();
+          prompt = targetField.textContent.replace(/\n+/g, "\n").trimEnd();
           console.log("Retrieved prompt from ChatGPT ProseMirror div (fallback):", prompt);
         }
-      } else if (inputField.tagName === "DIV" && inputField.contentEditable === "true") {
-        // Handle other contenteditable divs, preserving newlines from <br>
-        prompt = inputField.innerHTML.replace(/<br\s*\/?>/gi, "\n").replace(/<\/?[^>]+(>|$)/g, "").trimEnd();
+      } else if (targetField.tagName === "DIV" && targetField.contentEditable === "true") {
+        prompt = targetField.innerHTML.replace(/<br\s*\/?>/gi, "\n").replace(/<\/?[^>]+(>|$)/g, "").trimEnd();
         console.log("Retrieved prompt from contenteditable div:", prompt);
       } else {
-        prompt = inputField.value || "";
+        prompt = targetField.value || "";
         console.log("Retrieved prompt from input/textarea:", prompt);
       }
       sendResponse({ prompt });
     } else {
-      console.log("No primary input field found for getPrompt");
+      console.log("No target field found for getPrompt");
       sendResponse({ prompt: "" });
     }
   } else if (message.action === "getSelectedText") {
@@ -117,7 +165,7 @@ function processMessage(message, inputField, sendResponse) {
     console.log("Retrieved selected text:", selectedText);
     sendResponse({ selectedText });
   }
-};
+}
 
 // Find the primary input field based on platform-specific selectors
 function findPrimaryInputField() {
@@ -128,21 +176,29 @@ function findPrimaryInputField() {
     console.log("No supported platform detected for hostname:", hostname);
     return null;
   }
-  const { selector, name } = SUPPORTED_HOSTS[platform];
-  console.log(`Attempting to find primary input field for ${name} with selector: ${selector}`);
-  const inputField = document.querySelector(selector);
-  if (inputField) {
-    console.log(`Found primary input field for ${name}:`, inputField, "Visible:", inputField.offsetParent !== null);
-    return inputField.offsetParent !== null ? inputField : null;
+  const { primarySelector, name } = SUPPORTED_HOSTS[platform];
+  console.log(`Attempting to find primary input field for ${name} with selector: ${primarySelector}`);
+  const inputField = document.querySelector(primarySelector);
+  if (inputField && inputField.offsetParent !== null) {
+    console.log(`Found primary input field for ${name}:`, inputField, "Visible:", true);
+    return inputField;
   }
-  console.log(`No primary input field found for ${name} with selector: ${selector}`);
+  console.log(`No primary input field found for ${name} with selector: ${primarySelector}`);
   return null;
 }
 
-// Find the input container (parent element containing input field and buttons)
+// Find the input container (parent element containing primary input field)
 function findInputContainer(inputField) {
   if (!inputField) return null;
-  // Traverse up the DOM to find a parent with buttons or a form-like structure
+  // For grok.com, use query-bar as the container
+  if (window.location.hostname.includes("grok.com")) {
+    const queryBar = inputField.closest("div.query-bar");
+    if (queryBar) {
+      console.log("Found query-bar container for grok.com:", queryBar);
+      return queryBar;
+    }
+  }
+  // Generic logic for other platforms
   let parent = inputField.parentElement;
   while (parent && parent !== document.body) {
     // Look for common indicators of an input container (buttons, form, or specific classes)
@@ -161,6 +217,7 @@ function findInputContainer(inputField) {
 function createWidget(inputField, inputContainer) {
   const widget = document.createElement('div');
   widget.id = 'promptstash-widget';
+  widget.setAttribute('aria-live', 'polite'); // Accessibility: announce changes
   widget.innerHTML = `
       <button class="extension-button" aria-label="Open PromptStash" title="Open PromptStash">
         <img src="${chrome.runtime.getURL('icon48.png')}" alt="PromptStash Icon" aria-hidden="true" draggable="false" style="width: 30px; height: 30px;">
@@ -211,14 +268,20 @@ function createWidget(inputField, inputContainer) {
     }
   });
 
-  // Enforce widget position within container parent boundaries
+  // Enforce widget position within container boundaries
   function enforceBoundaries(containerRect, parentRect, widgetRect) {
     let newLeft = containerRect.right + window.scrollX + widgetOffset.x;
     let newTop = containerRect.bottom + window.scrollY + widgetOffset.y;
 
-    // Ensure widget stays within parent's bounding rectangle
-    newLeft = Math.max(parentRect.left + window.scrollX, Math.min(newLeft, parentRect.right + window.scrollX - widgetRect.width));
-    newTop = Math.max(parentRect.top + window.scrollY, Math.min(newTop, parentRect.bottom + window.scrollY - widgetRect.height));
+    // For grok.com, constrain strictly to query-bar bounds
+    if (window.location.hostname.includes("grok.com")) {
+      newLeft = Math.max(containerRect.left + window.scrollX, Math.min(newLeft, containerRect.right + window.scrollX - widgetRect.width));
+      newTop = Math.max(containerRect.top + window.scrollY, Math.min(newTop, containerRect.bottom + window.scrollY - widgetRect.height));
+    } else {
+      // Generic bounds for other platforms
+      newLeft = Math.max(parentRect.left + window.scrollX, Math.min(newLeft, parentRect.right + window.scrollX - widgetRect.width));
+      newTop = Math.max(parentRect.top + window.scrollY, Math.min(newTop, parentRect.bottom + window.scrollY - widgetRect.height));
+    }
 
     return { newLeft, newTop };
   }
@@ -309,7 +372,7 @@ function createWidget(inputField, inputContainer) {
       // Check if popup is open
       const popup = document.getElementById("promptstash-popup");
       if (popup) {
-        return; //chrome.runtime.sendMessage({ action: "closePopup" });
+        return;
       } else {
         chrome.runtime.sendMessage({ action: "togglePopup" });
       }
@@ -385,7 +448,6 @@ function makeDraggable(element, inputContainer, onPositionChange) {
     isDragging = true;
     offsetX = e.clientX - element.getBoundingClientRect().left;
     offsetY = e.clientY - element.getBoundingClientRect().top;
-    // element.style.cursor = 'grabbing';
     element.style.transition = 'none'; // Disable transition during drag for instant response
   });
 
@@ -394,15 +456,14 @@ function makeDraggable(element, inputContainer, onPositionChange) {
     if (isDragging) {
       const containerRect = inputContainer.getBoundingClientRect();
       const widgetRect = element.getBoundingClientRect();
-      const parentRect = inputContainer.parentElement.getBoundingClientRect();
-      
-      // Calculate new position
+      // Use query-bar as boundary for grok.com, otherwise use parent
+      const boundaryRect = window.location.hostname.includes("grok.com") ? containerRect : inputContainer.parentElement.getBoundingClientRect();
+
       let newLeft = e.clientX - offsetX;
       let newTop = e.clientY - offsetY;
 
-      // Restrict within parent container bounds
-      newLeft = Math.max(parentRect.left + window.scrollX, Math.min(newLeft, parentRect.right + window.scrollX - widgetRect.width));
-      newTop = Math.max(parentRect.top + window.scrollY, Math.min(newTop, parentRect.bottom + window.scrollY - widgetRect.height));
+      newLeft = Math.max(boundaryRect.left + window.scrollX, Math.min(newLeft, boundaryRect.right + window.scrollX - widgetRect.width));
+      newTop = Math.max(boundaryRect.top + window.scrollY, Math.min(newTop, boundaryRect.bottom + window.scrollY - widgetRect.height));
 
       element.style.left = `${newLeft}px`;
       element.style.top = `${newTop}px`;
@@ -452,18 +513,6 @@ function makeDraggable(element, inputContainer, onPositionChange) {
   observer.observe(document.body, { childList: true, subtree: true });
 }
 
-// Find the chat container (scrollable parent of the input/edit container)
-function findChatContainer(container) {
-  let parent = container.parentElement;
-  while (parent && parent !== document.body) {
-    if (parent.scrollHeight > parent.clientHeight || parent.classList.contains('chat-container')) {
-      return parent;
-    }
-    parent = parent.parentElement;
-  }
-  return null; // Fallback to null if no scrollable container is found
-}
-
 // Track widget creation and current input field/container
 let currentInputField = null;
 let currentInputContainer = null;
@@ -503,6 +552,8 @@ const tryCreateWidget = debounce(function () {
       widget = createWidget(newInputField, newInputContainer);
       currentInputField = newInputField;
       currentInputContainer = newInputContainer;
+      cachedInputField = newInputField;
+      cachedInputContainer = newInputContainer;
       widgetCreated = true;
       console.log("Widget created for primary input field and container:", newInputField, newInputContainer);
     } else if (newInputField !== currentInputField || newInputContainer !== currentInputContainer) {
@@ -528,17 +579,32 @@ const tryCreateWidget = debounce(function () {
       widget = createWidget(newInputField, newInputContainer);
       currentInputField = newInputField;
       currentInputContainer = newInputContainer;
+      cachedInputField = newInputField;
+      cachedInputContainer = newInputContainer;
       console.log("Widget recreated for updated primary input field and container:", newInputField, newInputContainer);
     }
     // If primary input field and container are the same, no action needed
   }
 }, 150); // Debounce delay for dynamic DOM updates
 
-// Initial widget creation
+// Initial setup
 tryCreateWidget();
+setupFocusTracking();
 
 // Observe DOM changes for dynamic content
 const observer = new MutationObserver(debounce(() => {
-  tryCreateWidget();
-}, 150)); // Debounce delay for dynamic DOM updates
-observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+  // Only trigger if input field or container has changed
+  const newInputField = findPrimaryInputField();
+  const newInputContainer = findInputContainer(newInputField);
+  if (newInputField !== cachedInputField || newInputContainer !== cachedInputContainer) {
+    tryCreateWidget();
+  }
+  // Re-run focus tracking to catch new editable fields
+  setupFocusTracking();
+}, 150));
+observer.observe(document.body, {
+  childList: true,
+  subtree: true,
+  attributes: true,
+  attributeFilter: ['class', 'aria-label', 'placeholder']
+});
