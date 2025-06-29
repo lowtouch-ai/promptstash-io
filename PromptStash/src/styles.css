@@ -449,12 +449,8 @@ body.dark .topbtn {
   border: none;
   padding: 0;
   margin-right: 10px;
-  fill: none;
-  z-index: 10;
-}
-
-:hover + .clrbtn {
   fill: #888;
+  z-index: 10;
 }
 
 .clrbtn:hover {

@@ -106,6 +106,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.body.className = currentTheme;
     elements.fetchBtn2.style.display = elements.promptArea.value ? "none" : "block";
+    elements.clearPrompt.style.display = elements.promptArea.value ? "block" : "none";
     loadTemplates(elements.typeSelect.value, "", false);
   });
 
@@ -149,8 +150,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const toastKey = `${message}|${operationId}`;
     const now = Date.now();
     
-    // Debounce duplicate non-confirmation toasts (ignore within 2 seconds)
-    if (buttons.length === 0 && toastTimestamps[toastKey] && now - toastTimestamps[toastKey] < 2000) {
+    // Debounce duplicate non-confirmation toasts (ignore within 1 seconds)
+    if (buttons.length === 0 && toastTimestamps[toastKey] && now - toastTimestamps[toastKey] < 1010) {
       console.log(`Duplicate toast debounced for key: ${toastKey}`);
       return;
     }
@@ -160,7 +161,7 @@ document.addEventListener("DOMContentLoaded", () => {
     
     // Clean up old timestamps to prevent memory leak
     Object.keys(toastTimestamps).forEach(key => {
-      if (now - toastTimestamps[key] > 10000) {
+      if (now - toastTimestamps[key] > 7000) {
         delete toastTimestamps[key];
       }
     });
@@ -225,9 +226,9 @@ document.addEventListener("DOMContentLoaded", () => {
         overrideAnimation = false; // Reset flag
         displayNextToast();
       } else {
-        nextToastTimeout = setTimeout(displayNextToast, 350);
+        nextToastTimeout = setTimeout(displayNextToast, 10);
       }
-    }, 300);
+    }, 10);
   }
 
   // Display the next toast in the queue
@@ -365,7 +366,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const totalSizeInBytes = new TextEncoder().encode(serialized).length;
       const maxTotalSize = 5 * 1024 * 1024; // 5MB for local storage
       if (totalSizeInBytes > 0.9 * maxTotalSize) {
-        showToast("Warning: Storage is nearly full (90% of 5MB limit). Please delete unused templates.", 5000, "red", [], "save");
+        showToast("Warning: Storage is nearly full (90% of 5MB limit). Please delete unused templates.", 5000, "red", [], "storage");
       }
       callback();
     });
@@ -401,14 +402,14 @@ document.addEventListener("DOMContentLoaded", () => {
   elements.templateName.addEventListener("input", debounce(() => {
     let value = elements.templateName.value;
     if (value.length > 50) {
-      showToast("Template name must be 50 characters or less.", 3000, "red", [], "save");
+      showToast("Template name must be 50 characters or less.", 3000, "red", [], "nameLength");
       value = value.slice(0, 50);
       elements.templateName.value = value;
     }
     const sanitizedValue = value.replace(/[^a-zA-Z0-9\s]/g, "");
     if (sanitizedValue !== value) {
       elements.templateName.value = sanitizedValue;
-      showToast("Template name can only contain letters, numbers, and spaces.", 3000, "red", [], "input");
+      showToast("Template name can only contain letters, numbers, and spaces.", 3000, "red", [], "nameChar");
     }
     saveState();
   }, 10));
@@ -425,19 +426,19 @@ document.addEventListener("DOMContentLoaded", () => {
       
       // Validate tag count
       if (tags.length > 5) {
-        showToast("Maximum of 5 tags allowed per template.", 3000, "red", [], "input");
+        showToast("Maximum of 5 tags allowed per template.", 3000, "red", [], "tagsLength");
         value = tags.slice(0, 5).join(", ");
       }
       
       // Validate and sanitize tags
       if (tags.some(tag => tag.length > 20)) {
-        showToast("Each tag must be 20 characters or less.", 3000, "red", [], "input");
+        showToast("Each tag must be 20 characters or less.", 3000, "red", [], "tagLength");
       }
       const trimmedTags = tags.map(tag => tag.slice(0, 20));
       
       const sanitizedTags = trimmedTags.map(tag => tag.replace(/[^a-zA-Z0-9\s]/g, ""));
       if (sanitizedTags.some((tag, i) => tag !== trimmedTags[i])) {
-        showToast("Each tag must contain only letters, numbers, or spaces.", 3000, "red", [], "input");
+        showToast("Each tag must contain only letters, numbers, or spaces.", 3000, "red", [], "tagChar");
       }
       
       // Update input value with sanitized tags
@@ -503,16 +504,18 @@ document.addEventListener("DOMContentLoaded", () => {
 * `;
     selectedTemplateName = null;
     elements.fetchBtn2.style.display = "none";
+    elements.clearPrompt.style.display = "block";
     elements.searchBox.value = "";
     loadTemplates(elements.typeSelect.value, "", false);
     saveState();
-    showToast("New template created.", 3000, "green", [], "new");
+    showToast("New template created.", 2000, "green", [], "new");
   });
 
   // Clear search input
   elements.clearSearch.addEventListener("click", () => {
     elements.searchBox.value = "";
     loadTemplates(elements.typeSelect.value, "", false);
+    elements.clearSearch.style.display = "none";
     elements.searchBox.focus();
   });
 
@@ -521,6 +524,7 @@ document.addEventListener("DOMContentLoaded", () => {
     storeLastState();
     elements.promptArea.value = "";
     elements.fetchBtn2.style.display = "block";
+    elements.clearPrompt.style.display = "none";
     elements.promptArea.focus();
     saveState();
   });
@@ -533,10 +537,11 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.promptArea.value = "";
     selectedTemplateName = null;
     elements.fetchBtn2.style.display = "block";
+    elements.clearPrompt.style.display = "none";
     elements.searchBox.value = "";
     loadTemplates(elements.typeSelect.value, "", false);
     saveState();
-    showToast("All fields cleared.", 3000, "green", [], "clearAll");
+    showToast("All fields cleared.", 2000, "green", [], "clearAll");
   });
 
   // Handle ESC key for popup and confirmation toasts
@@ -570,6 +575,7 @@ document.addEventListener("DOMContentLoaded", () => {
   elements.promptArea.addEventListener("input", () => {
     storeLastState();
     elements.fetchBtn2.style.display = elements.promptArea.value ? "none" : "block";
+    elements.clearPrompt.style.display = elements.promptArea.value ? "block" : "none";
     saveState();
   });
 
@@ -620,7 +626,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Get target tab ID with timeout
   function getTargetTabId(callback) {
     const timeout = setTimeout(() => {
-      showToast("Error: No response from tab. Please navigate to a supported AI platform (e.g., grok.com, perplexity.ai, or chatgpt.com).", 3000, "red", [], "fetch");
+      showToast("Error: No response from tab. Please navigate to a supported AI platform (e.g., grok.com, perplexity.ai, or chatgpt.com).", 4000, "red", [], "fetch");
       callback(null);
     }, 5000);
     chrome.runtime.sendMessage({ action: "getTargetTabId" }, (response) => {
@@ -628,7 +634,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (response && response.tabId) {
         callback(response.tabId);
       } else {
-        showToast("Error: This page is not supported. Please navigate to a supported AI platform (e.g., grok.com, perplexity.ai, or chatgpt.com).", 3000, "red", [], "fetch");
+        showToast("Error: This page is not supported. Please navigate to a supported AI platform (e.g., grok.com, perplexity.ai, or chatgpt.com).", 4000, "red", [], "fetch");
         callback(null);
       }
     });
@@ -682,6 +688,7 @@ document.addEventListener("DOMContentLoaded", () => {
               elements.searchBox.value = "";
               elements.dropdownResults.innerHTML = "";
               elements.fetchBtn2.style.display = tmpl.content ? "none" : "block";
+              elements.clearPrompt.style.display = tmpl.content ? "block" : "none";
               elements.overlay.style.display = 'none';
               elements.dropdownResults.style.display = 'none';
               elements.dropdownResults.classList.remove("show");
@@ -718,6 +725,7 @@ document.addEventListener("DOMContentLoaded", () => {
             elements.promptArea.value = tmpl.content;
             elements.searchBox.value = "";
             elements.fetchBtn2.style.display = tmpl.content ? "none" : "block";
+            elements.clearPrompt.style.display = tmpl.content ? "block" : "none";
             saveState();
             elements.promptArea.focus();
           });
@@ -742,6 +750,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Search as user types
   elements.searchBox.addEventListener("input", () => {
     loadTemplates(elements.typeSelect.value, elements.searchBox.value.toLowerCase(), true);
+    elements.clearSearch.style.display = elements.searchBox.value ? "block" : "none";
   });
 
   // Handle type select
@@ -771,11 +780,11 @@ document.addEventListener("DOMContentLoaded", () => {
         if (chrome.runtime.lastError) {
           const errorMessage = chrome.runtime.lastError.message;
           if (errorMessage.includes("QUOTA_BYTES_PER_ITEM")) {
-            showToast("Template size exceeds 8KB limit. Please reduce the size.", 3000, "red", [], "save");
+            showToast("Template size exceeds 8KB limit. Please reduce the size.", 5000, "red", [], "save");
           } else if (errorMessage.includes("QUOTA_BYTES")) {
-            showToast("Total storage limit (5MB) exceeded. Please delete unused templates.", 3000, "red", [], "save");
+            showToast("Total storage limit (5MB) exceeded. Please delete unused templates.", 5000, "red", [], "save");
           } else {
-            showToast("Failed to save template: " + errorMessage, 3000, "red", [], "save");
+            showToast("Failed to save template: " + errorMessage, 5000, "red", [], "save");
           }
           console.error("Local storage error:", errorMessage);
         } else {
@@ -816,7 +825,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       if (!tagsInput.trim()) {
-        elements.toast.focus();
+        elements.templateTags.focus();
         showToast(
           "No tags provided. Save without tags?",
           0,
@@ -976,7 +985,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       if (!tagsInput.trim()) {
-        elements.toast.focus();
+        elements.templateTags.focus();
         showToast(
           "No tags provided. Save without tags?",
           0,
@@ -1078,6 +1087,7 @@ document.addEventListener("DOMContentLoaded", () => {
               storeLastState();
               elements.promptArea.value = response.prompt;
               elements.fetchBtn2.style.display = "none";
+              elements.clearPrompt.style.display = "block";
               saveState();
             } else {
               showToast("No input found on the page.", 3000, "red", [], "fetch");
@@ -1201,6 +1211,7 @@ document.addEventListener("DOMContentLoaded", () => {
                   elements.promptArea.value = "";
                   elements.searchBox.value = "";
                   elements.fetchBtn2.style.display = "block";
+                  elements.clearPrompt.style.display = "none";
                   loadTemplates(elements.typeSelect.value, "", false);
                   saveState();
                 }
@@ -1231,9 +1242,10 @@ document.addEventListener("DOMContentLoaded", () => {
         chrome.storage.local.set({ templates: lastState.templates }, () => {
           loadTemplates(elements.typeSelect.value, "", false);
         });
+        showToast("Action undone successfully.", 2000, "green", [], "undo");
       }
       elements.fetchBtn2.style.display = elements.promptArea.value ? "none" : "block";
-      showToast("Action undone successfully.", 3000, "green", [], "undo");
+      elements.clearPrompt.style.display = elements.promptArea.value ? "block" : "none";
       lastState = null;
       saveState();
     }
@@ -1283,15 +1295,5 @@ document.addEventListener("DOMContentLoaded", () => {
       e.preventDefault();
       focused.click();
     }
-  });
-
-  // Show the clear button only when the field contains text
-  let timeout;
-  document.addEventListener("mousemove", () => {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => {
-      elements.clearSearch.style.display = elements.searchBox.value ? "block" : "none";
-      elements.clearPrompt.style.display = elements.promptArea.value ? "block" : "none";
-    }, 50);
   });
 });

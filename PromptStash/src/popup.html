@@ -22,13 +22,15 @@
       <svg width="10" height="10"><use href="sprite.svg#close"></use></svg>
     </button>
   </div>
-  <header class="d-flex justify-content-center align-items-center mb-2 position-relative">
+  <header class="d-flex justify-content-center align-items-center ms-2 mb-2 position-relative">
     <a href="https://www.lowtouch.ai/" target="_blank" aria-label="Visit lowtouch.ai">
       <img src="icon128.png" alt="lowtouch.ai logo" class="logo shadow rounded-pill" data-bs-toggle="tooltip" data-bs-placement="top" title="Visit lowtouch.ai">
     </a>
-    <div class="h2 mt-3 mx-2 d-flex">
+    <div class="h1 mt-2 ms-3 d-flex">
       <a href="https://promptstash.io/" target="_blank" class="title text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="top" title="Visit PromptStash">PromptStash</a>
-      <span class="title mx-1">by</span>
+    </div>
+    <div class="mt-2 d-flex">
+      <span class="title">&nbsp;by&nbsp;</span>
       <a href="https://www.lowtouch.ai/" target="_blank" class="title text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="top" title="Visit lowtouch.ai">lowtouch.ai</a>
     </div>
   </header>
@@ -39,13 +41,13 @@
         <svg width="15" height="15"><use href="sprite.svg#search"></use></svg>
       </span>
       <input type="text" id="searchBox" class="form-control rounded-2 py-2" placeholder="Search by name or tags" aria-label="Search templates" data-bs-toggle="tooltip" data-bs-placement="top" title="Search templates">
-      <button id="clearSearch" class="clrbtn rounded-pill position-absolute top-50 translate-middle-y end-0" style="z-index: 11;" aria-label="Clear search" data-bs-toggle="tooltip" data-bs-placement="top" title="Clear search">
+      <button id="clearSearch" class="clrbtn rounded-pill position-absolute top-50 translate-middle-y end-0" style="z-index: 11; display: none;" aria-label="Clear search" data-bs-toggle="tooltip" data-bs-placement="top" title="Clear search">
         <svg width="13" height="13"><use href="sprite.svg#clear"></use></svg>
       </button>
       <select id="typeSelect" class="btn position-absolute end-0" style="display: none;">
         <option value="all">All templates</option>
-        <option value="pre-built">Pre-built</option>
-        <option value="custom">User-made</option>
+        <!-- <option value="pre-built">Pre-built</option>
+        <option value="custom">User-made</option> -->
         <svg id="filterIcon" class="position-absolute top-50 translate-middle-y me-5" style="pointer-events:none; display: none; z-index: 11; right: 10px;" width="11" height="11">
           <use href="sprite.svg#0000"></use>
         </svg>
@@ -70,7 +72,7 @@
     </div>
     <div class="position-relative">
       <textarea id="promptArea" class="form-control rounded-2 px-3 py-2" placeholder="Edit your prompt here..." style="resize: none;" aria-label="Prompt text"></textarea>
-      <button id="clearPrompt" class="clrbtn position-absolute top-0 end-0" aria-label="Clear prompt text" data-bs-toggle="tooltip" data-bs-placement="top" title="Clear prompt text">
+      <button id="clearPrompt" class="clrbtn position-absolute top-0 end-0" style="display: none;" aria-label="Clear prompt text" data-bs-toggle="tooltip" data-bs-placement="top" title="Clear prompt text">
         <svg width="15" height="15"><use href="sprite.svg#clear"></use></svg>
       </button>
       <button id="fetchBtn2" class="btn btn-sm rounded-3 position-absolute top-50 start-50 translate-middle" aria-label="Fetch from website">Fetch prompt from chat</button>
