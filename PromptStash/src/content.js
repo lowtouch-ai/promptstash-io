@@ -411,7 +411,7 @@ function createWidget(inputField, inputContainer) {
     }
     isDragging = false;
     e.preventDefault(); // Prevent default to avoid unintended clicks
-  }, 100);
+  }, 300);
 
   // Handle touchend with debounced logic
   extensionButton.addEventListener('touchend', debouncedTouchEnd);
