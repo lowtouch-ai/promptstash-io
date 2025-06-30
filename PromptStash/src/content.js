@@ -90,7 +90,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         processMessage(message, targetField, sendResponse);
       } else if (retryCount < maxRetries) {
         console.log(`Retry ${retryCount} failed, retrying in ${retryInterval}ms...`);
-        setTimeout(retry, retryInterval);
+        setTimeout(retry, timeout);
       } else {
         console.log("No primary input field found after max retries.");
         processMessage(message, targetField, sendResponse);
@@ -113,7 +113,7 @@ function isFieldValid(field) {
 function processMessage(message, targetField, sendResponse) {
   if (message.action === "sendPrompt") {
     if (targetField) {
-      console.log("Setting prompt to target field:", message.prompt, targetField);
+      console.log("Setting the prompt to target field:", message.prompt, targetField);
       if (targetField.tagName === "DIV" && targetField.contentEditable === "true" && targetField.classList.contains("ProseMirror")) {
         targetField.innerHTML = "";
         const lines = message.prompt.split("\n");
@@ -213,6 +213,13 @@ function findInputContainer(inputField) {
   return inputField.parentElement || document.body;
 }
 
+// Utility function to compare two DOMRect objects for position/size changes
+function rectsAreEqual(rect1, rect2) {
+  if (!rect1 || !rect2) return false;
+  return rect1.top === rect2.top && rect1.left === rect2.left &&
+         rect1.width === rect2.width && rect1.height === rect2.height;
+}
+
 // Create the movable widget with only the extension button
 function createWidget(inputField, inputContainer) {
   const widget = document.createElement('div');
@@ -260,6 +267,9 @@ function createWidget(inputField, inputContainer) {
   document.body.appendChild(widget);
   widget.style.visibility = 'visible'; // Show widget after positioning
 
+  // Store initial container rectangle to detect position changes later
+  widget.previousContainerRect = inputContainer.getBoundingClientRect();
+
   // Update position with saved offset if available
   chrome.storage.local.get(['widgetOffset'], (result) => {
     if (result.widgetOffset) {
@@ -278,7 +288,7 @@ function createWidget(inputField, inputContainer) {
       newLeft = Math.max(containerRect.left + window.scrollX, Math.min(newLeft, containerRect.right + window.scrollX - widgetRect.width));
       newTop = Math.max(containerRect.top + window.scrollY, Math.min(newTop, containerRect.bottom + window.scrollY - widgetRect.height));
     } else {
-      // Generic bounds for other platforms
+      // Generic bounds for other platforms, including ChatGPT
       newLeft = Math.max(parentRect.left + window.scrollX, Math.min(newLeft, parentRect.right + window.scrollX - widgetRect.width));
       newTop = Math.max(parentRect.top + window.scrollY, Math.min(newTop, parentRect.bottom + window.scrollY - widgetRect.height));
     }
@@ -300,6 +310,9 @@ function createWidget(inputField, inputContainer) {
     widget.style.left = `${newLeft}px`;
   }
 
+  // Expose updateWidgetPosition for dynamic position updates (e.g., ChatGPT input field movement)
+  widget.updatePosition = updateWidgetPosition;
+
   // Add hover event listeners for opacity toggle
   widget.addEventListener('mouseenter', () => {
     widget.style.transform = 'scale(1.02)';
@@ -320,17 +333,6 @@ function createWidget(inputField, inputContainer) {
   const resizeListener = () => updatePositionDebounced();
   window.addEventListener('resize', resizeListener);
   widget.resizeListener = resizeListener;
-
-  // Obsolete: Widget repositioning for chat scrolling removed in v2.0
-  // Scroll listeners for window and chat container were previously used but are no longer needed
-  // const scrollListener = () => updatePositionDebounced();
-  // window.addEventListener('scroll', scrollListener);
-  // const chatContainer = findChatContainer(inputContainer);
-  // if (chatContainer) {
-  //   chatContainer.addEventListener('scroll', scrollListener);
-  // }
-  // widget.scrollListener = scrollListener;
-  // widget.chatContainer = chatContainer;
 
   // Make widget draggable and save new position
   makeDraggable(widget, inputContainer, (newOffset) => {
@@ -401,20 +403,16 @@ function createWidget(inputField, inputContainer) {
     }
   });
 
-  // Debounced touchend handler to open popup on quick tap
-  const debouncedTouchEnd = debounce((e) => {
+  // Handle touchend to open popup on quick tap and reset dragging
+  extensionButton.addEventListener('touchend', (e) => {
     clearTimeout(holdTimeout); // Clear hold timeout
     const touchDuration = Date.now() - touchStartTime;
     if (!isDragging && touchDuration < 300) {
-      // Trigger popup open on quick tap
       chrome.runtime.sendMessage({ action: "togglePopup" });
     }
-    isDragging = false;
+    isDragging = false; // Ensure dragging is reset even if popup intercepts event
     e.preventDefault(); // Prevent default to avoid unintended clicks
-  }, 300);
-
-  // Handle touchend with debounced logic
-  extensionButton.addEventListener('touchend', debouncedTouchEnd);
+  });
 
   // Handle touchcancel to reset state on interrupted touches
   extensionButton.addEventListener('touchcancel', () => {
@@ -483,6 +481,24 @@ function makeDraggable(element, inputContainer, onPositionChange) {
       console.log("Drag stopped on mouseup (global window listener)");
     }
   }, { capture: true }); // Use capture phase to ensure event is caught before iframe boundary
+
+  // Stop dragging on touchend globally to handle double-tap over popup iframe
+  window.addEventListener('touchend', () => {
+    if (isDragging) {
+      isDragging = false;
+      element.style.transition = 'top 0.3s ease, left 0.3s ease';
+      console.log("Touch dragging stopped on global touchend");
+    }
+  }, { capture: true }); // Capture phase ensures event is caught before iframe
+
+  // Stop dragging on touchcancel globally for interrupted touches
+  window.addEventListener('touchcancel', () => {
+    if (isDragging) {
+      isDragging = false;
+      element.style.transition = 'top 0.3s ease, left 0.3s ease';
+      console.log("Touch dragging stopped on global touchcancel");
+    }
+  }, { capture: true }); // Capture phase ensures reliability
 
   // Stop dragging when pointer enters the popup iframe to prevent unintended dragging
   const popup = document.getElementById('promptstash-popup');
@@ -566,13 +582,6 @@ const tryCreateWidget = debounce(function () {
         if (widget.resizeListener) {
           window.removeEventListener('resize', widget.resizeListener);
         }
-        // Obsolete: Widget repositioning for chat scrolling removed in v2.0
-        // if (widget.scrollListener && widget.chatContainer) {
-        //   widget.chatContainer.removeEventListener('scroll', widget.scrollListener);
-        // }
-        // if (widget.scrollListener) {
-        //   window.removeEventListener('scroll', widget.scrollListener);
-        // }
         widget.remove();
       }
       // Create new widget for the updated primary input field and container
@@ -582,8 +591,16 @@ const tryCreateWidget = debounce(function () {
       cachedInputField = newInputField;
       cachedInputContainer = newInputContainer;
       console.log("Widget recreated for updated primary input field and container:", newInputField, newInputContainer);
+    } else {
+      // Check for position changes in the same input container (e.g., ChatGPT input field moving)
+      if (widgetCreated && widget && newInputContainer) {
+        const currentRect = newInputContainer.getBoundingClientRect();
+        if (!widget.previousContainerRect || !rectsAreEqual(widget.previousContainerRect, currentRect)) {
+          widget.updatePosition(); // Reposition widget if container's bounding rect changes
+          widget.previousContainerRect = currentRect; // Update stored rect for next comparison
+        }
+      }
     }
-    // If primary input field and container are the same, no action needed
   }
 }, 150); // Debounce delay for dynamic DOM updates
 
@@ -593,18 +610,12 @@ setupFocusTracking();
 
 // Observe DOM changes for dynamic content
 const observer = new MutationObserver(debounce(() => {
-  // Only trigger if input field or container has changed
-  const newInputField = findPrimaryInputField();
-  const newInputContainer = findInputContainer(newInputField);
-  if (newInputField !== cachedInputField || newInputContainer !== cachedInputContainer) {
-    tryCreateWidget();
-  }
-  // Re-run focus tracking to catch new editable fields
+  tryCreateWidget();
   setupFocusTracking();
 }, 150));
 observer.observe(document.body, {
   childList: true,
   subtree: true,
   attributes: true,
-  attributeFilter: ['class', 'aria-label', 'placeholder']
+  attributeFilter: ['class', 'style', 'aria-label', 'placeholder'] // Include 'style' to catch position-related changes
 });
