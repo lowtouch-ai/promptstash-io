@@ -362,7 +362,7 @@ function createWidget(inputField, inputContainer) {
 
   // Track movement to detect drag
   extensionButton.addEventListener('mousemove', (e) => {
-    if (Math.abs(e.clientX - startX) > 1 || Math.abs(e.clientY - startY) > 1) {
+    if (Math.abs(e.clientX - startX) > 3 || Math.abs(e.clientY - startY) > 3) {
       isDragging = true;
     }
   });
@@ -503,7 +503,7 @@ function makeDraggable(element, inputContainer, onPositionChange) {
   // Stop dragging when pointer enters the popup iframe to prevent unintended dragging
   const popup = document.getElementById('promptstash-popup');
   if (popup) {
-    popup.addEventListener('mouseenter', () => {
+    popup.addEventListener('mousemove', () => {
       if (isDragging) {
         isDragging = false;
         element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
