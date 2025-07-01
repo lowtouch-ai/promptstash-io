@@ -174,8 +174,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
   } else if (message.action === "toggleFullscreen") {
     chrome.storage.local.get(["isFullscreen"], (result) => {
+      console.log("after get in background.js:",result.isFullscreen);
       const isFullscreen = !result.isFullscreen;
+      console.log("after swap in background.js:",isFullscreen);
       chrome.storage.local.set({ isFullscreen }, () => {
+        console.log("after set in background.js:",isFullscreen);
         if (chrome.runtime.lastError) {
           console.error("Storage set error:", chrome.runtime.lastError.message);
           return;
@@ -185,6 +188,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           chrome.scripting.executeScript({
             target: { tabId: tabs[0].id },
             function: (isFullscreen) => {
+              console.log("passing as arg in background.js:",isFullscreen);
               const popup = document.getElementById("promptstash-popup");
               if (popup) {
                 const isSmallScreen = window.innerWidth <= 768;

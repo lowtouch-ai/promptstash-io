@@ -472,10 +472,13 @@ document.addEventListener("DOMContentLoaded", () => {
   // Toggle fullscreen
   elements.fullscreenToggle.addEventListener("click", () => {
     const svg = elements.fullscreenToggle.querySelector("svg use");
+    console.log("on click:",isFullscreen);
     svg.setAttribute("href", isFullscreen ? "sprite.svg#compress" : "sprite.svg#fullscreen");
     isFullscreen = !isFullscreen;
+    console.log("after swap in popup.js:",isFullscreen);
     saveState();
     chrome.runtime.sendMessage({ action: "toggleFullscreen" });
+    console.log("after sendMessage in popup.js:",isFullscreen);
   });
 
   // Minimize popup

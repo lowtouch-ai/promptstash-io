@@ -398,7 +398,7 @@ function createWidget(inputField, inputContainer) {
 
   // Handle touchmove to detect drag
   extensionButton.addEventListener('touchmove', (e) => {
-    if (Math.abs(e.touches[0].clientX - startX) > 1 || Math.abs(e.touches[0].clientY - startY) > 1) {
+    if (Math.abs(e.touches[0].clientX - startX) > 3 || Math.abs(e.touches[0].clientY - startY) > 3) {
       isDragging = true;
     }
   });
@@ -475,29 +475,23 @@ function makeDraggable(element, inputContainer, onPositionChange) {
 
   // Stop dragging on mouseup, capturing events globally including over iframes
   window.addEventListener('mouseup', () => {
-    if (isDragging) {
-      isDragging = false;
-      element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
-      console.log("Drag stopped on mouseup (global window listener)");
-    }
+    isDragging = false;
+    element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
+    console.log("Drag stopped on mouseup (global window listener)");
   }, { capture: true }); // Use capture phase to ensure event is caught before iframe boundary
 
   // Stop dragging on touchend globally to handle double-tap over popup iframe
   window.addEventListener('touchend', () => {
-    if (isDragging) {
-      isDragging = false;
-      element.style.transition = 'top 0.3s ease, left 0.3s ease';
-      console.log("Touch dragging stopped on global touchend");
-    }
+    isDragging = false;
+    element.style.transition = 'top 0.3s ease, left 0.3s ease';
+    console.log("Touch dragging stopped on global touchend");
   }, { capture: true }); // Capture phase ensures event is caught before iframe
 
   // Stop dragging on touchcancel globally for interrupted touches
   window.addEventListener('touchcancel', () => {
-    if (isDragging) {
-      isDragging = false;
-      element.style.transition = 'top 0.3s ease, left 0.3s ease';
-      console.log("Touch dragging stopped on global touchcancel");
-    }
+    isDragging = false;
+    element.style.transition = 'top 0.3s ease, left 0.3s ease';
+    console.log("Touch dragging stopped on global touchcancel");
   }, { capture: true }); // Capture phase ensures reliability
 
   // Stop dragging when pointer enters the popup iframe to prevent unintended dragging
@@ -506,7 +500,12 @@ function makeDraggable(element, inputContainer, onPositionChange) {
     popup.addEventListener('mousemove', () => {
       isDragging = false;
       element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
-      console.log("Drag stopped on mouseenter popup iframe");
+      console.log("Drag stopped on mousemove popup iframe");
+    });
+    popup.addEventListener('touchmove', () => {
+      isDragging = false;
+      element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
+      console.log("Drag stopped on mousemove popup iframe");
     });
   }
 
