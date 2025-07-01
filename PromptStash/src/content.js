@@ -516,7 +516,7 @@ function makeDraggable(element, inputContainer, onPositionChange) {
   const observer = new MutationObserver(() => {
     const popup = document.getElementById('promptstash-popup');
     if (popup && !popup.dataset.mouseenterAttached) {
-      popup.addEventListener('mouseenter', () => {
+      popup.addEventListener('mousemove', () => {
         if (isDragging) {
           isDragging = false;
           element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
