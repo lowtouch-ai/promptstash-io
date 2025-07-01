@@ -504,11 +504,9 @@ function makeDraggable(element, inputContainer, onPositionChange) {
   const popup = document.getElementById('promptstash-popup');
   if (popup) {
     popup.addEventListener('mousemove', () => {
-      if (isDragging) {
-        isDragging = false;
-        element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
-        console.log("Drag stopped on mouseenter popup iframe");
-      }
+      isDragging = false;
+      element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
+      console.log("Drag stopped on mouseenter popup iframe");
     });
   }
 
@@ -517,11 +515,9 @@ function makeDraggable(element, inputContainer, onPositionChange) {
     const popup = document.getElementById('promptstash-popup');
     if (popup && !popup.dataset.mouseenterAttached) {
       popup.addEventListener('mousemove', () => {
-        if (isDragging) {
-          isDragging = false;
-          element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
-          console.log("Drag stopped on mouseenter popup iframe (dynamic listener)");
-        }
+        isDragging = false;
+        element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
+        console.log("Drag stopped on mouseenter popup iframe (dynamic listener)");
       });
       popup.dataset.mouseenterAttached = 'true'; // Prevent multiple listeners
     }

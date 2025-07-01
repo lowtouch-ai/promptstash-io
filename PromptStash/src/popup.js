@@ -91,7 +91,14 @@ document.addEventListener("DOMContentLoaded", () => {
     const state = result.popupState || {};
     elements.templateName.value = state.name || "";
     elements.templateTags.value = state.tags || "";
-    elements.promptArea.value = state.content || "";
+    elements.promptArea.value = state.content || `# Your Role
+* 
+
+# Background Information
+* 
+
+# Your Task
+* `;
     selectedTemplateName = state.selectedName || null;
     currentTheme = result.theme || "light";
     nextIndex = result.nextIndex || defaultTemplates.length;
@@ -327,12 +334,12 @@ document.addEventListener("DOMContentLoaded", () => {
       return { isValid: false, sanitizedName: null };
     }
     if (trimmedName.length > 50) {
-      showToast("Template name must be 50 characters or less.", 3000, "red", [], "save");
+      showToast("Template name must be 50 characters or less.", 3000, "red", [], "nameLength");
       return { isValid: false, sanitizedName: null };
     }
     const sanitizedName = trimmedName.replace(/[^a-zA-Z0-9\s]/g, "");
     if (sanitizedName !== trimmedName) {
-      showToast("Template name can only contain letters, numbers, and spaces.", 3000, "red", [], "save");
+      showToast("Template name can only contain letters, numbers, and spaces.", 3000, "red", [], "nameChar");
       return { isValid: false, sanitizedName: null };
     }
     const isDuplicate = templates.some(t => t.name === sanitizedName && (isSaveAs || t.name !== selectedTemplateName));
@@ -348,7 +355,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!input) return "";
     const tags = input.split(",").map(tag => tag.trim()).filter(tag => tag);
     if (tags.length > 5) {
-      showToast("Maximum of 5 tags allowed per template.", 3000, "red", [], "save");
+      showToast("Maximum of 5 tags allowed per template.", 3000, "red", [], "tagsLength");
       return null;
     }
     const sanitizedTags = tags.map(tag => tag.replace(/[^a-zA-Z0-9\s]/g, "").slice(0, 20));
@@ -480,7 +487,14 @@ document.addEventListener("DOMContentLoaded", () => {
   elements.closeBtn.addEventListener("click", () => {
     elements.templateName.value = "";
     elements.templateTags.value = "";
-    elements.promptArea.value = "";
+    elements.promptArea.value = `# Your Role
+* 
+
+# Background Information
+* 
+
+# Your Task
+* `;
     selectedTemplateName = null;
     elements.fetchBtn2.style.display = "block";
     elements.searchBox.value = "";
@@ -1208,7 +1222,14 @@ document.addEventListener("DOMContentLoaded", () => {
                   selectedTemplateName = null;
                   elements.templateName.value = "";
                   elements.templateTags.value = "";
-                  elements.promptArea.value = "";
+                  elements.promptArea.value = `# Your Role
+* 
+
+# Background Information
+* 
+
+# Your Task
+* `;
                   elements.searchBox.value = "";
                   elements.fetchBtn2.style.display = "block";
                   elements.clearPrompt.style.display = "none";
