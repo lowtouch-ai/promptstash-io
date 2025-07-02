@@ -68,7 +68,7 @@ document.addEventListener("DOMContentLoaded", () => {
     console.error("Missing DOM elements:", missingElements);
     showToast("Error: Extension UI failed to load. Please reload the extension.", 3000, "red", [], "init");
   } else {
-    console.log("All DOM elements found:", Object.keys(elements));
+    // console.log("All DOM elements found:", Object.keys(elements));
   }
 
   let selectedTemplateName = null;
@@ -83,15 +83,13 @@ document.addEventListener("DOMContentLoaded", () => {
     // Check if stored version matches current version
     const storedVersion = result.extensionVersion || "0.0.0";
     if (storedVersion !== EXTENSION_VERSION) {
-      console.log(`Version updated from ${storedVersion} to ${EXTENSION_VERSION}. No schema migration needed.`);
+      // console.log(`Version updated from ${storedVersion} to ${EXTENSION_VERSION}. No schema migration needed.`);
       chrome.storage.local.set({ extensionVersion: EXTENSION_VERSION });
     }
 
     // Initialize state, falling back to defaults if not present
     const state = result.popupState || {};
-    elements.templateName.value = state.name || "";
-    elements.templateTags.value = state.tags || "";
-    elements.promptArea.value = state.content || `# Your Role
+    const defaultTest = `# Your Role
 * 
 
 # Background Information
@@ -99,6 +97,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
 # Your Task
 * `;
+    elements.templateName.value = state.name || "";
+    elements.templateTags.value = state.tags || "";
+    elements.promptArea.value = (state.content === undefined) ? defaultTest : state.content;
+    // console.log("state.content =", state.content)
     selectedTemplateName = state.selectedName || null;
     currentTheme = result.theme || "light";
     nextIndex = result.nextIndex || defaultTemplates.length;
@@ -151,7 +153,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Show toast notification with operation-based queueing and duplicate debouncing
   function showToast(message, duration = 4000, type = "red", buttons = [], operationId) {
-    console.log("Queueing toast:", { message, duration, type, hasButtons: buttons.length > 0, operationId });
+    // console.log("Queueing toast:", { message, duration, type, hasButtons: buttons.length > 0, operationId });
     
     // Create a unique key for the toast based on message and operationId
     const toastKey = `${message}|${operationId}`;
@@ -159,7 +161,7 @@ document.addEventListener("DOMContentLoaded", () => {
     
     // Debounce duplicate non-confirmation toasts (ignore within 1 seconds)
     if (buttons.length === 0 && toastTimestamps[toastKey] && now - toastTimestamps[toastKey] < 1010) {
-      console.log(`Duplicate toast debounced for key: ${toastKey}`);
+      // console.log(`Duplicate toast debounced for key: ${toastKey}`);
       return;
     }
     
@@ -177,7 +179,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (buttons.length > 0) {
       const duplicateIndex = toastQueue.findIndex(toast => toast.message === message && toast.buttons.length > 0);
       if (duplicateIndex !== -1) {
-        console.log("Duplicate confirmation toast found, skipping");
+        // console.log("Duplicate confirmation toast found, skipping");
         return;
       }
     }
@@ -185,7 +187,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // If new operation, close current toast, clear queue, and update operationId
     if (operationId !== currentOperationId) {
       if (isToastShowing) {
-        console.log(`New operation ${operationId}, closing current toast and clearing queue`);
+        // console.log(`New operation ${operationId}, closing current toast and clearing queue`);
         overrideAnimation = true; // Flag to skip animation delay
         // If the current toast is a confirmation toast, execute the "No" callback to re-enable buttons
         const currentToast = elements.toast.className.includes("confirmation") ? toastQueue[0] || { buttons: [] } : { buttons: [] };
@@ -203,13 +205,13 @@ document.addEventListener("DOMContentLoaded", () => {
         displayNextToast();
       }
     } else {
-      console.log(`Toast for operation ${operationId} ignored, current operation is ${currentOperationId}`);
+      // console.log(`Toast for operation ${operationId} ignored, current operation is ${currentOperationId}`);
     }
   }
 
   // Close toast function
   function closeToast(onClose) {
-    console.log("Closing toast, clearing autoHideTimeout");
+    // console.log("Closing toast, clearing autoHideTimeout");
     clearTimeout(autoHideTimeout);
     autoHideTimeout = null;
     // Clear any scheduled displayNextToast to prevent race conditions
@@ -217,7 +219,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (outsideClickListener) {
       document.removeEventListener("click", outsideClickListener);
       outsideClickListener = null;
-      console.log("Outside click listener removed in closeToast");
+      // console.log("Outside click listener removed in closeToast");
     }
     elements.toast.classList.remove("show");
     elements.toast.classList.add("hide");
@@ -226,7 +228,7 @@ document.addEventListener("DOMContentLoaded", () => {
       elements.toast.classList.remove("hide");
       elements.toast.innerHTML = "";
       isToastShowing = false;
-      console.log("Toast closed, executing callback:", !!onClose);
+      // console.log("Toast closed, executing callback:", !!onClose);
       if (onClose) onClose();
       // Schedule displayNextToast immediately if overriding, else after animation
       if (overrideAnimation) {
@@ -242,7 +244,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function displayNextToast() {
     if (toastQueue.length === 0) {
       isToastShowing = false;
-      console.log("No toasts in queue, stopping display");
+      // console.log("No toasts in queue, stopping display");
       return;
     }
     // Clear any existing autoHideTimeout
@@ -250,7 +252,7 @@ document.addEventListener("DOMContentLoaded", () => {
     autoHideTimeout = null;
     isToastShowing = true;
     const { message, duration, type, buttons, operationId } = toastQueue.shift(); // Remove the toast from the queue
-    console.log("Displaying toast:", { message, duration, type, hasButtons: buttons.length > 0, operationId });
+    // console.log("Displaying toast:", { message, duration, type, hasButtons: buttons.length > 0, operationId });
     elements.toast.innerHTML = message;
 
     // Add close button
@@ -260,11 +262,11 @@ document.addEventListener("DOMContentLoaded", () => {
     closeBtn.setAttribute("aria-label", "Close toast");
     closeBtn.addEventListener("click", (event) => {
       event.stopPropagation(); // Prevent the click from propagating to the overlay
-      console.log("Close button clicked");
+      // console.log("Close button clicked");
       if (outsideClickListener) {
         document.removeEventListener("click", outsideClickListener);
         outsideClickListener = null;
-        console.log("Outside click listener removed on close button click");
+        // console.log("Outside click listener removed on close button click");
       }
       const noButton = buttons.find(b => b.text === "No");
       closeToast(noButton?.callback);
@@ -282,11 +284,11 @@ document.addEventListener("DOMContentLoaded", () => {
         btn.setAttribute("aria-label", text === "Yes" ? "Confirm action" : "Cancel action");
         btn.addEventListener("click", (event) => {
           event.stopPropagation(); // Prevent the click from propagating to the overlay
-          console.log(`Confirmation button clicked: ${text}`);
+          // console.log(`Confirmation button clicked: ${text}`);
           if (outsideClickListener) {
             document.removeEventListener("click", outsideClickListener);
             outsideClickListener = null;
-            console.log("Outside click listener removed on confirmation button click");
+            // console.log("Outside click listener removed on confirmation button click");
           }
           closeToast(callback);
         });
@@ -299,7 +301,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // Handle outside click to cancel confirmation toasts
       outsideClickListener = (event) => {
         if (!elements.toast.contains(event.target)) {
-          console.log("Outside click detected");
+          // console.log("Outside click detected");
           const noButton = buttons.find(b => b.text === "No");
           closeToast(() => {
             if (noButton && noButton.callback) {
@@ -309,15 +311,15 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       };
       setTimeout(() => {
-        console.log("Attaching outside click listener");
+        // console.log("Attaching outside click listener");
         document.addEventListener("click", outsideClickListener);
       }, 50);
 
     } else {
       // Auto-hide only for non-confirmation toasts
-      console.log(`Setting auto-hide timeout for ${duration}ms`);
+      // console.log(`Setting auto-hide timeout for ${duration}ms`);
       autoHideTimeout = setTimeout(() => {
-        console.log("Auto-hide timeout triggered");
+        // console.log("Auto-hide timeout triggered");
         closeToast();
       }, duration);
     }
@@ -472,13 +474,16 @@ document.addEventListener("DOMContentLoaded", () => {
   // Toggle fullscreen
   elements.fullscreenToggle.addEventListener("click", () => {
     const svg = elements.fullscreenToggle.querySelector("svg use");
-    console.log("on click:",isFullscreen);
+    console.log("logged from popup.js: ICON clicked isFullscreen =",isFullscreen);
     svg.setAttribute("href", isFullscreen ? "sprite.svg#compress" : "sprite.svg#fullscreen");
     isFullscreen = !isFullscreen;
-    console.log("after swap in popup.js:",isFullscreen);
+    console.log("logged from popup.js: value of isFullscreen inverted");
     saveState();
+    chrome.storage.local.get(["isFullscreen"], (f) => {
+      console.log("logged from popup.js: value of isFullscreen in chrome.storage.local =", f.isFullscreen);
+    });
     chrome.runtime.sendMessage({ action: "toggleFullscreen" });
-    console.log("after sendMessage in popup.js:",isFullscreen);
+    console.log("logged from popup.js: toggleFullscreen action message sent")
   });
 
   // Minimize popup
@@ -660,7 +665,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Load templates and suggestions
   function loadTemplates(filter, query = "", showDropdown = false) {
     chrome.storage.local.get(["templates"], (result) => {
-      console.log(result);
+      // console.log(result);
       let templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
       elements.dropdownResults.innerHTML = "";
       elements.favoriteSuggestions.innerHTML = "";
@@ -1084,10 +1089,10 @@ document.addEventListener("DOMContentLoaded", () => {
               console.error("Fetch error:", errorMessage);
               if (!hasRetried && (errorMessage.includes("Cannot access contents of the page") || errorMessage.includes("Could not establish connection"))) {
                 hasRetried = true;
-                console.log("Content script unresponsive, attempting to re-inject...");
+                // console.log("Content script unresponsive, attempting to re-inject...");
                 chrome.runtime.sendMessage({ action: "reInjectContentScript", tabId }, (reInjectResponse) => {
                   if (reInjectResponse && reInjectResponse.success) {
-                    console.log("Content script re-injected, retrying fetch...");
+                    // console.log("Content script re-injected, retrying fetch...");
                     setTimeout(tryFetchPrompt, 100); // Short delay to ensure script is loaded
                   } else {
                     showToast("Failed to fetch prompt. Please try again or refresh the page.", 3000, "red", [], "fetch");
@@ -1107,7 +1112,7 @@ document.addEventListener("DOMContentLoaded", () => {
               elements.clearPrompt.style.display = "block";
               saveState();
             } else {
-              showToast("No input found on the page.", 3000, "red", [], "fetch");
+              showToast("No text found. Please select a field that contains text.", 3000, "red", [], "fetch");
             }
             toggleButtonState(btn, false);
           });
@@ -1143,10 +1148,10 @@ document.addEventListener("DOMContentLoaded", () => {
             console.error("Send error:", errorMessage);
             if (!hasRetried && (errorMessage.includes("Cannot access contents of the page") || errorMessage.includes("Could not establish connection"))) {
               hasRetried = true;
-              console.log("Content script unresponsive, attempting to re-inject...");
+              // console.log("Content script unresponsive, attempting to re-inject...");
               chrome.runtime.sendMessage({ action: "reInjectContentScript", tabId }, (reInjectResponse) => {
                 if (reInjectResponse && reInjectResponse.success) {
-                  console.log("Content script re-injected, retrying send...");
+                  // console.log("Content script re-injected, retrying send...");
                   setTimeout(trySendPrompt, 100); // Short delay to ensure script is loaded
                 } else {
                   showToast("Failed to send prompt. Please try again or refresh the page.", 3000, "red", [], "send");

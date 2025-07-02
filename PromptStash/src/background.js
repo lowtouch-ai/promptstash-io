@@ -55,6 +55,7 @@ function togglePopup() {
 
   if (popup) {
     popup.remove();
+    console.log("------------------- Pop-up closed -------------------")
   } else {
     popup = document.createElement("div");
     popup.id = popupId;
@@ -62,9 +63,11 @@ function togglePopup() {
       <iframe src="${chrome.runtime.getURL("popup.html")}" style="width: 100%; height: 100%; border: none;"></iframe>
     `;
     document.body.appendChild(popup);
+    console.log("------------------- Pop-up opened -------------------")
 
     // Retrieve stored fullscreen state and apply styles
     chrome.storage.local.get(["isFullscreen"], (result) => {
+      console.log("logged from background.js: value of isFullscreen in chrome.storage.local on opening popup =", result.isFullscreen)
       const isFullscreen = result.isFullscreen || false;
       const isSmallScreen = window.innerWidth <= 768;
       const defaultWidth = isFullscreen ? "100vw" : isSmallScreen ? "100vw" : "50vw";
@@ -100,7 +103,7 @@ function togglePopup() {
       const widget = document.getElementById("promptstash-widget");  
       if (popup && !popup.contains(e.target) && !widget.contains(e.target)) {
         popup.remove();
-        console.log("Is widget targeted (background):" + !widget.contains(e.target))
+        // console.log("Is widget targeted (background):" + !widget.contains(e.target))
         chrome.storage.local.set({ isFullscreen: false });
       }
 
@@ -174,11 +177,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
   } else if (message.action === "toggleFullscreen") {
     chrome.storage.local.get(["isFullscreen"], (result) => {
-      console.log("after get in background.js:",result.isFullscreen);
+      console.log("logged from background.js: value of isFullscreen in chrome.storage.local =", result.isFullscreen);
       const isFullscreen = !result.isFullscreen;
-      console.log("after swap in background.js:",isFullscreen);
+      console.log("logged from background.js: value of isFullscreen inverted");
       chrome.storage.local.set({ isFullscreen }, () => {
-        console.log("after set in background.js:",isFullscreen);
+        console.log("logged from background.js: value of isFullscreen in chrome.storage.local set as:", isFullscreen);
         if (chrome.runtime.lastError) {
           console.error("Storage set error:", chrome.runtime.lastError.message);
           return;
@@ -188,7 +191,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           chrome.scripting.executeScript({
             target: { tabId: tabs[0].id },
             function: (isFullscreen) => {
-              console.log("passing as arg in background.js:",isFullscreen);
+              console.log("logged from background.js: value of isFullscreen passed as arg:",isFullscreen);
               const popup = document.getElementById("promptstash-popup");
               if (popup) {
                 const isSmallScreen = window.innerWidth <= 768;
@@ -258,7 +261,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         console.error("Content script re-injection error:", chrome.runtime.lastError.message);
         sendResponse({ success: false });
       } else {
-        console.log("Content script re-injected successfully");
+        // console.log("Content script re-injected successfully");
         sendResponse({ success: true });
       }
     });

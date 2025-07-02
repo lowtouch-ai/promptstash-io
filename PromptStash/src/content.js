@@ -35,7 +35,7 @@ function setupFocusTracking() {
   document.querySelectorAll(allEditableSelectors).forEach(field => {
     field.addEventListener('focus', () => {
       lastFocusedField = field;
-      console.log(`Focused field updated:`, lastFocusedField);
+      // console.log(`Focused field updated:`, lastFocusedField);
     });
   });
 
@@ -49,7 +49,7 @@ function setupFocusTracking() {
             fields.forEach(field => {
               field.addEventListener('focus', () => {
                 lastFocusedField = field;
-                console.log(`Focused field updated (dynamic):`, lastFocusedField);
+                // console.log(`Focused field updated (dynamic):`, lastFocusedField);
               });
             });
           }
@@ -62,21 +62,21 @@ function setupFocusTracking() {
 
 // Handle messages from popup/background
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log("Received message:", message);
+  // console.log("Received message:", message);
 
   // Use cached input field or find new one for widget positioning
   let inputField = cachedInputField || findPrimaryInputField();
   let targetField = lastFocusedField && isFieldValid(lastFocusedField) ? lastFocusedField : inputField;
 
-  if (inputField) {
-    console.log("Primary input field found:", inputField, "Tag:", inputField.tagName, "Visible:", inputField.offsetParent !== null);
-  } else {
-    console.log("No primary input field found with initial querySelector.");
-  }
+  // if (inputField) {
+  //   // console.log("Primary input field found:", inputField, "Tag:", inputField.tagName, "Visible:", inputField.offsetParent !== null);
+  // } else {
+  //   // console.log("No primary input field found with initial querySelector.");
+  // }
 
   // Retry finding the input field up to 3 times if not found for widget positioning
   if (!inputField && (message.action === "sendPrompt" || message.action === "getPrompt")) {
-    console.log("Retrying to find primary input field...");
+    // console.log("Retrying to find primary input field...");
     let retryCount = 0;
     const maxRetries = 3;
     const retryInterval = 500;
@@ -84,15 +84,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       retryCount++;
       inputField = findPrimaryInputField();
       if (inputField) {
-        console.log(`Primary input field found on retry ${retryCount}:`, inputField, "Tag:", inputField.tagName, "Visible:", inputField.offsetParent !== null);
+        // console.log(`Primary input field found on retry ${retryCount}:`, inputField, "Tag:", inputField.tagName, "Visible:", inputField.offsetParent !== null);
         cachedInputField = inputField;
         targetField = lastFocusedField && isFieldValid(lastFocusedField) ? lastFocusedField : inputField;
         processMessage(message, targetField, sendResponse);
       } else if (retryCount < maxRetries) {
-        console.log(`Retry ${retryCount} failed, retrying in ${retryInterval}ms...`);
+        // console.log(`Retry ${retryCount} failed, retrying in ${retryInterval}ms...`);
         setTimeout(retry, timeout);
       } else {
-        console.log("No primary input field found after max retries.");
+        // console.log("No primary input field found after max retries.");
         processMessage(message, targetField, sendResponse);
       }
     };
@@ -113,27 +113,27 @@ function isFieldValid(field) {
 function processMessage(message, targetField, sendResponse) {
   if (message.action === "sendPrompt") {
     if (targetField) {
-      console.log("Setting the prompt to target field:", message.prompt, targetField);
+      // console.log("Setting the prompt to target field:", message.prompt, targetField);
       if (targetField.tagName === "DIV" && targetField.contentEditable === "true" && targetField.classList.contains("ProseMirror")) {
         targetField.innerHTML = "";
         const lines = message.prompt.split("\n");
         targetField.innerHTML = lines.map(line => `<p>${line}<br></p>`).join("");
-        console.log("Cleared and set innerHTML for ChatGPT ProseMirror div with <p> and <br> tags.");
+        // console.log("Cleared and set innerHTML for ChatGPT ProseMirror div with <p> and <br> tags.");
       } else if (targetField.tagName === "DIV" && targetField.contentEditable === "true") {
         targetField.innerHTML = "";
         targetField.innerHTML = message.prompt.replace(/\n/g, "<br>");
-        console.log("Cleared and set innerHTML for contenteditable div with <br> for newlines.");
+        // console.log("Cleared and set innerHTML for contenteditable div with <br> for newlines.");
       } else {
         targetField.value = "";
         targetField.value = message.prompt;
-        console.log("Cleared and set value for input/textarea.");
+        // console.log("Cleared and set value for input/textarea.");
       }
       targetField.dispatchEvent(new Event("input", { bubbles: true }));
       targetField.dispatchEvent(new Event("change", { bubbles: true }));
       targetField.focus(); // Restore focus to the target field
       sendResponse({ success: true });
     } else {
-      console.log("No target field found for sendPrompt");
+      // console.log("No target field found for sendPrompt");
       sendResponse({ success: false });
     }
   } else if (message.action === "getPrompt") {
@@ -143,26 +143,26 @@ function processMessage(message, targetField, sendResponse) {
         const paragraphs = Array.from(targetField.querySelectorAll("p"));
         if (paragraphs.length > 0) {
           prompt = paragraphs.map(p => p.textContent.trimEnd()).join("\n");
-          console.log("Retrieved prompt from ChatGPT ProseMirror div:", prompt);
+          // console.log("Retrieved prompt from ChatGPT ProseMirror div:", prompt);
         } else {
           prompt = targetField.textContent.replace(/\n+/g, "\n").trimEnd();
-          console.log("Retrieved prompt from ChatGPT ProseMirror div (fallback):", prompt);
+          // console.log("Retrieved prompt from ChatGPT ProseMirror div (fallback):", prompt);
         }
       } else if (targetField.tagName === "DIV" && targetField.contentEditable === "true") {
         prompt = targetField.innerHTML.replace(/<br\s*\/?>/gi, "\n").replace(/<\/?[^>]+(>|$)/g, "").trimEnd();
-        console.log("Retrieved prompt from contenteditable div:", prompt);
+        // console.log("Retrieved prompt from contenteditable div:", prompt);
       } else {
         prompt = targetField.value || "";
-        console.log("Retrieved prompt from input/textarea:", prompt);
+        // console.log("Retrieved prompt from input/textarea:", prompt);
       }
       sendResponse({ prompt });
     } else {
-      console.log("No target field found for getPrompt");
+      // console.log("No target field found for getPrompt");
       sendResponse({ prompt: "" });
     }
   } else if (message.action === "getSelectedText") {
     const selectedText = window.getSelection().toString();
-    console.log("Retrieved selected text:", selectedText);
+    // console.log("Retrieved selected text:", selectedText);
     sendResponse({ selectedText });
   }
 }
@@ -170,20 +170,20 @@ function processMessage(message, targetField, sendResponse) {
 // Find the primary input field based on platform-specific selectors
 function findPrimaryInputField() {
   const hostname = window.location.hostname;
-  console.log("Checking hostname for platform detection:", hostname);
+  // console.log("Checking hostname for platform detection:", hostname);
   const platform = Object.keys(SUPPORTED_HOSTS).find(host => hostname.includes(host));
   if (!platform) {
-    console.log("No supported platform detected for hostname:", hostname);
+    // console.log("No supported platform detected for hostname:", hostname);
     return null;
   }
   const { primarySelector, name } = SUPPORTED_HOSTS[platform];
-  console.log(`Attempting to find primary input field for ${name} with selector: ${primarySelector}`);
+  // console.log(`Attempting to find primary input field for ${name} with selector: ${primarySelector}`);
   const inputField = document.querySelector(primarySelector);
   if (inputField && inputField.offsetParent !== null) {
-    console.log(`Found primary input field for ${name}:`, inputField, "Visible:", true);
+    // console.log(`Found primary input field for ${name}:`, inputField, "Visible:", true);
     return inputField;
   }
-  console.log(`No primary input field found for ${name} with selector: ${primarySelector}`);
+  // console.log(`No primary input field found for ${name} with selector: ${primarySelector}`);
   return null;
 }
 
@@ -194,7 +194,7 @@ function findInputContainer(inputField) {
   if (window.location.hostname.includes("grok.com")) {
     const queryBar = inputField.closest("div.query-bar");
     if (queryBar) {
-      console.log("Found query-bar container for grok.com:", queryBar);
+      // console.log("Found query-bar container for grok.com:", queryBar);
       return queryBar;
     }
   }
@@ -235,10 +235,10 @@ function createWidget(inputField, inputContainer) {
   widget.style.position = 'absolute';
   widget.style.zIndex = '9999';
   widget.style.visibility = 'hidden'; // Hide until positioned
-  widget.style.transition = 'top 0.3s ease, left 0.3s ease'; // Smooth transition for position changes
+  // widget.style.transition = 'top 0.3s ease, left 0.3s ease'; // Smooth transition for position changes
 
   // Initialize widget position with default offset
-  let widgetOffset = { x: -100, y: -90 }; // Default offset from bottom-right corner
+  let widgetOffset = { x: -250, y: -35 }; // Default offset from bottom-right corner
 
   // Create an offscreen container to measure widget size
   const offscreenContainer = document.createElement('div');
@@ -338,7 +338,7 @@ function createWidget(inputField, inputContainer) {
   makeDraggable(widget, inputContainer, (newOffset) => {
     widgetOffset = newOffset;
     chrome.storage.local.set({ widgetOffset }, () => {
-      console.log("Widget offset saved:", widgetOffset);
+      // console.log("Widget offset saved:", widgetOffset);
     });
   });
 
@@ -377,6 +377,7 @@ function createWidget(inputField, inputContainer) {
         return;
       } else {
         chrome.runtime.sendMessage({ action: "togglePopup" });
+        console.log("Widget clicked; pop-up opened; isDragging=",isDragging)
       }
     }
     isDragging = false;
@@ -412,12 +413,14 @@ function createWidget(inputField, inputContainer) {
     }
     isDragging = false; // Ensure dragging is reset even if popup intercepts event
     e.preventDefault(); // Prevent default to avoid unintended clicks
+    console.log("Touch dragging stopped on extensionButton touchend")
   });
 
   // Handle touchcancel to reset state on interrupted touches
   extensionButton.addEventListener('touchcancel', () => {
     clearTimeout(holdTimeout); // Clear hold timeout
     isDragging = false; // Reset drag state
+    console.log("Touch dragging stopped on extensionButton touchcancel")
   });
 
   // Clear hold timeout if mouse leaves button
@@ -446,7 +449,7 @@ function makeDraggable(element, inputContainer, onPositionChange) {
     isDragging = true;
     offsetX = e.clientX - element.getBoundingClientRect().left;
     offsetY = e.clientY - element.getBoundingClientRect().top;
-    element.style.transition = 'none'; // Disable transition during drag for instant response
+    // element.style.transition = 'none'; // Disable transition during drag for instant response
   });
 
   // Update position during drag
@@ -476,21 +479,21 @@ function makeDraggable(element, inputContainer, onPositionChange) {
   // Stop dragging on mouseup, capturing events globally including over iframes
   window.addEventListener('mouseup', () => {
     isDragging = false;
-    element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
+    // element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
     console.log("Drag stopped on mouseup (global window listener)");
   }, { capture: true }); // Use capture phase to ensure event is caught before iframe boundary
 
   // Stop dragging on touchend globally to handle double-tap over popup iframe
   window.addEventListener('touchend', () => {
     isDragging = false;
-    element.style.transition = 'top 0.3s ease, left 0.3s ease';
+    // element.style.transition = 'top 0.3s ease, left 0.3s ease';
     console.log("Touch dragging stopped on global touchend");
   }, { capture: true }); // Capture phase ensures event is caught before iframe
 
   // Stop dragging on touchcancel globally for interrupted touches
   window.addEventListener('touchcancel', () => {
     isDragging = false;
-    element.style.transition = 'top 0.3s ease, left 0.3s ease';
+    // element.style.transition = 'top 0.3s ease, left 0.3s ease';
     console.log("Touch dragging stopped on global touchcancel");
   }, { capture: true }); // Capture phase ensures reliability
 
@@ -499,13 +502,13 @@ function makeDraggable(element, inputContainer, onPositionChange) {
   if (popup) {
     popup.addEventListener('mousemove', () => {
       isDragging = false;
-      element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
+      // element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
       console.log("Drag stopped on mousemove popup iframe");
     });
     popup.addEventListener('touchmove', () => {
       isDragging = false;
-      element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
-      console.log("Drag stopped on mousemove popup iframe");
+      // element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
+      console.log("Touch dragging stopped on mousemove popup iframe");
     });
   }
 
@@ -515,8 +518,8 @@ function makeDraggable(element, inputContainer, onPositionChange) {
     if (popup && !popup.dataset.mouseenterAttached) {
       popup.addEventListener('mousemove', () => {
         isDragging = false;
-        element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
-        console.log("Drag stopped on mouseenter popup iframe (dynamic listener)");
+        // element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
+        console.log("Drag stopped on mousemove popup iframe (dynamic listener)");
       });
       popup.dataset.mouseenterAttached = 'true'; // Prevent multiple listeners
     }
@@ -548,10 +551,10 @@ const tryCreateWidget = debounce(function () {
   // If no primary input field or container is found and widget exists, retry after a delay
   if (!newInputField || !newInputContainer) {
     if (widgetCreated && widget) {
-      console.log("Primary input field/container temporarily unavailable, retrying in 500ms...");
+      // console.log("Primary input field/container temporarily unavailable, retrying in 500ms...");
       setTimeout(tryCreateWidget, 500);
     } else {
-      console.log("No primary input field/container found, skipping widget creation.");
+      // console.log("No primary input field/container found, skipping widget creation.");
     }
     return;
   }
@@ -566,7 +569,7 @@ const tryCreateWidget = debounce(function () {
       cachedInputField = newInputField;
       cachedInputContainer = newInputContainer;
       widgetCreated = true;
-      console.log("Widget created for primary input field and container:", newInputField, newInputContainer);
+      // console.log("Widget created for primary input field and container:", newInputField, newInputContainer);
     } else if (newInputField !== currentInputField || newInputContainer !== currentInputContainer) {
       // Input field or container changed, update widget
       if (widget) {
@@ -585,7 +588,7 @@ const tryCreateWidget = debounce(function () {
       currentInputContainer = newInputContainer;
       cachedInputField = newInputField;
       cachedInputContainer = newInputContainer;
-      console.log("Widget recreated for updated primary input field and container:", newInputField, newInputContainer);
+      // console.log("Widget recreated for updated primary input field and container:", newInputField, newInputContainer);
     } else {
       // Check for position changes in the same input container (e.g., ChatGPT input field moving)
       if (widgetCreated && widget && newInputContainer) {
