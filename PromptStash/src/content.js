@@ -374,10 +374,12 @@ function createWidget(inputField, inputContainer) {
       // Check if popup is open
       const popup = document.getElementById("promptstash-popup");
       if (popup) {
+        isDragging = false; // CHANGED HERE: ADDED "isDragging = false;"        
+        console.log("Widget clicked; pop-up already open; isDragging =",isDragging);
         return;
       } else {
         chrome.runtime.sendMessage({ action: "togglePopup" });
-        console.log("Widget clicked; pop-up opened; isDragging=",isDragging)
+        console.log("Widget clicked; pop-up opened; isDragging =",isDragging);
       }
     }
     isDragging = false;
@@ -409,18 +411,19 @@ function createWidget(inputField, inputContainer) {
     clearTimeout(holdTimeout); // Clear hold timeout
     const touchDuration = Date.now() - touchStartTime;
     if (!isDragging && touchDuration < 300) {
+      isDragging = false; // CHANGED HERE: ADDED "isDragging = false;"
       chrome.runtime.sendMessage({ action: "togglePopup" });
     }
     isDragging = false; // Ensure dragging is reset even if popup intercepts event
     e.preventDefault(); // Prevent default to avoid unintended clicks
-    console.log("Touch dragging stopped on extensionButton touchend")
+    // console.log("Touch dragging stopped on extensionButton touchend")
   });
 
   // Handle touchcancel to reset state on interrupted touches
   extensionButton.addEventListener('touchcancel', () => {
     clearTimeout(holdTimeout); // Clear hold timeout
     isDragging = false; // Reset drag state
-    console.log("Touch dragging stopped on extensionButton touchcancel")
+    // console.log("Touch dragging stopped on extensionButton touchcancel")
   });
 
   // Clear hold timeout if mouse leaves button
@@ -453,7 +456,7 @@ function makeDraggable(element, inputContainer, onPositionChange) {
   });
 
   // Update position during drag
-  document.addEventListener('mousemove', (e) => {
+  window.addEventListener('mousemove', (e) => {
     if (isDragging) {
       const containerRect = inputContainer.getBoundingClientRect();
       const widgetRect = element.getBoundingClientRect();
@@ -480,21 +483,21 @@ function makeDraggable(element, inputContainer, onPositionChange) {
   window.addEventListener('mouseup', () => {
     isDragging = false;
     // element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
-    console.log("Drag stopped on mouseup (global window listener)");
+    // console.log("Drag stopped on mouseup (global window listener)");
   }, { capture: true }); // Use capture phase to ensure event is caught before iframe boundary
 
   // Stop dragging on touchend globally to handle double-tap over popup iframe
   window.addEventListener('touchend', () => {
     isDragging = false;
     // element.style.transition = 'top 0.3s ease, left 0.3s ease';
-    console.log("Touch dragging stopped on global touchend");
+    // console.log("Touch dragging stopped on global touchend");
   }, { capture: true }); // Capture phase ensures event is caught before iframe
 
   // Stop dragging on touchcancel globally for interrupted touches
   window.addEventListener('touchcancel', () => {
     isDragging = false;
     // element.style.transition = 'top 0.3s ease, left 0.3s ease';
-    console.log("Touch dragging stopped on global touchcancel");
+    // console.log("Touch dragging stopped on global touchcancel");
   }, { capture: true }); // Capture phase ensures reliability
 
   // Stop dragging when pointer enters the popup iframe to prevent unintended dragging
@@ -516,10 +519,10 @@ function makeDraggable(element, inputContainer, onPositionChange) {
   const observer = new MutationObserver(() => {
     const popup = document.getElementById('promptstash-popup');
     if (popup && !popup.dataset.mouseenterAttached) {
-      popup.addEventListener('mousemove', () => {
+      popup.addEventListener('mouseenter', () => {
         isDragging = false;
         // element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
-        console.log("Drag stopped on mousemove popup iframe (dynamic listener)");
+        console.log("Drag stopped on mouseenter popup iframe (dynamic listener)");
       });
       popup.dataset.mouseenterAttached = 'true'; // Prevent multiple listeners
     }
