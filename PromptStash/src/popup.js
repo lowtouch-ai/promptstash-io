@@ -297,7 +297,15 @@ document.addEventListener("DOMContentLoaded", () => {
       elements.toast.appendChild(buttonContainer);
 
       elements.confirmationOverlay.style.display = "block";
-
+      
+      // Focus on the "Yes" button after buttons are added
+      const yesButton = elements.toast.querySelector(".toast-action-btn[aria-label='Confirm action']");
+      setTimeout(() => {
+        if (yesButton) {
+          yesButton.focus();
+        }
+      }, 0)
+      
       // Handle outside click to cancel confirmation toasts
       outsideClickListener = (event) => {
         if (!elements.toast.contains(event.target)) {
@@ -847,7 +855,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       if (!tagsInput.trim()) {
-        elements.templateTags.focus();
         showToast(
           "No tags provided. Save without tags?",
           0,
@@ -1007,7 +1014,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       if (!tagsInput.trim()) {
-        elements.templateTags.focus();
         showToast(
           "No tags provided. Save without tags?",
           0,

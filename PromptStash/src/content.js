@@ -238,7 +238,7 @@ function createWidget(inputField, inputContainer) {
   // widget.style.transition = 'top 0.3s ease, left 0.3s ease'; // Smooth transition for position changes
 
   // Initialize widget position with default offset
-  let widgetOffset = { x: -250, y: -35 }; // Default offset from bottom-right corner
+  let widgetOffset = { x: -100, y: -100 }; // Default offset from bottom-right corner
 
   // Create an offscreen container to measure widget size
   const offscreenContainer = document.createElement('div');
