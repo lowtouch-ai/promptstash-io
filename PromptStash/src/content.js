@@ -90,7 +90,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         processMessage(message, targetField, sendResponse);
       } else if (retryCount < maxRetries) {
         // console.log(`Retry ${retryCount} failed, retrying in ${retryInterval}ms...`);
-        setTimeout(retry, timeout);
+        setTimeout(retry, retryInterval);
       } else {
         // console.log("No primary input field found after max retries.");
         processMessage(message, targetField, sendResponse);
@@ -347,7 +347,53 @@ function createWidget(inputField, inputContainer) {
   let isDragging = false;
   let startX, startY;
   let holdTimeout;
-  let touchStartTime;
+
+  // Function to handle widget click with retry on context invalidation
+  function handleWidgetClick(e) {
+    clearTimeout(holdTimeout); // Clear hold timeout
+    if (!isDragging) {
+      const popup = document.getElementById("promptstash-popup");
+      if (popup) {
+        isDragging = false;
+        console.log("Widget clicked; pop-up already open; isDragging =", isDragging);
+        return;
+      }
+      try {
+        chrome.runtime.sendMessage({ action: "togglePopup" }, (response) => {
+          if (chrome.runtime.lastError) {
+            console.error("Failed to send togglePopup message:", chrome.runtime.lastError.message);
+            // Attempt to re-inject content script and retry
+            chrome.runtime.sendMessage({ action: "reInjectContentScript", tabId: null }, (reInjectResponse) => {
+              if (reInjectResponse && reInjectResponse.success) {
+                console.log("Content script re-injected, retrying togglePopup...");
+                setTimeout(() => {
+                  chrome.runtime.sendMessage({ action: "togglePopup" });
+                }, 100);
+              } else {
+                console.error("Failed to re-inject content script:", chrome.runtime.lastError?.message);
+              }
+            });
+            return;
+          }
+          console.log("Widget clicked; pop-up opened; isDragging =", isDragging);
+        });
+      } catch (error) {
+        console.error("Widget click error:", error.message);
+        // Attempt to re-inject content script on error
+        chrome.runtime.sendMessage({ action: "reInjectContentScript", tabId: null }, (reInjectResponse) => {
+          if (reInjectResponse && reInjectResponse.success) {
+            console.log("Content script re-injected due to error, retrying togglePopup...");
+            setTimeout(() => {
+              chrome.runtime.sendMessage({ action: "togglePopup" });
+            }, 100);
+          } else {
+            console.error("Failed to re-inject content script:", chrome.runtime.lastError?.message);
+          }
+        });
+      }
+    }
+    isDragging = false;
+  }
 
   // Handle mousedown to initiate potential drag
   extensionButton.addEventListener('mousedown', (e) => {
@@ -368,22 +414,7 @@ function createWidget(inputField, inputContainer) {
   });
 
   // Handle click to open popup
-  extensionButton.addEventListener('click', (e) => {
-    clearTimeout(holdTimeout); // Clear hold timeout
-    if (!isDragging) {
-      // Check if popup is open
-      const popup = document.getElementById("promptstash-popup");
-      if (popup) {
-        isDragging = false; // CHANGED HERE: ADDED "isDragging = false;"        
-        console.log("Widget clicked; pop-up already open; isDragging =",isDragging);
-        return;
-      } else {
-        chrome.runtime.sendMessage({ action: "togglePopup" });
-        console.log("Widget clicked; pop-up opened; isDragging =",isDragging);
-      }
-    }
-    isDragging = false;
-  });
+  extensionButton.addEventListener('click', handleWidgetClick);
 
   // Handle touchstart to record start time
   extensionButton.addEventListener('touchstart', (e) => {
@@ -411,8 +442,8 @@ function createWidget(inputField, inputContainer) {
     clearTimeout(holdTimeout); // Clear hold timeout
     const touchDuration = Date.now() - touchStartTime;
     if (!isDragging && touchDuration < 300) {
-      isDragging = false; // CHANGED HERE: ADDED "isDragging = false;"
-      chrome.runtime.sendMessage({ action: "togglePopup" });
+      isDragging = false;
+      handleWidgetClick(e); // Use same click handler for touch
     }
     isDragging = false; // Ensure dragging is reset even if popup intercepts event
     e.preventDefault(); // Prevent default to avoid unintended clicks
@@ -435,7 +466,7 @@ function createWidget(inputField, inputContainer) {
   extensionButton.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === 'Space') {
       e.preventDefault();
-      chrome.runtime.sendMessage({ action: "togglePopup" });
+      handleWidgetClick(e); // Use same click handler for keyboard
     }
   });
 
@@ -562,17 +593,30 @@ const tryCreateWidget = debounce(function () {
     return;
   }
 
+  // Check if widget is still in the DOM and valid
+  const isWidgetValid = widget && document.body.contains(widget) && widget.offsetParent !== null;
+
   // If a new valid primary input field and container are found
   if (newInputField && newInputContainer) {
-    if (!widgetCreated) {
-      // Create widget for the first time
+    if (!widgetCreated || !isWidgetValid) {
+      // Create or recreate widget if it doesn't exist or is invalid
+      if (widget) {
+        // Clean up existing widget resources
+        if (widget.resizeObserver) {
+          widget.resizeObserver.disconnect();
+        }
+        if (widget.resizeListener) {
+          window.removeEventListener('resize', widget.resizeListener);
+        }
+        widget.remove();
+      }
       widget = createWidget(newInputField, newInputContainer);
       currentInputField = newInputField;
       currentInputContainer = newInputContainer;
       cachedInputField = newInputField;
       cachedInputContainer = newInputContainer;
       widgetCreated = true;
-      // console.log("Widget created for primary input field and container:", newInputField, newInputContainer);
+      // console.log("Widget created or recreated for primary input field and container:", newInputField, newInputContainer);
     } else if (newInputField !== currentInputField || newInputContainer !== currentInputContainer) {
       // Input field or container changed, update widget
       if (widget) {
@@ -608,6 +652,16 @@ const tryCreateWidget = debounce(function () {
 // Initial setup
 tryCreateWidget();
 setupFocusTracking();
+
+// Periodic check to ensure widget is valid and responsive
+const checkWidgetHealth = debounce(function () {
+  if (widgetCreated && widget && !document.body.contains(widget)) {
+    // console.log("Widget detached from DOM, recreating...");
+    widgetCreated = false;
+    tryCreateWidget();
+  }
+}, 30000); // Check every 30 seconds
+setInterval(checkWidgetHealth, 30000);
 
 // Observe DOM changes for dynamic content
 const observer = new MutationObserver(debounce(() => {

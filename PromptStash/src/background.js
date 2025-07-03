@@ -1,4 +1,3 @@
-
 // Listen for extension icon click to toggle popup
 chrome.action.onClicked.addListener((tab) => {
   // Check for restricted protocols
@@ -106,7 +105,6 @@ function togglePopup() {
         // console.log("Is widget targeted (background):" + !widget.contains(e.target))
         chrome.storage.local.set({ isFullscreen: false });
       }
-
     });
   }
 }
@@ -152,6 +150,35 @@ function showUnsupportedSiteToast(message) {
     setTimeout(() => toast.remove(), 300);
   }, 3000);
 }
+
+// Periodic health check for content script responsiveness
+function checkContentScriptHealth() {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (!tabs[0] || tabs[0].url.match(/^(chrome|file|about):\/\//)) {
+      return; // Skip restricted URLs
+    }
+    const tabId = tabs[0].id;
+    // Send a test message to check if content script is responsive
+    chrome.tabs.sendMessage(tabId, { action: "ping" }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.log("Content script unresponsive, re-injecting...");
+        chrome.scripting.executeScript({
+          target: { tabId },
+          files: ["content.js"]
+        }, () => {
+          if (chrome.runtime.lastError) {
+            console.error("Content script re-injection error:", chrome.runtime.lastError.message);
+          } else {
+            console.log("Content script re-injected successfully");
+          }
+        });
+      }
+    });
+  });
+}
+
+// Run health check every 30 seconds
+setInterval(checkContentScriptHealth, 30000);
 
 // Handle messages for closing popup, fullscreen, and re-injecting content script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -252,9 +279,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     return true; // Keep message channel open for async response
   } else if (message.action === "reInjectContentScript") {
-    // Re-inject content.js into the specified tab
+    // Re-inject content.js into the specified tab or active tab if tabId is null
+    const tabId = message.tabId || (chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => tabs[0]?.id));
+    if (!tabId) {
+      console.error("No valid tab ID provided for re-injection");
+      sendResponse({ success: false });
+      return;
+    }
     chrome.scripting.executeScript({
-      target: { tabId: message.tabId },
+      target: { tabId },
       files: ["content.js"]
     }, () => {
       if (chrome.runtime.lastError) {
