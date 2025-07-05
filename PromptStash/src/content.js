@@ -35,7 +35,7 @@ function setupFocusTracking() {
   document.querySelectorAll(allEditableSelectors).forEach(field => {
     field.addEventListener('focus', () => {
       lastFocusedField = field;
-      console.log(`Focused field updated:`, lastFocusedField);
+      console.log(`Focused field updated:`/* , lastFocusedField */);
     });
   });
 
@@ -49,7 +49,7 @@ function setupFocusTracking() {
             fields.forEach(field => {
               field.addEventListener('focus', () => {
                 lastFocusedField = field;
-                console.log(`Focused field updated (dynamic):`, lastFocusedField);
+                console.log(`Focused field updated (dynamic):`/* , lastFocusedField */);
               });
             });
           }
@@ -119,21 +119,31 @@ function processMessage(message, targetField, sendResponse) {
     }
 
     if (targetField) {
-      console.log("Setting the prompt to target field:", message.prompt, targetField);
+      console.log("Setting the prompt to target field:", message.prompt/* , targetField */);
       const hostname = window.location.hostname;
+      console.log(`Target field value before clearing: ${targetField.value}`);
+      console.log(`Target field innerHTML before clearing: ${targetField.innerHTML}`);
 
       // Clear existing content based on field type
       if (targetField.tagName === "TEXTAREA" || targetField.tagName === "INPUT") {
         targetField.value = "";
+        console.log(`Target field value after clearing globally: ${targetField.value}`);
       } else {
+        const oldText = targetField.innerHTML;
+        console.log("oldText =", oldText);
         targetField.innerHTML = "";
+        console.log(`Target field innerHTML after clearing globally: ${targetField.innerHTML}`);
       }
 
       // Handle Perplexity.ai
       if (hostname.includes("perplexity.ai")) {
         // Handle Lexical editor for fresh chats (#ask-input div)
         if (targetField.id === "ask-input" && targetField.getAttribute("data-lexical-editor") === "true") {
-          // Create new paragraph for the prompt in a single operation
+          // Clear content and simulate user input
+          targetField.innerHTML = "";
+          console.log(`Target field innerHTML after clearing locally: ${targetField.innerHTML}`);
+
+          // Create new paragraph for the prompt
           const p = document.createElement("p");
           p.setAttribute("dir", "ltr");
           const lines = message.prompt.split("\n").filter(line => line.trim());
@@ -143,15 +153,38 @@ function processMessage(message, targetField, sendResponse) {
               span.setAttribute("data-lexical-text", "true");
               span.textContent = line;
               p.appendChild(span);
-            }
-            if (index < lines.length - 1 || !line) {
-              p.appendChild(document.createElement("br"));
+              if (index < lines.length - 1) {
+                p.appendChild(document.createElement("br"));
+              }
             }
           });
-          // Clear and set content in one step to avoid partial updates
-          targetField.innerHTML = "";
           targetField.appendChild(p);
-          console.log("Replaced prompt in Perplexity.ai Lexical editor:", targetField.innerHTML);
+          console.log("Target field innerHTML after appendChild(p):", targetField.innerHTML);
+
+          // Simulate user input using execCommand
+          try {
+            targetField.focus();
+            document.execCommand("selectAll", false, null);
+            document.execCommand("delete", false, null);
+            document.execCommand("insertHTML", false, p.outerHTML);
+            console.log("Simulated user input with execCommand, new innerHTML:", targetField.innerHTML);
+          } catch (e) {
+            console.log("execCommand failed:", e.message);
+            // Fallback to direct DOM manipulation
+            targetField.innerHTML = p.outerHTML;
+          }
+
+          // Update selection
+          try {
+            const range = document.createRange();
+            const selection = window.getSelection();
+            range.selectNodeContents(p);
+            range.collapse(false); // Collapse to the end of the content
+            selection.removeAllRanges();
+            selection.addRange(range);
+          } catch (e) {
+            console.log("Failed to set selection range:", e.message);
+          }
 
           // Dispatch events to ensure Lexical editor updates
           const beforeInputEvent = new InputEvent("beforeinput", {
@@ -162,23 +195,25 @@ function processMessage(message, targetField, sendResponse) {
           });
           targetField.dispatchEvent(beforeInputEvent);
 
-          // Dispatch additional events for Lexical editor compatibility
-          targetField.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: message.prompt }));
+          const inputEvent = new InputEvent("input", {
+            bubbles: true,
+            inputType: "insertText",
+            data: message.prompt
+          });
+          targetField.dispatchEvent(inputEvent);
+
+          const compositionEndEvent = new Event("compositionend", { bubbles: true });
+          targetField.dispatchEvent(compositionEndEvent);
+
           targetField.dispatchEvent(new Event("change", { bubbles: true }));
           targetField.dispatchEvent(new Event("selectionchange", { bubbles: true }));
 
-          // Update Lexical editor selection to ensure UI reflects the change
-          const range = document.createRange();
-          const selection = window.getSelection();
-          range.selectNodeContents(p);
-          range.collapse(false); // Collapse to the end of the content
-          selection.removeAllRanges();
-          selection.addRange(range);
+          console.log("FINAL TEXT IN INPUT FIELD:", targetField.innerHTML);
         }
         // Handle textarea elements for follow-up queries and edit-mode
         else if (targetField.tagName === "TEXTAREA") {
           targetField.value = message.prompt;
-          console.log("Set value for Perplexity.ai textarea:", targetField);
+          console.log("Set value for Perplexity.ai textarea:"/* , targetField */);
           targetField.dispatchEvent(new Event("input", { bubbles: true }));
           targetField.dispatchEvent(new Event("change", { bubbles: true }));
         }
@@ -274,7 +309,7 @@ function findPrimaryInputField() {
   console.log(`Attempting to find primary input field for ${name} with selector: ${primarySelector}`);
   const inputField = document.querySelector(primarySelector);
   if (inputField && inputField.offsetParent !== null) {
-    console.log(`Found primary input field for ${name}:`, inputField, "Visible:", true);
+    console.log(`Found primary input field for ${name}:`/* , inputField */, "Visible:", true);
     return inputField;
   }
   console.log(`No primary input field found for ${name} with selector: ${primarySelector}`);
