@@ -69,7 +69,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   let targetField = lastFocusedField && isFieldValid(lastFocusedField) ? lastFocusedField : inputField;
 
   if (inputField) {
-    console.log("Primary input field found:", inputField, "Tag:", inputField.tagName, "Visible:", inputField.offsetParent !== null);
+    console.log("Primary input field found:"/* , inputField */, "Tag:", inputField.tagName, "Visible:", inputField.offsetParent !== null);
   } else {
     console.log("No primary input field found with initial querySelector.");
   }
@@ -84,7 +84,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       retryCount++;
       inputField = findPrimaryInputField();
       if (inputField) {
-        console.log(`Primary input field found on retry ${retryCount}:`, inputField, "Tag:", inputField.tagName, "Visible:", inputField.offsetParent !== null);
+        console.log(`Primary input field found on retry ${retryCount}:`/* , inputField */, "Tag:", inputField.tagName, "Visible:", inputField.offsetParent !== null);
         cachedInputField = inputField;
         targetField = lastFocusedField && isFieldValid(lastFocusedField) ? lastFocusedField : inputField;
         processMessage(message, targetField, sendResponse);
@@ -119,18 +119,16 @@ function processMessage(message, targetField, sendResponse) {
     }
 
     if (targetField) {
-      console.log("Setting the prompt to target field:", message.prompt/* , targetField */);
+      console.log("Setting the prompt to target field:\n" + message.prompt/* , targetField */);
       const hostname = window.location.hostname;
-      console.log(`Target field value before clearing: ${targetField.value}`);
-      console.log(`Target field innerHTML before clearing: ${targetField.innerHTML}`);
+      // console.log(`Target field value before clearing:\n${targetField.value}`);
+      console.log(`Target field innerHTML before clearing:\n${targetField.innerHTML}`);
 
       // Clear existing content based on field type
       if (targetField.tagName === "TEXTAREA" || targetField.tagName === "INPUT") {
         targetField.value = "";
         console.log(`Target field value after clearing globally: ${targetField.value}`);
       } else {
-        const oldText = targetField.innerHTML;
-        console.log("oldText =", oldText);
         targetField.innerHTML = "";
         console.log(`Target field innerHTML after clearing globally: ${targetField.innerHTML}`);
       }
@@ -139,11 +137,7 @@ function processMessage(message, targetField, sendResponse) {
       if (hostname.includes("perplexity.ai")) {
         // Handle Lexical editor for fresh chats (#ask-input div)
         if (targetField.id === "ask-input" && targetField.getAttribute("data-lexical-editor") === "true") {
-          // Clear content and simulate user input
-          targetField.innerHTML = "";
-          console.log(`Target field innerHTML after clearing locally: ${targetField.innerHTML}`);
-
-          // Create new paragraph for the prompt
+          // Create new paragraph for the prompt in a single operation
           const p = document.createElement("p");
           p.setAttribute("dir", "ltr");
           const lines = message.prompt.split("\n").filter(line => line.trim());
@@ -153,38 +147,17 @@ function processMessage(message, targetField, sendResponse) {
               span.setAttribute("data-lexical-text", "true");
               span.textContent = line;
               p.appendChild(span);
-              if (index < lines.length - 1) {
-                p.appendChild(document.createElement("br"));
-              }
+            }
+            if (index < lines.length - 1 || !line) {
+              p.appendChild(document.createElement("br"));
             }
           });
+          
+          // Clear and set content in one step to avoid partial updates
+          targetField.innerHTML = "";
+          console.log(`Target field innerHTML after clearing locally: ${targetField.innerHTML}`);
           targetField.appendChild(p);
-          console.log("Target field innerHTML after appendChild(p):", targetField.innerHTML);
-
-          // Simulate user input using execCommand
-          try {
-            targetField.focus();
-            document.execCommand("selectAll", false, null);
-            document.execCommand("delete", false, null);
-            document.execCommand("insertHTML", false, p.outerHTML);
-            console.log("Simulated user input with execCommand, new innerHTML:", targetField.innerHTML);
-          } catch (e) {
-            console.log("execCommand failed:", e.message);
-            // Fallback to direct DOM manipulation
-            targetField.innerHTML = p.outerHTML;
-          }
-
-          // Update selection
-          try {
-            const range = document.createRange();
-            const selection = window.getSelection();
-            range.selectNodeContents(p);
-            range.collapse(false); // Collapse to the end of the content
-            selection.removeAllRanges();
-            selection.addRange(range);
-          } catch (e) {
-            console.log("Failed to set selection range:", e.message);
-          }
+          console.log(`Target field innerHTML after appendChild(p):\n${targetField.innerHTML}`);
 
           // Dispatch events to ensure Lexical editor updates
           const beforeInputEvent = new InputEvent("beforeinput", {
@@ -193,22 +166,34 @@ function processMessage(message, targetField, sendResponse) {
             inputType: "insertParagraph",
             data: message.prompt
           });
+          console.log(`Target field innerHTML before targetField.dispatchEvent(beforeInputEvent):\n${targetField.innerHTML}`);
           targetField.dispatchEvent(beforeInputEvent);
+          console.log(`Target field innerHTML after targetField.dispatchEvent(beforeInputEvent):\n${targetField.innerHTML}`);
 
-          const inputEvent = new InputEvent("input", {
-            bubbles: true,
-            inputType: "insertText",
-            data: message.prompt
-          });
-          targetField.dispatchEvent(inputEvent);
-
-          const compositionEndEvent = new Event("compositionend", { bubbles: true });
-          targetField.dispatchEvent(compositionEndEvent);
-
+          // Dispatch additional events for Lexical editor compatibility
+          targetField.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: message.prompt }));
+          console.log(`Target field innerHTML after targetField.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: message.prompt })):\n${targetField.innerHTML}`);
           targetField.dispatchEvent(new Event("change", { bubbles: true }));
+          console.log(`Target field innerHTML after targetField.dispatchEvent(new Event("change", { bubbles: true })):\n${targetField.innerHTML}`);
           targetField.dispatchEvent(new Event("selectionchange", { bubbles: true }));
+          console.log(`Target field innerHTML after targetField.dispatchEvent(new Event("selectionchange", { bubbles: true })):\n${targetField.innerHTML}`);
 
-          console.log("FINAL TEXT IN INPUT FIELD:", targetField.innerHTML);
+          // Update Lexical editor selection to ensure UI reflects the change
+          const range = document.createRange();
+          console.log(`range after document.createRange():\n` + range);
+          const selection = window.getSelection();
+          console.log(`selection after window.getSelection():\n` + selection);
+          range.selectNodeContents(p);
+          console.log(`range after range.selectNodeContents(p):\n` + range);
+          range.collapse(false); // Collapse to the end of the content
+          console.log(`range after range.collapse(false):\n` + range);
+          selection.removeAllRanges();
+          console.log(`selection after selection.removeAllRanges():\n` + selection);
+          selection.addRange(range);
+          console.log(`selection after selection.addRange(range):\n` + selection);
+          console.log("FINAL TARGET FIELD INNERHTML:\n" + targetField.innerHTML);
+          // console.log("FINAL TARGET FIELD VALUE:\n" + targetField.value);
+          // console.log("FINAL TARGET FIELD INNERHTML VALUE:\n" + targetField.innerHTML.value);
         }
         // Handle textarea elements for follow-up queries and edit-mode
         else if (targetField.tagName === "TEXTAREA") {
@@ -355,16 +340,16 @@ function createWidget(inputField, inputContainer) {
   widget.id = 'promptstash-widget';
   widget.setAttribute('aria-live', 'polite'); // Accessibility: announce changes
   widget.innerHTML = `
-      <button class="extension-button" aria-label="Open PromptStash" title="Open PromptStash">
+      <button class="extension-button" style="border-radius: 100%;" aria-label="Open PromptStash" title="Open PromptStash">
         <img src="${chrome.runtime.getURL('icon48.png')}" alt="PromptStash Icon" aria-hidden="true" draggable="false" style="width: 30px; height: 30px;">
       </button>
   `;
 
-  // Initialize widget with hidden visibility to prevent flashing at default position
+  // Initialize widget with hidden visibility to prevent flashing
   widget.style.position = 'absolute';
   widget.style.zIndex = '9999';
   widget.style.visibility = 'hidden'; // Hide until positioned
-  // widget.style.transition = 'top 0.3s ease, left 0.3s ease'; // Smooth transition for position changes
+  widget.style.borderRadius = '100%';
 
   // Initialize widget position with default offset
   let widgetOffset = { x: -100, y: -100 }; // Default offset from bottom-right corner
@@ -377,7 +362,7 @@ function createWidget(inputField, inputContainer) {
   offscreenContainer.appendChild(widget);
   document.body.appendChild(offscreenContainer);
 
-  // Calculate initial position using input container and actual widget size
+  // Calculate initial position using input container and widget size
   if (inputContainer && inputContainer.offsetParent) {
     const containerRect = inputContainer.getBoundingClientRect();
     const parentRect = inputContainer.parentElement.getBoundingClientRect();
@@ -417,7 +402,7 @@ function createWidget(inputField, inputContainer) {
       newLeft = Math.max(containerRect.left + window.scrollX, Math.min(newLeft, containerRect.right + window.scrollX - widgetRect.width));
       newTop = Math.max(containerRect.top + window.scrollY, Math.min(newTop, containerRect.bottom + window.scrollY - widgetRect.height));
     } else {
-      // Generic bounds for other platforms, including ChatGPT
+      // Generic bounds for other platforms
       newLeft = Math.max(parentRect.left + window.scrollX, Math.min(newLeft, parentRect.right + window.scrollX - widgetRect.width));
       newTop = Math.max(parentRect.top + window.scrollY, Math.min(newTop, parentRect.bottom + window.scrollY - widgetRect.height));
     }
@@ -439,134 +424,103 @@ function createWidget(inputField, inputContainer) {
     widget.style.left = `${newLeft}px`;
   }
 
-  // Expose updateWidgetPosition for dynamic position updates (e.g., ChatGPT input field movement)
+  // Expose updateWidgetPosition for dynamic updates
   widget.updatePosition = updateWidgetPosition;
 
-  // Add hover event listeners for opacity toggle
-  widget.addEventListener('mouseenter', () => {
-    widget.style.transform = 'scale(1.02)';
+  const extensionButton = widget.querySelector('.extension-button');
+
+  // Add hover effect for visual feedback
+  extensionButton.addEventListener('pointerenter', () => {
+    extensionButton.style.transform = 'scale(1.02)';
   });
-  widget.addEventListener('mouseleave', () => {
-    widget.style.transform = 'scale(1)';
+  extensionButton.addEventListener('pointerleave', () => {
+    extensionButton.style.transform = 'scale(1)';
   });
 
   // Observe input container resizing
   const resizeObserver = new ResizeObserver(debounce(() => {
     updateWidgetPosition();
-  }, 50)); // Debounced to prevent excessive updates
+  }, 5)); // Debounced to prevent excessive updates
   resizeObserver.observe(inputContainer);
   widget.resizeObserver = resizeObserver;
 
   // Update position on window resize (debounced for performance)
-  const updatePositionDebounced = debounce(() => updateWidgetPosition(), 50);
+  const updatePositionDebounced = debounce(() => updateWidgetPosition(), 5);
   const resizeListener = () => updatePositionDebounced();
   window.addEventListener('resize', resizeListener);
   widget.resizeListener = resizeListener;
 
-  // Make widget draggable and save new position
+  // Make widget draggable and handle popup interaction
   makeDraggable(widget, inputContainer, (newOffset) => {
     widgetOffset = newOffset;
-    chrome.storage.local.set({ widgetOffset }, () => {
-      // console.log("Widget offset saved:", widgetOffset);
-    });
+    chrome.storage.local.set({ widgetOffset }, () => {});
   });
 
-  // Event listeners for extension button with click and touch support
-  const extensionButton = widget.querySelector('.extension-button');
+  // Handle pointer events for button interaction
   let isDragging = false;
   let startX, startY;
   let holdTimeout;
-  let touchStartTime;
+  let pointerStartTime;
 
-  // Handle mousedown to initiate potential drag
-  extensionButton.addEventListener('mousedown', (e) => {
+  extensionButton.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); // Prevent default behaviors like text selection or scrolling
+    if (document.getElementById('promptstash-popup')) return; // Prevent interaction if popup is open
     startX = e.clientX;
     startY = e.clientY;
+    pointerStartTime = Date.now();
     isDragging = false;
-    // Set isDragging to true after holding for 300ms
     holdTimeout = setTimeout(() => {
       isDragging = true;
+      extensionButton.style.cursor = 'grabbing'; // Visual feedback for drag mode
     }, 300);
   });
 
-  // Track movement to detect drag
-  extensionButton.addEventListener('mousemove', (e) => {
-    if (Math.abs(e.clientX - startX) > 3 || Math.abs(e.clientY - startY) > 3) {
-      isDragging = true;
+  extensionButton.addEventListener('pointermove', (e) => {
+    // Detect movement to confirm drag intent
+    if (Math.abs(e.clientX - startX) > 1 || Math.abs(e.clientY - startY) > 1) {
+      // isDragging = true;
+      // extensionButton.style.cursor = 'grabbing';
     }
   });
 
-  // Handle click to open popup
-  extensionButton.addEventListener('click', (e) => {
-    clearTimeout(holdTimeout); // Clear hold timeout
-    if (!isDragging) {
-      // Check if popup is open
-      const popup = document.getElementById("promptstash-popup");
-      if (popup) {
-        isDragging = false;        
-        console.log("Widget clicked; pop-up already open; isDragging =",isDragging);
-        return;
-      } else {
-        chrome.runtime.sendMessage({ action: "togglePopup" });
-        console.log("Widget clicked; pop-up opened; isDragging =",isDragging);
-      }
-    }
-    isDragging = false;
-  });
-
-  // Handle touchstart to record start time
-  extensionButton.addEventListener('touchstart', (e) => {
-    touchStartTime = Date.now();
-    isDragging = false;
-    startX = e.touches[0].clientX;
-    startY = e.touches[0].clientY;
-    // Prevent default touch behavior to avoid scrolling/zooming
-    e.preventDefault();
-    // Set isDragging to true after holding for 300ms
-    holdTimeout = setTimeout(() => {
-      isDragging = true;
-    }, 300);
-  });
-
-  // Handle touchmove to detect drag
-  extensionButton.addEventListener('touchmove', (e) => {
-    if (Math.abs(e.touches[0].clientX - startX) > 3 || Math.abs(e.touches[0].clientY - startY) > 3) {
-      isDragging = true;
-    }
-  });
-
-  // Handle touchend to open popup on quick tap and reset dragging
-  extensionButton.addEventListener('touchend', (e) => {
-    clearTimeout(holdTimeout); // Clear hold timeout
-    const touchDuration = Date.now() - touchStartTime;
-    if (!isDragging && touchDuration < 300) {
-      isDragging = false;
+  extensionButton.addEventListener('pointerup', (e) => {
+    // Handle popup opening on quick tap/click
+    clearTimeout(holdTimeout);
+    const duration = Date.now() - pointerStartTime;
+    if (!isDragging && duration < 300 && !document.getElementById('promptstash-popup')) {
       chrome.runtime.sendMessage({ action: "togglePopup" });
     }
-    isDragging = false; // Ensure dragging is reset even if popup intercepts event
-    e.preventDefault(); // Prevent default to avoid unintended clicks
-    // console.log("Touch dragging stopped on extensionButton touchend")
+    isDragging = false;
+    extensionButton.style.cursor = ''; // Reset cursor
   });
 
-  // Handle touchcancel to reset state on interrupted touches
-  extensionButton.addEventListener('touchcancel', () => {
-    clearTimeout(holdTimeout); // Clear hold timeout
-    isDragging = false; // Reset drag state
-    // console.log("Touch dragging stopped on extensionButton touchcancel")
-  });
-
-  // Clear hold timeout if mouse leaves button
-  extensionButton.addEventListener('mouseleave', () => {
+  extensionButton.addEventListener('pointercancel', () => {
+    // Handle interrupted interactions
     clearTimeout(holdTimeout);
+    isDragging = false;
+    extensionButton.style.cursor = ''; // Reset cursor
+  });
+
+  extensionButton.addEventListener('pointerleave', () => {
+    clearTimeout(holdTimeout);
+    isDragging = false;
+    extensionButton.style.cursor = ''; // Reset cursor
   });
 
   // Ensure keyboard accessibility
   extensionButton.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === 'Space') {
+    if (e.key === 'Enter' || e.key === ' ') { // Space key support per accessibility standards
       e.preventDefault();
-      chrome.runtime.sendMessage({ action: "togglePopup" });
+      if (!document.getElementById('promptstash-popup')) {
+        chrome.runtime.sendMessage({ action: "togglePopup" });
+      }
+      isDragging = false;
     }
   });
+
+  // Add ARIA attributes for accessibility
+  extensionButton.setAttribute('role', 'button');
+  extensionButton.setAttribute('tabindex', '0'); // Make button focusable
 
   return widget;
 }
@@ -576,84 +530,68 @@ function makeDraggable(element, inputContainer, onPositionChange) {
   let isDragging = false;
   let offsetX, offsetY;
 
-  // Start dragging on mousedown
-  element.addEventListener('mousedown', (e) => {
+  element.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); // Prevent default behaviors
+    if (document.getElementById('promptstash-popup')) return; // Prevent dragging if popup is open
     isDragging = true;
     offsetX = e.clientX - element.getBoundingClientRect().left;
     offsetY = e.clientY - element.getBoundingClientRect().top;
-    // element.style.transition = 'none'; // Disable transition during drag for instant response
+    element.style.cursor = 'grabbing'; // Visual feedback
   });
 
-  // Update position during drag
-  window.addEventListener('mousemove', (e) => {
-    if (isDragging) {
-      const containerRect = inputContainer.getBoundingClientRect();
-      const widgetRect = element.getBoundingClientRect();
-      // Use query-bar as boundary for grok.com, otherwise use parent
-      const boundaryRect = window.location.hostname.includes("grok.com") ? containerRect : inputContainer.parentElement.getBoundingClientRect();
+  window.addEventListener('pointermove', (e) => {
+    // Handle drag movement
+    if (!isDragging) return;
+    const containerRect = inputContainer.getBoundingClientRect();
+    const widgetRect = element.getBoundingClientRect();
+    const boundaryRect = window.location.hostname.includes("grok.com") 
+      ? containerRect 
+      : inputContainer.parentElement.getBoundingClientRect();
 
-      let newLeft = e.clientX - offsetX;
-      let newTop = e.clientY - offsetY;
+    let newLeft = e.clientX - offsetX;
+    let newTop = e.clientY - offsetY;
 
-      newLeft = Math.max(boundaryRect.left + window.scrollX, Math.min(newLeft, boundaryRect.right + window.scrollX - widgetRect.width));
-      newTop = Math.max(boundaryRect.top + window.scrollY, Math.min(newTop, boundaryRect.bottom + window.scrollY - widgetRect.height));
+    newLeft = Math.max(boundaryRect.left + window.scrollX, Math.min(newLeft, boundaryRect.right + window.scrollX - widgetRect.width));
+    newTop = Math.max(boundaryRect.top + window.scrollY, Math.min(newTop, boundaryRect.bottom + window.scrollY - widgetRect.height));
 
-      element.style.left = `${newLeft}px`;
-      element.style.top = `${newTop}px`;
+    element.style.left = `${newLeft}px`;
+    element.style.top = `${newTop}px`;
 
-      // Calculate offset from bottom-right corner
-      const newOffsetX = newLeft - (containerRect.right + window.scrollX);
-      const newOffsetY = newTop - (containerRect.bottom + window.scrollY);
-      onPositionChange({ x: newOffsetX, y: newOffsetY });
-    }
-  });
+    // Calculate offset from bottom-right corner
+    const newOffsetX = newLeft - (containerRect.right + window.scrollX);
+    const newOffsetY = newTop - (containerRect.bottom + window.scrollY);
+    onPositionChange({ x: newOffsetX, y: newOffsetY });
+  }, { capture: true }); // Capture phase for iframe compatibility
 
-  // Stop dragging on mouseup, capturing events globally including over iframes
-  window.addEventListener('mouseup', () => {
+  window.addEventListener('pointerup', () => {
     isDragging = false;
-    // element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
-    // console.log("Drag stopped on mouseup (global window listener)");
-  }, { capture: true }); // Use capture phase to ensure event is caught before iframe boundary
+    element.style.cursor = ''; // Reset cursor
+  }, { capture: true });
 
-  // Stop dragging on touchend globally to handle double-tap over popup iframe
-  window.addEventListener('touchend', () => {
+  window.addEventListener('pointercancel', () => {
+    // Handle interrupted drags
     isDragging = false;
-    // element.style.transition = 'top 0.3s ease, left 0.3s ease';
-    // console.log("Touch dragging stopped on global touchend");
-  }, { capture: true }); // Capture phase ensures event is caught before iframe
+    element.style.cursor = ''; // Reset cursor
+  }, { capture: true });
 
-  // Stop dragging on touchcancel globally for interrupted touches
-  window.addEventListener('touchcancel', () => {
-    isDragging = false;
-    // element.style.transition = 'top 0.3s ease, left 0.3s ease';
-    // console.log("Touch dragging stopped on global touchcancel");
-  }, { capture: true }); // Capture phase ensures reliability
-
-  // Stop dragging when pointer enters the popup iframe to prevent unintended dragging
+  // Stop dragging when pointer enters the popup
   const popup = document.getElementById('promptstash-popup');
   if (popup) {
-    popup.addEventListener('mousemove', () => {
+    popup.addEventListener('pointerenter', () => {
       isDragging = false;
-      // element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
-      console.log("Drag stopped on mousemove popup iframe");
-    });
-    popup.addEventListener('touchmove', () => {
-      isDragging = false;
-      // element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
-      console.log("Touch dragging stopped on mousemove popup iframe");
+      element.style.cursor = ''; // Reset cursor
     });
   }
 
-  // Observe popup creation to attach mouseenter listener dynamically
+  // Observe popup creation dynamically
   const observer = new MutationObserver(() => {
     const popup = document.getElementById('promptstash-popup');
-    if (popup && !popup.dataset.mouseenterAttached) {
-      popup.addEventListener('mouseenter', () => {
+    if (popup && !popup.dataset.pointerenterAttached) {
+      popup.addEventListener('pointerenter', () => {
         isDragging = false;
-        // element.style.transition = 'top 0.3s ease, left 0.3s ease'; // Restore transition after drag
-        console.log("Drag stopped on mouseenter popup iframe (dynamic listener)");
+        element.style.cursor = ''; // Reset cursor
       });
-      popup.dataset.mouseenterAttached = 'true'; // Prevent multiple listeners
+      popup.dataset.pointerenterAttached = 'true'; // Prevent multiple listeners
     }
   });
   observer.observe(document.body, { childList: true, subtree: true });
