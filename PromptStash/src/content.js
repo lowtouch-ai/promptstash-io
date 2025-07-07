@@ -137,70 +137,85 @@ function processMessage(message, targetField, sendResponse) {
       if (hostname.includes("perplexity.ai")) {
         // Handle Lexical editor for fresh chats (#ask-input div)
         if (targetField.id === "ask-input" && targetField.getAttribute("data-lexical-editor") === "true") {
-          // Create new paragraph for the prompt in a single operation
-          const p = document.createElement("p");
-          p.setAttribute("dir", "ltr");
-          const lines = message.prompt.split("\n").filter(line => line.trim());
-          lines.forEach((line, index) => {
-            if (line) {
+          // Focus the field first to ensure proper state
+          targetField.focus();
+          
+          // Clear existing content by selecting all and replacing
+          const selectAllEvent = new KeyboardEvent("keydown", {
+            key: "a",
+            ctrlKey: true,
+            bubbles: true,
+            cancelable: true
+          });
+          targetField.dispatchEvent(selectAllEvent);
+          
+          // Small delay to ensure selection is processed
+          setTimeout(() => {
+            // Clear the innerHTML directly
+            targetField.innerHTML = "";
+            
+            // Create new paragraph for the prompt
+            const p = document.createElement("p");
+            p.setAttribute("dir", "ltr");
+            
+            // Handle empty prompt
+            if (!message.prompt.trim()) {
               const span = document.createElement("span");
               span.setAttribute("data-lexical-text", "true");
-              span.textContent = line;
+              span.textContent = "";
               p.appendChild(span);
+            } else {
+              // Split by lines and preserve line breaks
+              const lines = message.prompt.split("\n");
+              lines.forEach((line, index) => {
+                const span = document.createElement("span");
+                span.setAttribute("data-lexical-text", "true");
+                span.textContent = line;
+                p.appendChild(span);
+                
+                // Add line break except for the last line
+                if (index < lines.length - 1) {
+                  p.appendChild(document.createElement("br"));
+                }
+              });
             }
-            if (index < lines.length - 1 || !line) {
-              p.appendChild(document.createElement("br"));
-            }
-          });
-          
-          // Clear and set content in one step to avoid partial updates
-          targetField.innerHTML = "";
-          console.log(`Target field innerHTML after clearing locally: ${targetField.innerHTML}`);
-          targetField.appendChild(p);
-          console.log(`Target field innerHTML after appendChild(p):\n${targetField.innerHTML}`);
-
-          // Dispatch events to ensure Lexical editor updates
-          const beforeInputEvent = new InputEvent("beforeinput", {
-            bubbles: true,
-            cancelable: true,
-            inputType: "insertParagraph",
-            data: message.prompt
-          });
-          console.log(`Target field innerHTML before targetField.dispatchEvent(beforeInputEvent):\n${targetField.innerHTML}`);
-          targetField.dispatchEvent(beforeInputEvent);
-          console.log(`Target field innerHTML after targetField.dispatchEvent(beforeInputEvent):\n${targetField.innerHTML}`);
-
-          // Dispatch additional events for Lexical editor compatibility
-          targetField.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: message.prompt }));
-          console.log(`Target field innerHTML after targetField.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: message.prompt })):\n${targetField.innerHTML}`);
-          targetField.dispatchEvent(new Event("change", { bubbles: true }));
-          console.log(`Target field innerHTML after targetField.dispatchEvent(new Event("change", { bubbles: true })):\n${targetField.innerHTML}`);
-          targetField.dispatchEvent(new Event("selectionchange", { bubbles: true }));
-          console.log(`Target field innerHTML after targetField.dispatchEvent(new Event("selectionchange", { bubbles: true })):\n${targetField.innerHTML}`);
-
-          // Update Lexical editor selection to ensure UI reflects the change
-          const range = document.createRange();
-          console.log(`range after document.createRange():\n` + range);
-          const selection = window.getSelection();
-          console.log(`selection after window.getSelection():\n` + selection);
-          range.selectNodeContents(p);
-          console.log(`range after range.selectNodeContents(p):\n` + range);
-          range.collapse(false); // Collapse to the end of the content
-          console.log(`range after range.collapse(false):\n` + range);
-          selection.removeAllRanges();
-          console.log(`selection after selection.removeAllRanges():\n` + selection);
-          selection.addRange(range);
-          console.log(`selection after selection.addRange(range):\n` + selection);
-          console.log("FINAL TARGET FIELD INNERHTML:\n" + targetField.innerHTML);
-          // console.log("FINAL TARGET FIELD VALUE:\n" + targetField.value);
-          // console.log("FINAL TARGET FIELD INNERHTML VALUE:\n" + targetField.innerHTML.value);
+            
+            // Set the new content
+            targetField.appendChild(p);
+            
+            // Dispatch only ONE input event to notify Lexical editor
+            const inputEvent = new InputEvent("input", {
+              bubbles: true,
+              cancelable: true,
+              inputType: "insertText",
+              data: message.prompt
+            });
+            targetField.dispatchEvent(inputEvent);
+            
+            // Set cursor position to end of content
+            const range = document.createRange();
+            const selection = window.getSelection();
+            range.selectNodeContents(p);
+            range.collapse(false);
+            selection.removeAllRanges();
+            selection.addRange(range);
+            
+            console.log("Perplexity Lexical editor updated with new content");
+          }, 5);
         }
         // Handle textarea elements for follow-up queries and edit-mode
         else if (targetField.tagName === "TEXTAREA") {
+          // For textarea, simply replace the value
+          targetField.focus();
           targetField.value = message.prompt;
-          console.log("Set value for Perplexity.ai textarea:"/* , targetField */);
+          
+          // Dispatch only one input event
           targetField.dispatchEvent(new Event("input", { bubbles: true }));
-          targetField.dispatchEvent(new Event("change", { bubbles: true }));
+          
+          // Set cursor to end
+          targetField.setSelectionRange(targetField.value.length, targetField.value.length);
+          
+          console.log("Perplexity textarea updated with new content");
         }
       }
       // Handle ChatGPT ProseMirror editor
