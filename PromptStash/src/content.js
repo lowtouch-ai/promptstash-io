@@ -32,32 +32,22 @@ function setupFocusTracking() {
 
   // Combine selectors for all editable fields
   const allEditableSelectors = `${primarySelector}, ${previousPromptSelector}`;
-  document.querySelectorAll(allEditableSelectors).forEach(field => {
-    field.addEventListener('focus', () => {
-      lastFocusedField = field;
-      console.log(`Focused field updated:`/* , lastFocusedField */);
-    });
+
+  // Attach a document-level focusin listener to track focus on editable fields
+  document.addEventListener('focusin', (event) => {
+    const target = event.target;
+    if (target.matches(allEditableSelectors)) {
+      lastFocusedField = target;
+      console.log(`Focused field updated via focusin:`, target);
+    }
   });
 
-  // Use MutationObserver to detect new editable fields dynamically
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach(mutation => {
-      if (mutation.addedNodes.length) {
-        mutation.addedNodes.forEach(node => {
-          if (node.nodeType === Node.ELEMENT_NODE) {
-            const fields = node.matches(allEditableSelectors) ? [node] : node.querySelectorAll(allEditableSelectors);
-            fields.forEach(field => {
-              field.addEventListener('focus', () => {
-                lastFocusedField = field;
-                console.log(`Focused field updated (dynamic):`/* , lastFocusedField */);
-              });
-            });
-          }
-        });
-      }
-    });
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
+  // Check if an editable field is already focused on initialization
+  const currentFocused = document.activeElement;
+  if (currentFocused && currentFocused.matches(allEditableSelectors)) {
+    lastFocusedField = currentFocused;
+    console.log(`Initial focused field set:`, currentFocused);
+  }
 }
 
 // Handle messages from popup/background
@@ -69,7 +59,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   let targetField = lastFocusedField && isFieldValid(lastFocusedField) ? lastFocusedField : inputField;
 
   if (inputField) {
-    console.log("Primary input field found:"/* , inputField */, "Tag:", inputField.tagName, "Visible:", inputField.offsetParent !== null);
+    console.log("Primary input field found:", inputField.tagName, "Visible:", inputField.offsetParent !== null);
   } else {
     console.log("No primary input field found with initial querySelector.");
   }
@@ -84,7 +74,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       retryCount++;
       inputField = findPrimaryInputField();
       if (inputField) {
-        console.log(`Primary input field found on retry ${retryCount}:`/* , inputField */, "Tag:", inputField.tagName, "Visible:", inputField.offsetParent !== null);
+        console.log(`Primary input field found on retry ${retryCount}:`, inputField.tagName, "Visible:", inputField.offsetParent !== null);
         cachedInputField = inputField;
         targetField = lastFocusedField && isFieldValid(lastFocusedField) ? lastFocusedField : inputField;
         processMessage(message, targetField, sendResponse);
@@ -119,18 +109,17 @@ function processMessage(message, targetField, sendResponse) {
     }
 
     if (targetField) {
-      console.log("Setting the prompt to target field:\n" + message.prompt/* , targetField */);
+      console.log("Target field for sendPrompt:", targetField, "Type:", targetField.tagName);
       const hostname = window.location.hostname;
-      // console.log(`Target field value before clearing:\n${targetField.value}`);
-      console.log(`Target field innerHTML before clearing:\n${targetField.innerHTML}`);
+      console.log(`Target field innerHTML before clearing:`, targetField.innerHTML);
 
       // Clear existing content based on field type
       if (targetField.tagName === "TEXTAREA" || targetField.tagName === "INPUT") {
         targetField.value = "";
-        console.log(`Target field value after clearing globally: ${targetField.value}`);
+        console.log(`Target field value after clearing:`, targetField.value);
       } else {
         targetField.innerHTML = "";
-        console.log(`Target field innerHTML after clearing globally: ${targetField.innerHTML}`);
+        console.log(`Target field innerHTML after clearing:`, targetField.innerHTML);
       }
 
       // Handle Perplexity.ai
@@ -248,6 +237,7 @@ function processMessage(message, targetField, sendResponse) {
     }
   } else if (message.action === "getPrompt") {
     if (targetField) {
+      console.log("Target field for getPrompt:", targetField, "Type:", targetField.tagName);
       let prompt;
       // Retrieve prompt from Perplexity.ai Lexical editor
       if (window.location.hostname.includes("perplexity.ai") && targetField.id === "ask-input" && targetField.getAttribute("data-lexical-editor") === "true") {
@@ -309,7 +299,7 @@ function findPrimaryInputField() {
   console.log(`Attempting to find primary input field for ${name} with selector: ${primarySelector}`);
   const inputField = document.querySelector(primarySelector);
   if (inputField && inputField.offsetParent !== null) {
-    console.log(`Found primary input field for ${name}:`/* , inputField */, "Visible:", true);
+    console.log(`Found primary input field for ${name}:`, inputField.tagName, "Visible:", true);
     return inputField;
   }
   console.log(`No primary input field found for ${name} with selector: ${primarySelector}`);
