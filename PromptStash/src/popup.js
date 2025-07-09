@@ -2,7 +2,7 @@
 import defaultTemplates from './defaultTemplates.mjs';
 
 // Extension version for schema validation
-const EXTENSION_VERSION = "1.0.0";
+const EXTENSION_VERSION = "1.1.0";                                  // UPDATE THIS WHEN RELEASING A NEW UPDATE
 
 // Lightweight debounce function
 function debounce(func, wait) {
@@ -22,11 +22,6 @@ let currentOperationId = null; // Track the current operation
 let nextToastTimeout = null; // Track the scheduled displayNextToast timeout
 const toastTimestamps = {}; // Track last display time for each toast (message + operationId)
 let overrideAnimation = false; // Flag to skip animation delay for overriding toasts
-
-// Utility to toggle button disabled state
-function toggleButtonState(button, disabled) {
-  button.disabled = disabled;
-}
 
 // Initialize DOM elements
 document.addEventListener("DOMContentLoaded", () => {
@@ -83,7 +78,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // Check if stored version matches current version
     const storedVersion = result.extensionVersion || "0.0.0";
     if (storedVersion !== EXTENSION_VERSION) {
-      // console.log(`Version updated from ${storedVersion} to ${EXTENSION_VERSION}. No schema migration needed.`);
+      console.log(`Version updated from ${storedVersion} to ${EXTENSION_VERSION}. No schema migration needed.`);
       chrome.storage.local.set({ extensionVersion: EXTENSION_VERSION });
     }
 
@@ -153,7 +148,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Show toast notification with operation-based queueing and duplicate debouncing
   function showToast(message, duration = 4000, type = "red", buttons = [], operationId) {
-    // console.log("Queueing toast:", { message, duration, type, hasButtons: buttons.length > 0, operationId });
+    console.log("Queueing toast:", { message, duration, type, hasButtons: buttons.length > 0, operationId });
     
     // Create a unique key for the toast based on message and operationId
     const toastKey = `${message}|${operationId}`;
@@ -347,9 +342,9 @@ document.addEventListener("DOMContentLoaded", () => {
       showToast("Template name must be 50 characters or less.", 3000, "red", [], "nameLength");
       return { isValid: false, sanitizedName: null };
     }
-    const sanitizedName = trimmedName.replace(/[^a-zA-Z0-9\s]/g, "");
+    const sanitizedName = trimmedName.replace(/[^a-zA-Z0-9-_.@\s]/g, "");
     if (sanitizedName !== trimmedName) {
-      showToast("Template name can only contain letters, numbers, and spaces.", 3000, "red", [], "nameChar");
+      showToast("Template name can only contain letters, numbers, underscores(_), hyphens(-), periods(.), at(@), and spaces.", 3000, "red", [], "nameChar");
       return { isValid: false, sanitizedName: null };
     }
     const isDuplicate = templates.some(t => t.name === sanitizedName && (isSaveAs || t.name !== selectedTemplateName));
@@ -368,26 +363,26 @@ document.addEventListener("DOMContentLoaded", () => {
       showToast("Maximum of 5 tags allowed per template.", 3000, "red", [], "tagsLength");
       return null;
     }
-    const sanitizedTags = tags.map(tag => tag.replace(/[^a-zA-Z0-9\s]/g, "").slice(0, 20));
+    const sanitizedTags = tags.map(tag => tag.replace(/[^a-zA-Z0-9-_.@\s]/g, "").slice(0, 20));
     if (sanitizedTags.some(tag => tag.length === 0)) {
-      showToast("Each tag must contain only letters or numbers and be 20 characters or less.", 3000, "red", [], "save");
+      showToast("Each tag must contain only letters, numbers, underscores(_), hyphens(-), periods(.), at(@), or spaces, and be 20 characters or less.", 3000, "red", [], "save");
       return null;
     }
     return sanitizedTags.join(", ");
   }
 
   // Check total storage usage
-  function checkTotalStorageUsage(callback) {
-    chrome.storage.local.get(null, (items) => {
-      const serialized = JSON.stringify(items);
-      const totalSizeInBytes = new TextEncoder().encode(serialized).length;
-      const maxTotalSize = 5 * 1024 * 1024; // 5MB for local storage
-      if (totalSizeInBytes > 0.9 * maxTotalSize) {
-        showToast("Warning: Storage is nearly full (90% of 5MB limit). Please delete unused templates.", 5000, "red", [], "storage");
-      }
-      callback();
-    });
-  }
+  // function checkTotalStorageUsage(callback) {
+  //   chrome.storage.local.get(null, (items) => {
+  //     const serialized = JSON.stringify(items);
+  //     const totalSizeInBytes = new TextEncoder().encode(serialized).length;
+  //     const maxTotalSize = 10 * 1024 * 1024; // 5MB for local storage
+  //     if (totalSizeInBytes > 0.9 * maxTotalSize) {
+  //       showToast("Warning: Storage is nearly full (90% of 10MB limit). Please delete unused templates.", 5000, "red", [], "save");
+  //     }
+  //     callback();
+  //   });
+  // }
 
   // Update recent indices
   function updateRecentIndices(index) {
@@ -423,10 +418,10 @@ document.addEventListener("DOMContentLoaded", () => {
       value = value.slice(0, 50);
       elements.templateName.value = value;
     }
-    const sanitizedValue = value.replace(/[^a-zA-Z0-9\s]/g, "");
+    const sanitizedValue = value.replace(/[^a-zA-Z0-9-_.@\s]/g, "");
     if (sanitizedValue !== value) {
       elements.templateName.value = sanitizedValue;
-      showToast("Template name can only contain letters, numbers, and spaces.", 3000, "red", [], "nameChar");
+      showToast("Template name can only contain letters, numbers, underscores(_), hyphens(-), periods(.), at(@), and spaces.", 3000, "red", [], "nameChar");
     }
     saveState();
   }, 10));
@@ -453,9 +448,9 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       const trimmedTags = tags.map(tag => tag.slice(0, 20));
       
-      const sanitizedTags = trimmedTags.map(tag => tag.replace(/[^a-zA-Z0-9\s]/g, ""));
+      const sanitizedTags = trimmedTags.map(tag => tag.replace(/[^a-zA-Z0-9-_.@\s]/g, ""));
       if (sanitizedTags.some((tag, i) => tag !== trimmedTags[i])) {
-        showToast("Each tag must contain only letters, numbers, or spaces.", 3000, "red", [], "tagChar");
+        showToast("Each tag must contain only letters, numbers, underscores(_), hyphens(-), periods(.), at(@), or spaces.", 3000, "red", [], "tagChar");
       }
       
       // Update input value with sanitized tags
@@ -656,7 +651,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Get target tab ID with timeout
   function getTargetTabId(callback) {
     const timeout = setTimeout(() => {
-      showToast("Error: No response from tab. Please navigate to a supported AI platform (e.g., grok.com, perplexity.ai, or chatgpt.com).", 4000, "red", [], "fetch");
+      // showToast("Error: No response from tab. Please navigate to a supported AI platform (e.g., grok.com, perplexity.ai, or chatgpt.com).", 4000, "red", [], "fetch");
       callback(null);
     }, 5000);
     chrome.runtime.sendMessage({ action: "getTargetTabId" }, (response) => {
@@ -664,7 +659,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (response && response.tabId) {
         callback(response.tabId);
       } else {
-        showToast("Error: This page is not supported. Please navigate to a supported AI platform (e.g., grok.com, perplexity.ai, or chatgpt.com).", 4000, "red", [], "fetch");
+        // showToast("Error: This page is not supported. Please navigate to a supported AI platform (e.g., grok.com, perplexity.ai, or chatgpt.com).", 4000, "red", [], "fetch");
         callback(null);
       }
     });
@@ -703,7 +698,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (showDropdown) {
         filteredTemplates.forEach((tmpl, idx) => {
           const div = document.createElement("div");
-          div.textContent = tmpl.favorite ? `${tmpl.name} (${tmpl.tags})` : `${tmpl.name} (${tmpl.tags})`;
+          div.textContent = tmpl.tags ? `${tmpl.name} (${tmpl.tags})` : `${tmpl.name}`;
           div.setAttribute("role", "option");
           div.setAttribute("aria-selected", selectedTemplateName === tmpl.name);
           elements.overlay.style.display = 'block';
@@ -800,9 +795,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Save templates with 5-second timeout
   function saveTemplates(templates, callback, isNewTemplate = false, button) {
-    checkTotalStorageUsage(() => {
+    // checkTotalStorageUsage(() => {
       const timeout = setTimeout(() => {
-        toggleButtonState(button, false);
         showToast("Operation timed out. Please try again.", 3000, "red", [], "save");
       }, 5000);
       chrome.storage.local.set({ templates }, () => {
@@ -810,9 +804,9 @@ document.addEventListener("DOMContentLoaded", () => {
         if (chrome.runtime.lastError) {
           const errorMessage = chrome.runtime.lastError.message;
           if (errorMessage.includes("QUOTA_BYTES_PER_ITEM")) {
-            showToast("Template size exceeds 8KB limit. Please reduce the size.", 5000, "red", [], "save");
+            showToast("Template size exceeds size limit. Please reduce the size.", 5000, "red", [], "save");
           } else if (errorMessage.includes("QUOTA_BYTES")) {
-            showToast("Total storage limit (5MB) exceeded. Please delete unused templates.", 5000, "red", [], "save");
+            showToast("Total storage limit exceeded. Please delete unused templates.", 5000, "red", [], "save");
           } else {
             showToast("Failed to save template: " + errorMessage, 5000, "red", [], "save");
           }
@@ -820,21 +814,26 @@ document.addEventListener("DOMContentLoaded", () => {
         } else {
           showToast(isNewTemplate ? "Template saved. Press Ctrl+Z to undo." : "Template updated. Press Ctrl+Z to undo.", 3000, "green", [], "save");
           callback();
+          chrome.storage.local.get(null, (items) => {
+            const serialized = JSON.stringify(items);
+            const totalSizeInBytes = new TextEncoder().encode(serialized).length;
+            const maxTotalSize = 10 * 1024 * 1024; // 10MB for local storage
+            if (totalSizeInBytes > 0.9 * maxTotalSize) {
+              showToast("Warning: Storage is nearly full (90% of 10MB limit). Please delete unused templates.", 5000, "red", [], "save");
+            }
+          });         
         }
-        toggleButtonState(button, false);
       });
-    });
+    // });
   }
 
   // Save changes to existing template or create new template
   elements.saveBtn.addEventListener("click", () => {
-    toggleButtonState(elements.saveBtn, true);
     chrome.storage.local.get(["templates"], (result) => {
       let templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
       const nameValidation = validateTemplateName(elements.templateName.value, templates);
       if (!nameValidation.isValid) {
         elements.templateName.focus();
-        toggleButtonState(elements.saveBtn, false);
         return;
       }
       const name = nameValidation.sanitizedName;
@@ -842,7 +841,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const tags = sanitizeTags(tagsInput);
       if (tags === null) {
         elements.templateTags.focus();
-        toggleButtonState(elements.saveBtn, false);
         return;
       }
       const content = elements.promptArea.value;
@@ -850,7 +848,6 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!content.trim()) {
         showToast("Prompt content is required to save a template.", 3000, "red", [], "save");
         elements.promptArea.focus();
-        toggleButtonState(elements.saveBtn, false);
         return;
       }
 
@@ -887,13 +884,11 @@ document.addEventListener("DOMContentLoaded", () => {
                   const template = templates.find(t => t.name === selectedTemplateName);
                   if (!template) {
                     showToast("Selected template not found.", 3000, "red", [], "save");
-                    toggleButtonState(elements.saveBtn, false);
                     return;
                   }
                   const isEdited = elements.templateName.value !== template.name || sanitizeTags(elements.templateTags.value) !== template.tags || elements.promptArea.value !== template.content;
                   if (!isEdited) {
                     showToast("No changes to save.", 3000, "red", [], "save");
-                    toggleButtonState(elements.saveBtn, false);
                     return;
                   }
                   storeLastState();
@@ -921,7 +916,6 @@ document.addEventListener("DOMContentLoaded", () => {
               text: "No",
               callback: () => {
                 elements.templateTags.focus();
-                toggleButtonState(elements.saveBtn, false);
               }
             }
           ],
@@ -954,13 +948,11 @@ document.addEventListener("DOMContentLoaded", () => {
         const template = templates.find(t => t.name === selectedTemplateName);
         if (!template) {
           showToast("Selected template not found.", 3000, "red", [], "save");
-          toggleButtonState(elements.saveBtn, false);
           return;
         }
         const isEdited = elements.templateName.value !== template.name || sanitizeTags(elements.templateTags.value) !== template.tags || elements.promptArea.value !== template.content;
         if (!isEdited) {
           showToast("No changes to save.", 3000, "red", [], "save");
-          toggleButtonState(elements.saveBtn, false);
           return;
         }
         storeLastState();
@@ -987,13 +979,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Save as new template
   elements.saveAsBtn.addEventListener("click", () => {
-    toggleButtonState(elements.saveAsBtn, true);
     chrome.storage.local.get(["templates"], (result) => {
       const templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
       const nameValidation = validateTemplateName(elements.templateName.value, templates, true);
       if (!nameValidation.isValid) {
         elements.templateName.focus();
-        toggleButtonState(elements.saveAsBtn, false);
         return;
       }
       const name = nameValidation.sanitizedName;
@@ -1001,7 +991,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const tags = sanitizeTags(tagsInput);
       if (tags === null) {
         elements.templateTags.focus();
-        toggleButtonState(elements.saveAsBtn, false);
         return;
       }
       const content = elements.promptArea.value;
@@ -1009,7 +998,6 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!content.trim()) {
         showToast("Prompt content is required to save a template.", 3000, "red", [], "saveAs");
         elements.promptArea.focus();
-        toggleButtonState(elements.saveAsBtn, false);
         return;
       }
 
@@ -1029,7 +1017,6 @@ document.addEventListener("DOMContentLoaded", () => {
               text: "No",
               callback: () => {
                 elements.templateTags.focus();
-                toggleButtonState(elements.saveAsBtn, false);
               }
             }
           ],
@@ -1074,16 +1061,13 @@ document.addEventListener("DOMContentLoaded", () => {
   // Fetch prompt from website
   elements.fetchBtns.forEach((btn) => {
     btn.addEventListener("click", () => {
-      toggleButtonState(btn, true);
       const timeout = setTimeout(() => {
-        toggleButtonState(btn, false);
         showToast("Fetch operation timed out. Please try again.", 3000, "red", [], "fetch");
       }, 5000);
       getTargetTabId((tabId) => {
         if (!tabId) {
           clearTimeout(timeout);
-          showToast("Error: This page is not supported. Please navigate to a supported AI platform (e.g., grok.com, perplexity.ai, or chatgpt.com).", 3000, "red", [], "fetch");
-          toggleButtonState(btn, false);
+          // showToast("Error: This page is not supported. Please navigate to a supported AI platform (e.g., grok.com, perplexity.ai, or chatgpt.com).", 3000, "red", [], "fetch");
           return;
         }
         let hasRetried = false;
@@ -1102,12 +1086,10 @@ document.addEventListener("DOMContentLoaded", () => {
                     setTimeout(tryFetchPrompt, 100); // Short delay to ensure script is loaded
                   } else {
                     showToast("Failed to fetch prompt. Please try again or refresh the page.", 3000, "red", [], "fetch");
-                    toggleButtonState(btn, false);
                   }
                 });
               } else {
                 showToast("Failed to fetch prompt. Please try again or refresh the page.", 3000, "red", [], "fetch");
-                toggleButtonState(btn, false);
               }
               return;
             }
@@ -1120,7 +1102,6 @@ document.addEventListener("DOMContentLoaded", () => {
             } else {
               showToast("No text found. Please select a field that contains text.", 3000, "red", [], "fetch");
             }
-            toggleButtonState(btn, false);
           });
         }
         tryFetchPrompt();
@@ -1130,16 +1111,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Send prompt to website and close popup
   elements.sendBtn.addEventListener("click", () => {
-    toggleButtonState(elements.sendBtn, true);
     const timeout = setTimeout(() => {
-      toggleButtonState(elements.sendBtn, false);
       showToast("Send operation timed out. Please try again.", 3000, "red", [], "send");
     }, 5000);
     getTargetTabId((tabId) => {
       if (!tabId) {
         clearTimeout(timeout);
-        showToast("Error: This page is not supported. Please navigate to a supported AI platform (e.g., grok.com, perplexity.ai, or chatgpt.com).", 3000, "red", [], "send");
-        toggleButtonState(elements.sendBtn, false);
+        // showToast("Error: This page is not supported. Please navigate to a supported AI platform (e.g., grok.com, perplexity.ai, or chatgpt.com).", 3000, "red", [], "send");
         return;
       }
       let hasRetried = false;
@@ -1161,13 +1139,11 @@ document.addEventListener("DOMContentLoaded", () => {
                   setTimeout(trySendPrompt, 100); // Short delay to ensure script is loaded
                 } else {
                   showToast("Failed to send prompt. Please try again or refresh the page.", 3000, "red", [], "send");
-                  toggleButtonState(elements.sendBtn, false);
                 }
               });
               return;
             } else {
               showToast("Failed to send prompt. Please try again or refresh the page.", 3000, "red", [], "send");
-              toggleButtonState(elements.sendBtn, false);
               return;
             }
           }
@@ -1180,15 +1156,12 @@ document.addEventListener("DOMContentLoaded", () => {
                   updateRecentIndices(template.index);
                 }
                 chrome.runtime.sendMessage({ action: "closePopup" });
-                toggleButtonState(elements.sendBtn, false);
               });
             } else {
               chrome.runtime.sendMessage({ action: "closePopup" });
-              toggleButtonState(elements.sendBtn, false);
             }
           } else {
             showToast("Failed to send prompt. Please try again or refresh the page.", 3000, "red", [], "send");
-            toggleButtonState(elements.sendBtn, false);
           }
         });
       }
@@ -1198,10 +1171,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Delete selected template
   elements.deleteBtn.addEventListener("click", () => {
-    toggleButtonState(elements.deleteBtn, true);
     if (!selectedTemplateName) {
       showToast("Please select a template to delete.", 3000, "red", [], "delete");
-      toggleButtonState(elements.deleteBtn, false);
       return;
     }
     chrome.storage.local.get(["templates", "recentIndices"], (result) => {
@@ -1224,7 +1195,6 @@ document.addEventListener("DOMContentLoaded", () => {
               templates.splice(templateIndex, 1);
               recentIndices = recentIndices.filter(idx => idx !== deletedIndex);
               const timeout = setTimeout(() => {
-                toggleButtonState(elements.deleteBtn, false);
                 showToast("Delete operation timed out. Please try again.", 3000, "red", [], "delete");
               }, 5000);
               chrome.storage.local.set({ templates, recentIndices }, () => {
@@ -1250,14 +1220,12 @@ document.addEventListener("DOMContentLoaded", () => {
                   loadTemplates(elements.typeSelect.value, "", false);
                   saveState();
                 }
-                toggleButtonState(elements.deleteBtn, false);
               });
             }
           },
           {
             text: "No",
             callback: () => {
-              toggleButtonState(elements.deleteBtn, false);
             }
           }
         ],

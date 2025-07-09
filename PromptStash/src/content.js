@@ -23,6 +23,16 @@ const SUPPORTED_HOSTS = {
     primarySelector: "div#prompt-textarea.ProseMirror[contenteditable='true']",
     previousPromptSelector: "textarea:not(#prompt-textarea)",
     name: "ChatGPT"
+  },
+  "gemini.google.com": {
+    primarySelector: "div.ql-editor, div.textarea[data-placeholder='Ask Gemini'], rich-textarea[aria-label='Enter a prompt here'] div.ql-editor",
+    previousPromptSelector: "textarea[aria-label='Edit prompt']",
+    name: "Gemini"
+  },
+  "claude.ai": {
+    primarySelector: "div[aria-label='Write your prompt to Claude'].ProseMirror",
+    previousPromptSelector: "textarea.bg-bg-000, div.bg-bg-000, textarea[aria-label*='screen reader interactions']",
+    name: "Claude"
   }
 };
 
@@ -108,6 +118,15 @@ function isFieldValid(field) {
   return field && field.offsetParent !== null && document.body.contains(field);
 }
 
+function isFieldEditable(field) {
+  if (field.tagName === "TEXTAREA" || field.tagName === "INPUT") {
+    return !field.disabled && !field.readOnly;
+  } else if (field.tagName === "DIV" && field.contentEditable === "true") {
+    return true;
+  }
+  return false;
+}
+
 // Process the message with the target field (focused or primary)
 function processMessage(message, targetField, sendResponse) {
   if (message.action === "sendPrompt") {
@@ -118,128 +137,133 @@ function processMessage(message, targetField, sendResponse) {
     }
 
     if (targetField) {
-      console.log("Target field for sendPrompt:", targetField, "Type:", targetField.tagName);
-      const hostname = window.location.hostname;
-      console.log(`Target field innerHTML before clearing:`, targetField.innerHTML);
+      if (isFieldEditable(targetField)) {
+        console.log("Target field for sendPrompt:", targetField, "Type:", targetField.tagName);
+        const hostname = window.location.hostname;
+        console.log(`Target field innerHTML before clearing:`, targetField.innerHTML);
 
-      // Clear existing content based on field type
-      if (targetField.tagName === "TEXTAREA" || targetField.tagName === "INPUT") {
-        targetField.value = "";
-        console.log(`Target field value after clearing:`, targetField.value);
-      } else {
-        targetField.innerHTML = "";
-        console.log(`Target field innerHTML after clearing:`, targetField.innerHTML);
-      }
+        // Clear existing content based on field type
+        if (targetField.tagName === "TEXTAREA" || targetField.tagName === "INPUT") {
+          targetField.value = "";
+          console.log(`Target field value after clearing:`, targetField.value);
+        } else {
+          targetField.innerHTML = "";
+          console.log(`Target field innerHTML after clearing:`, targetField.innerHTML);
+        }
 
-      // Handle Perplexity.ai
-      if (hostname.includes("perplexity.ai")) {
-        // Handle Lexical editor for fresh chats (#ask-input div)
-        if (targetField.id === "ask-input" && targetField.getAttribute("data-lexical-editor") === "true") {
-          // Focus the field first to ensure proper state
-          targetField.focus();
-          
-          // Clear existing content by selecting all and replacing
-          const selectAllEvent = new KeyboardEvent("keydown", {
-            key: "a",
-            ctrlKey: true,
-            bubbles: true,
-            cancelable: true
-          });
-          targetField.dispatchEvent(selectAllEvent);
-          
-          // Small delay to ensure selection is processed
-          setTimeout(() => {
-            // Clear the innerHTML directly
-            targetField.innerHTML = "";
+        // Handle Perplexity.ai
+        if (hostname.includes("perplexity.ai")) {
+          // Handle Lexical editor for fresh chats (#ask-input div)
+          if (targetField.id === "ask-input" && targetField.getAttribute("data-lexical-editor") === "true") {
+            // Focus the field first to ensure proper state
+            targetField.focus();
             
-            // Create new paragraph for the prompt
-            const p = document.createElement("p");
-            p.setAttribute("dir", "ltr");
+            // Clear existing content by selecting all and replacing
+            const selectAllEvent = new KeyboardEvent("keydown", {
+              key: "a",
+              ctrlKey: true,
+              bubbles: true,
+              cancelable: true
+            });
+            targetField.dispatchEvent(selectAllEvent);
             
-            // Handle empty prompt
-            if (!message.prompt.trim()) {
-              const span = document.createElement("span");
-              span.setAttribute("data-lexical-text", "true");
-              span.textContent = "";
-              p.appendChild(span);
-            } else {
-              // Split by lines and preserve line breaks
-              const lines = message.prompt.split("\n");
-              lines.forEach((line, index) => {
+            // Small delay to ensure selection is processed
+            setTimeout(() => {
+              // Clear the innerHTML directly
+              targetField.innerHTML = "";
+              
+              // Create new paragraph for the prompt
+              const p = document.createElement("p");
+              p.setAttribute("dir", "ltr");
+              
+              // Handle empty prompt
+              if (!message.prompt.trim()) {
                 const span = document.createElement("span");
                 span.setAttribute("data-lexical-text", "true");
-                span.textContent = line;
+                span.textContent = "";
                 p.appendChild(span);
-                
-                // Add line break except for the last line
-                if (index < lines.length - 1) {
-                  p.appendChild(document.createElement("br"));
-                }
+              } else {
+                // Split by lines and preserve line breaks
+                const lines = message.prompt.split("\n");
+                lines.forEach((line, index) => {
+                  const span = document.createElement("span");
+                  span.setAttribute("data-lexical-text", "true");
+                  span.textContent = line;
+                  p.appendChild(span);
+                  
+                  // Add line break except for the last line
+                  if (index < lines.length - 1) {
+                    p.appendChild(document.createElement("br"));
+                  }
+                });
+              }
+              
+              // Set the new content
+              targetField.appendChild(p);
+              
+              // Dispatch only ONE input event to notify Lexical editor
+              const inputEvent = new InputEvent("input", {
+                bubbles: true,
+                cancelable: true,
+                inputType: "insertText",
+                data: message.prompt
               });
-            }
+              targetField.dispatchEvent(inputEvent);
+              
+              // Set cursor position to end of content
+              const range = document.createRange();
+              const selection = window.getSelection();
+              range.selectNodeContents(p);
+              range.collapse(false);
+              selection.removeAllRanges();
+              selection.addRange(range);
+              
+              console.log("Perplexity Lexical editor updated with new content");
+            }, 5);
+          }
+          // Handle textarea elements for follow-up queries and edit-mode
+          else if (targetField.tagName === "TEXTAREA") {
+            // For textarea, simply replace the value
+            targetField.focus();
+            targetField.value = message.prompt;
             
-            // Set the new content
-            targetField.appendChild(p);
+            // Dispatch only one input event
+            targetField.dispatchEvent(new Event("input", { bubbles: true }));
             
-            // Dispatch only ONE input event to notify Lexical editor
-            const inputEvent = new InputEvent("input", {
-              bubbles: true,
-              cancelable: true,
-              inputType: "insertText",
-              data: message.prompt
-            });
-            targetField.dispatchEvent(inputEvent);
+            // Set cursor to end
+            targetField.setSelectionRange(targetField.value.length, targetField.value.length);
             
-            // Set cursor position to end of content
-            const range = document.createRange();
-            const selection = window.getSelection();
-            range.selectNodeContents(p);
-            range.collapse(false);
-            selection.removeAllRanges();
-            selection.addRange(range);
-            
-            console.log("Perplexity Lexical editor updated with new content");
-          }, 5);
+            console.log("Perplexity textarea updated with new content");
+          }
         }
-        // Handle textarea elements for follow-up queries and edit-mode
-        else if (targetField.tagName === "TEXTAREA") {
-          // For textarea, simply replace the value
-          targetField.focus();
+        // Handle ProseMirror or Quill editor
+        else if (targetField.tagName === "DIV" && targetField.contentEditable === "true" && (targetField.classList.contains("ProseMirror") || targetField.classList.contains("ql-editor"))) {
+          const lines = message.prompt.split("\n");
+          targetField.innerHTML = lines.map(line => `<p>${line}<br></p>`).join("");
+          console.log("Set innerHTML for ProseMirror or Quill editor with <p> and <br> tags.");
+        }
+        // Handle generic contenteditable div
+        else if (targetField.tagName === "DIV" && targetField.contentEditable === "true") {
+          targetField.innerHTML = message.prompt.replace(/\n/g, "<br>");
+          console.log("Set innerHTML for contenteditable div with <br> for newlines.");
+        }
+        // Handle textarea or input elements
+        else {
           targetField.value = message.prompt;
-          
-          // Dispatch only one input event
-          targetField.dispatchEvent(new Event("input", { bubbles: true }));
-          
-          // Set cursor to end
-          targetField.setSelectionRange(targetField.value.length, targetField.value.length);
-          
-          console.log("Perplexity textarea updated with new content");
+          console.log("Set value for input/textarea.");
         }
-      }
-      // Handle ChatGPT ProseMirror editor
-      else if (targetField.tagName === "DIV" && targetField.contentEditable === "true" && targetField.classList.contains("ProseMirror")) {
-        const lines = message.prompt.split("\n");
-        targetField.innerHTML = lines.map(line => `<p>${line}<br></p>`).join("");
-        console.log("Set innerHTML for ChatGPT ProseMirror div with <p> and <br> tags.");
-      }
-      // Handle generic contenteditable div
-      else if (targetField.tagName === "DIV" && targetField.contentEditable === "true") {
-        targetField.innerHTML = message.prompt.replace(/\n/g, "<br>");
-        console.log("Set innerHTML for contenteditable div with <br> for newlines.");
-      }
-      // Handle textarea or input elements
-      else {
-        targetField.value = message.prompt;
-        console.log("Set value for input/textarea.");
-      }
 
       // Dispatch input and change events for non-Perplexity platforms
-      if (!hostname.includes("perplexity.ai")) {
-        targetField.dispatchEvent(new Event("input", { bubbles: true }));
-        targetField.dispatchEvent(new Event("change", { bubbles: true }));
-      }
+        if (!hostname.includes("perplexity.ai")) {
+          targetField.dispatchEvent(new Event("input", { bubbles: true }));
+          targetField.dispatchEvent(new Event("change", { bubbles: true }));
+        }
       targetField.focus(); // Restore focus to the target field
-      sendResponse({ success: true });
+        sendResponse({ success: true });
+      } else {
+        console.log("Target field is not editable");
+        sendResponse({ success: false, error: "Target field is not editable" });
+      }
     } else {
       console.log("No target field found for sendPrompt");
       sendResponse({ success: false, error: "No target field found" });
@@ -262,15 +286,15 @@ function processMessage(message, targetField, sendResponse) {
           console.log("Retrieved prompt from Perplexity.ai Lexical editor (fallback):", prompt);
         }
       }
-      // Retrieve prompt from ChatGPT ProseMirror editor
-      else if (targetField.tagName === "DIV" && targetField.contentEditable === "true" && targetField.classList.contains("ProseMirror")) {
+      // Retrieve prompt from ProseMirror or Quill editor
+      else if (targetField.tagName === "DIV" && targetField.contentEditable === "true" && (targetField.classList.contains("ProseMirror") || targetField.classList.contains("ql-editor"))) {
         const paragraphs = Array.from(targetField.querySelectorAll("p"));
         if (paragraphs.length > 0) {
           prompt = paragraphs.map(p => p.textContent.trimEnd()).join("\n");
-          console.log("Retrieved prompt from ChatGPT ProseMirror div:", prompt);
+          console.log("Retrieved prompt from ProseMirror or Quill editor:", prompt);
         } else {
           prompt = targetField.textContent.replace(/\n+/g, "\n").trimEnd();
-          console.log("Retrieved prompt from ChatGPT ProseMirror div (fallback):", prompt);
+          console.log("Retrieved prompt from ProseMirror or Quill editor (fallback):", prompt);
         }
       }
       // Retrieve prompt from generic contenteditable div
@@ -355,9 +379,9 @@ function createWidget(inputField, inputContainer) {
   const widget = document.createElement('div');
   widget.id = 'promptstash-widget';
   widget.setAttribute('aria-live', 'polite'); // Accessibility: announce changes
-  widget.innerHTML = `
-      <button class="extension-button" style="border-radius: 100%;" aria-label="Open PromptStash" title="Open PromptStash">
-        <img src="${chrome.runtime.getURL('icon48.png')}" alt="PromptStash Icon" aria-hidden="true" draggable="false" style="width: 30px; height: 30px;">
+    widget.innerHTML = `
+      <button class="extension-button" style="background: none; border: none; border-radius: 100%;" aria-label="Open PromptStash" title="Open PromptStash">
+        <img src="${chrome.runtime.getURL('icon48.png')}" alt="PromptStash" aria-hidden="true" draggable="false" style="width: 30px; height: 30px;">
       </button>
   `;
 

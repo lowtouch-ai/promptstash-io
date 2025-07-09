@@ -12,7 +12,9 @@
   "host_permissions": [
     "https://grok.com/*",
     "https://www.perplexity.ai/*",
-    "https://chatgpt.com/*"
+    "https://chatgpt.com/*",
+    "https://gemini.google.com/*",
+    "https://claude.ai/*"
   ],
   "action": {
     "default_icon": {
@@ -29,7 +31,9 @@
       "matches": [
         "https://grok.com/*",
         "https://www.perplexity.ai/*",
-        "https://chatgpt.com/*"
+        "https://chatgpt.com/*",
+        "https://gemini.google.com/*",
+        "https://claude.ai/*"
       ],
       "js": ["content.js"],
       "run_at": "document_idle"
@@ -48,7 +52,9 @@
       "matches": [
         "https://grok.com/*",
         "https://www.perplexity.ai/*",
-        "https://chatgpt.com/*"
+        "https://chatgpt.com/*",
+        "https://gemini.google.com/*",
+        "https://claude.ai/*"
       ]
     }
   ],

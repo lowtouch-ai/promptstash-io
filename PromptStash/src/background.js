@@ -1,3 +1,12 @@
+const supportedHosts = [
+  "https://grok.com/",
+  "https://chatgpt.com/",
+  "https://www.perplexity.ai/",
+  "https://gemini.google.com/",
+  "https://claude.ai/"
+];
+const supportedHostsString = "grok.com, chatgpt.com, perplexity.ai, gemini.google.com, and claude.ai";
+
 // Add periodic content script injection to keep the extension active
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name === "keepAlive") {
@@ -47,17 +56,19 @@ chrome.action.onClicked.addListener((tab) => {
     chrome.scripting.executeScript({
       target: { tabId: tab.id },
       function: showUnsupportedSiteToast,
-      args: ["PromptStash cannot be used on restricted URLs (e.g., chrome://, file://, about://). Please navigate to a supported AI platform (e.g., grok.com, perplexity.ai, or chatgpt.com)."]
+      args: [`PromptStash cannot be used on restricted URLs (e.g., chrome://, file://, about://). Please navigate to a supported AI platform (e.g., ${supportedHostsString.replace(", and ", ", or ")}).`]
     });
     return;
   }
 
   // Check if the tab URL matches supported hosts
-  const supportedHosts = [
-    "https://grok.com/",
-    "https://www.perplexity.ai/",
-    "https://chatgpt.com/"
-  ];
+  // const supportedHosts = [
+  //   "https://grok.com/",
+  //   "https://www.perplexity.ai/",
+  //   "https://chatgpt.com/",
+  //   "https://gemini.google.com/",
+  //   "https://claude.ai/"
+  // ];
   const isSupported = supportedHosts.some(host => {
     const regex = new RegExp(`^${host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}.*`);
     return regex.test(tab.url);
@@ -68,7 +79,7 @@ chrome.action.onClicked.addListener((tab) => {
     chrome.scripting.executeScript({
       target: { tabId: tab.id },
       function: showUnsupportedSiteToast,
-      args: ["PromptStash is only supported on grok.com, perplexity.ai, and chatgpt.com. Please navigate to a supported site."]
+      args: [`PromptStash is only supported on ${supportedHostsString}. Please navigate to a supported site.`]
     });
     return;
   }
@@ -259,11 +270,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0] && !tabs[0].url.match(/^(chrome|file|about):\/\//)) {
         // Check if the tab URL matches supported hosts
-        const supportedHosts = [
-          "https://grok.com/",
-          "https://www.perplexity.ai/",
-          "https://chatgpt.com/"
-        ];
+        // const supportedHosts = [
+        //   "https://grok.com/",
+        //   "https://www.perplexity.ai/",
+        //   "https://chatgpt.com/",
+        //   "https://gemini.google.com/",
+        //   "https://claude.ai/"
+        // ];
         const isSupported = supportedHosts.some(host => {
           const regex = new RegExp(`^${host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}.*`);
           return regex.test(tabs[0].url);
@@ -276,7 +289,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           chrome.scripting.executeScript({
             target: { tabId: tabs[0].id },
             function: showUnsupportedSiteToast,
-            args: ["PromptStash is only supported on grok.com, perplexity.ai, and chatgpt.com. Please navigate to a supported site."]
+            args: [`PromptStash is only supported on ${supportedHostsString}. Please navigate to a supported site.`]
           });
           sendResponse({ tabId: null });
         }
@@ -285,7 +298,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         chrome.scripting.executeScript({
           target: { tabId: tabs[0]?.id },
           function: showUnsupportedSiteToast,
-          args: ["PromptStash cannot be used on restricted URLs (e.g., chrome://, file://, about://). Please navigate to a supported AI platform (e.g., grok.com, perplexity.ai, or chatgpt.com)."]
+          args: [`PromptStash cannot be used on restricted URLs (e.g., chrome://, file://, about://). Please navigate to a supported AI platform (e.g., ${supportedHostsString.replace(", and ", ", or ")}).`]
         });
         sendResponse({ tabId: null });
       }
