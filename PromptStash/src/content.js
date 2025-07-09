@@ -1,4 +1,13 @@
-// Supported platforms with selectors for primary input and editable previous prompts
+// Establish a keep-alive connection with background script
+const keepAlivePort = chrome.runtime.connect({ name: "keepAlive" });
+keepAlivePort.postMessage({ status: "connected" });
+
+// Periodic heartbeat to maintain connection
+setInterval(() => {
+  keepAlivePort.postMessage({ status: "heartbeat" });
+}, 60000); // Send heartbeat every 1 minute
+
+// Existing content.js code (appended to avoid overwriting)
 const SUPPORTED_HOSTS = {
   "grok.com": {
     primarySelector: "div.query-bar textarea",
@@ -283,6 +292,8 @@ function processMessage(message, targetField, sendResponse) {
     const selectedText = window.getSelection().toString();
     console.log("Retrieved selected text:", selectedText);
     sendResponse({ selectedText });
+  } else if (message.action === "ping") {
+    sendResponse({ status: "alive" });
   }
 }
 
@@ -392,8 +403,7 @@ function createWidget(inputField, inputContainer) {
   // Update position with saved offset if available
   chrome.storage.local.get(['widgetOffset'], (result) => {
     if (result.widgetOffset) {
-      widgetOffset = result.widgetOffset;
-      updateWidgetPosition(); // Apply saved position
+      updateWidgetPosition(result.widgetOffset);
     }
   });
 
@@ -662,8 +672,7 @@ const tryCreateWidget = debounce(function () {
       currentInputField = newInputField;
       currentInputContainer = newInputContainer;
       cachedInputField = newInputField;
-      cachedInputContainer = newInputContainer;
-      // console.log("Widget recreated for updated primary input field and container:", newInputField, newInputContainer);
+      widgetCreated = true;
     } else {
       // Check for position changes in the same input container (e.g., ChatGPT input field moving)
       if (widgetCreated && widget && newInputContainer) {

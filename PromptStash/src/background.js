@@ -1,5 +1,45 @@
+// Add periodic content script injection to keep the extension active
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === "keepAlive") {
+    port.onDisconnect.addListener(() => {
+      // console.log("Keep-alive port disconnected, re-injecting content script");
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs[0] && !tabs[0].url.match(/^(chrome|file|about):\/\//)) {
+          chrome.scripting.executeScript({
+            target: { tabId: tabs[0].id },
+            files: ["content.js"]
+          }, () => {
+            if (chrome.runtime.lastError) {
+              console.error("Periodic content script injection error:", chrome.runtime.lastError.message);
+            }
+          });
+        }
+      });
+    });
+  }
+});
 
-// Listen for extension icon click to toggle popup
+// Periodic check to ensure content script is active
+setInterval(() => {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (tabs[0] && !tabs[0].url.match(/^(chrome|file|about):\/\//)) {
+      chrome.tabs.sendMessage(tabs[0].id, { action: "ping" }, (response) => {
+        if (chrome.runtime.lastError) {
+          // console.log("Content script not responding, re-injecting...");
+          chrome.scripting.executeScript({
+            target: { tabId: tabs[0].id },
+            files: ["content.js"]
+          }, () => {
+            if (chrome.runtime.lastError) {
+              console.error("Periodic content script injection error:", chrome.runtime.lastError.message);
+            }
+          });
+        }
+      });
+    }
+  });
+}, 300000); // Check every 5 minutes
+
 chrome.action.onClicked.addListener((tab) => {
   // Check for restricted protocols
   if (tab.url.match(/^(chrome|file|about):\/\//)) {
@@ -278,5 +318,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
       });
     });
+  } else if (message.action === "ping") {
+    sendResponse({ status: "alive" });
   }
 });
