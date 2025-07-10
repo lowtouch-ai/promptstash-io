@@ -14,6 +14,7 @@ chrome.runtime.onConnect.addListener((port) => {
       // console.log("Keep-alive port disconnected, re-injecting content script");
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         if (tabs[0] && !tabs[0].url.match(/^(chrome|file|about):\/\//)) {
+          document.getElementById("promptstash-widget").remove();
           chrome.scripting.executeScript({
             target: { tabId: tabs[0].id },
             files: ["content.js"]
@@ -228,15 +229,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
   } else if (message.action === "toggleFullscreen") {
     chrome.storage.local.get(["isFullscreen"], (result) => {
-      console.log("logged from background.js: value of isFullscreen in chrome.storage.local =", result.isFullscreen);
-      const isFullscreen = !result.isFullscreen;
-      console.log("logged from background.js: value of isFullscreen inverted");
-      chrome.storage.local.set({ isFullscreen }, () => {
-        console.log("logged from background.js: value of isFullscreen in chrome.storage.local set as:", isFullscreen);
-        if (chrome.runtime.lastError) {
-          console.error("Storage set error:", chrome.runtime.lastError.message);
-          return;
-        }
+      const isFullscreen = result.isFullscreen;
+      // chrome.storage.local.set({ isFullscreen }, () => {
+      //   if (chrome.runtime.lastError) {
+      //     console.error("Storage set error:", chrome.runtime.lastError.message);
+      //     return;
+      //   }
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
           if (!tabs[0]) return;
           chrome.scripting.executeScript({
@@ -265,7 +263,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           });
         });
       });
-    });
+    // });
   } else if (message.action === "getTargetTabId") {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0] && !tabs[0].url.match(/^(chrome|file|about):\/\//)) {

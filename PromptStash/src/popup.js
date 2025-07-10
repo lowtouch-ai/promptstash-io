@@ -74,7 +74,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let recentIndices = [];
 
   // Load popup state, recent indices, and initialize index with version check
-  chrome.storage.local.get(["popupState", "theme", "extensionVersion", "recentIndices", "templates", "nextIndex"], (result) => {
+  chrome.storage.local.get(["popupState", "theme", "extensionVersion", "recentIndices", "templates", "nextIndex", "isFullscreen"], (result) => {
     // Check if stored version matches current version
     const storedVersion = result.extensionVersion || "0.0.0";
     if (storedVersion !== EXTENSION_VERSION) {
@@ -100,6 +100,11 @@ document.addEventListener("DOMContentLoaded", () => {
     currentTheme = result.theme || "light";
     nextIndex = result.nextIndex || defaultTemplates.length;
     recentIndices = result.recentIndices || [];
+    isFullscreen = result.isFullscreen || false;
+    let svg = elements.fullscreenToggle.querySelector("svg use");
+    svg.setAttribute("href", isFullscreen ? "sprite.svg#compress" : "sprite.svg#fullscreen");
+    
+
     // Ensure templates are initialized
     const templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
 
@@ -124,7 +129,7 @@ document.addEventListener("DOMContentLoaded", () => {
         selectedName: selectedTemplateName
       },
       theme: currentTheme,
-      isFullscreen,
+      isFullscreen: isFullscreen,
       extensionVersion: EXTENSION_VERSION
     };
     chrome.storage.local.set(state);
@@ -477,16 +482,10 @@ document.addEventListener("DOMContentLoaded", () => {
   // Toggle fullscreen
   elements.fullscreenToggle.addEventListener("click", () => {
     const svg = elements.fullscreenToggle.querySelector("svg use");
-    console.log("logged from popup.js: ICON clicked isFullscreen =",isFullscreen);
-    svg.setAttribute("href", isFullscreen ? "sprite.svg#compress" : "sprite.svg#fullscreen");
     isFullscreen = !isFullscreen;
-    console.log("logged from popup.js: value of isFullscreen inverted");
     saveState();
-    chrome.storage.local.get(["isFullscreen"], (f) => {
-      console.log("logged from popup.js: value of isFullscreen in chrome.storage.local =", f.isFullscreen);
-    });
+    svg.setAttribute("href", isFullscreen ? "sprite.svg#compress" : "sprite.svg#fullscreen");
     chrome.runtime.sendMessage({ action: "toggleFullscreen" });
-    console.log("logged from popup.js: toggleFullscreen action message sent")
   });
 
   // Minimize popup

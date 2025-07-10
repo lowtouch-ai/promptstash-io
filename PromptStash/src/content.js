@@ -517,8 +517,7 @@ function createWidget(inputField, inputContainer) {
   extensionButton.addEventListener('pointermove', (e) => {
     // Detect movement to confirm drag intent
     if (Math.abs(e.clientX - startX) > 1 || Math.abs(e.clientY - startY) > 1) {
-      // isDragging = true;
-      // extensionButton.style.cursor = 'grabbing';
+      isDragging = true;
     }
   });
 
