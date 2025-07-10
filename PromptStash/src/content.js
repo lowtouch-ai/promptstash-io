@@ -466,6 +466,20 @@ function createWidget(inputField, inputContainer) {
   let startX, startY;
   let holdTimeout;
   let pointerStartTime;
+  let isTogglingPopup = false; // Flag to prevent rapid togglePopup calls
+
+  // Debounce togglePopup to prevent rapid double-clicks
+  const debouncedTogglePopup = debounce(() => {
+    if (!isTogglingPopup) {
+      isTogglingPopup = true;
+      chrome.runtime.sendMessage({ action: "togglePopup" }, () => {
+        // Reset flag after 500ms to allow next toggle
+        setTimeout(() => {
+          isTogglingPopup = false;
+        }, 300);
+      });
+    }
+  }, 300);
 
   extensionButton.addEventListener('pointerdown', (e) => {
     e.preventDefault(); // Prevent default behaviors like text selection or scrolling
@@ -483,7 +497,7 @@ function createWidget(inputField, inputContainer) {
   extensionButton.addEventListener('pointermove', (e) => {
     // Detect movement to confirm drag intent
     if (Math.abs(e.clientX - startX) > 1 || Math.abs(e.clientY - startY) > 1) {
-      // isDragging = true;
+      isDragging = true;
       // extensionButton.style.cursor = 'grabbing';
     }
   });
@@ -493,7 +507,7 @@ function createWidget(inputField, inputContainer) {
     clearTimeout(holdTimeout);
     const duration = Date.now() - pointerStartTime;
     if (!isDragging && duration < 300 && !document.getElementById('promptstash-popup')) {
-      chrome.runtime.sendMessage({ action: "togglePopup" });
+      debouncedTogglePopup();
     }
     isDragging = false;
     extensionButton.style.cursor = ''; // Reset cursor
@@ -516,8 +530,8 @@ function createWidget(inputField, inputContainer) {
   extensionButton.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') { // Space key support per accessibility standards
       e.preventDefault();
-      if (!document.getElementById('promptstash-popup')) {
-        chrome.runtime.sendMessage({ action: "togglePopup" });
+      if (!document.getElementById('promptstash-popup') && !isTogglingPopup) {
+        debouncedTogglePopup();
       }
       isDragging = false;
     }
@@ -578,15 +592,6 @@ function makeDraggable(element, inputContainer, onPositionChange) {
     isDragging = false;
     element.style.cursor = ''; // Reset cursor
   }, { capture: true });
-
-  // Stop dragging when pointer enters the popup
-  const popup = document.getElementById('promptstash-popup');
-  if (popup) {
-    popup.addEventListener('pointerenter', () => {
-      isDragging = false;
-      element.style.cursor = ''; // Reset cursor
-    });
-  }
 
   // Observe popup creation dynamically
   const observer = new MutationObserver(() => {
