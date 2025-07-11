@@ -479,7 +479,7 @@ function createWidget(inputField, inputContainer) {
         }, 300);
       });
     }
-  }, 300);
+  }, 1);
 
   extensionButton.addEventListener('pointerdown', (e) => {
     e.preventDefault(); // Prevent default behaviors like text selection or scrolling
