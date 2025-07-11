@@ -77,7 +77,7 @@ body.dark .toast.green {
 }
 
 body.dark .toast-close-btn {
-  color: #fff;
+  color: #ccc;
 }
 
 .toast-close-btn:hover, .toast-close-btn:focus {
@@ -85,7 +85,7 @@ body.dark .toast-close-btn {
 }
 
 body.dark .toast-close-btn:hover, body.dark .toast-close-btn:focus {
-  color: #ccc;
+  color: #fff;
 }
 
 .toast-button-container {
@@ -96,7 +96,7 @@ body.dark .toast-close-btn:hover, body.dark .toast-close-btn:focus {
 
 .toast-action-btn {
   padding: 5px 10px;
-  border: 1px solid #888;
+  border: 1px solid #8885;
   border-radius: 4px;
   background: #fff8;
   cursor: pointer;
@@ -104,16 +104,16 @@ body.dark .toast-close-btn:hover, body.dark .toast-close-btn:focus {
 }
 
 body.dark .toast-action-btn {
-  background: #3a3c4088;
+  background: #4a4b4d4d;
   color: #e8eaed;
 }
 
-.toast-action-btn:hover, .toast-action-btn:focus {
-  background: #f1f3f488;
+.toast-action-btn:hover {
+  background: #ffffff;
 }
 
-body.dark .toast-action-btn:hover, body.dark .toast-action-btn:focus {
-  background: #4b4f5788;
+body.dark .toast-action-btn:hover {
+  background: #2222248b;
 }
 
 .logo {
@@ -176,7 +176,7 @@ body.dark #searchBox {
   box-shadow: 0 0 0.5rem 1px rgba(0, 0, 0, 0.15);
 }
 
-body.dark #searchBox:hover, #searchBox:focus {
+body.dark #searchBox:hover, body.dark #searchBox:focus {
   border: 1px solid rgb(208, 208, 208);
 }
 
@@ -449,12 +449,8 @@ body.dark .topbtn {
   border: none;
   padding: 0;
   margin-right: 10px;
-  fill: none;
-  z-index: 10;
-}
-
-:hover + .clrbtn {
   fill: #888;
+  z-index: 10;
 }
 
 .clrbtn:hover {
@@ -548,6 +544,7 @@ body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
   background: #151515;
   color: #edede8;
 }
+
 
 :root {
   --base-font-size: 16px; /* Default */
