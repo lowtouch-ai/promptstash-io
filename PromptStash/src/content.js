@@ -7,7 +7,7 @@ setInterval(() => {
   keepAlivePort.postMessage({ status: "heartbeat" });
 }, 60000); // Send heartbeat every 1 minute
 
-// Existing content.js code (appended to avoid overwriting)
+// Supported platforms with selectors for primary input and editable previous prompts
 const SUPPORTED_HOSTS = {
   "grok.com": {
     primarySelector: "div.query-bar textarea",
@@ -253,13 +253,13 @@ function processMessage(message, targetField, sendResponse) {
           console.log("Set value for input/textarea.");
         }
 
-      // Dispatch input and change events for non-Perplexity platforms
+        // Dispatch input and change events for non-Perplexity platforms
         if (!hostname.includes("perplexity.ai")) {
           targetField.dispatchEvent(new Event("input", { bubbles: true }));
           targetField.dispatchEvent(new Event("change", { bubbles: true }));
         }
       targetField.focus(); // Restore focus to the target field
-        sendResponse({ success: true });
+      sendResponse({ success: true });
       } else {
         console.log("Target field is not editable");
         sendResponse({ success: false, error: "Target field is not editable" });
@@ -379,10 +379,10 @@ function createWidget(inputField, inputContainer) {
   const widget = document.createElement('div');
   widget.id = 'promptstash-widget';
   widget.setAttribute('aria-live', 'polite'); // Accessibility: announce changes
-    widget.innerHTML = `
-      <button class="extension-button" style="background: none; border: none; border-radius: 100%;" aria-label="Open PromptStash" title="Open PromptStash">
-        <img src="${chrome.runtime.getURL('icon48.png')}" alt="PromptStash" aria-hidden="true" draggable="false" style="width: 30px; height: 30px;">
-      </button>
+  widget.innerHTML = `
+    <button class="extension-button" style="background: none; border: none; border-radius: 100%;" aria-label="Open PromptStash" title="Open PromptStash">
+      <img src="${chrome.runtime.getURL('icon48.png')}" alt="PromptStash" aria-hidden="true" draggable="false" style="width: 30px; height: 30px;">
+    </button>
   `;
 
   // Initialize widget with hidden visibility to prevent flashing
@@ -392,15 +392,15 @@ function createWidget(inputField, inputContainer) {
   widget.style.borderRadius = '100%';
 
   // Initialize widget position with default offset
-  let widgetOffset = { x: -100, y: -100 }; // Default offset from bottom-right corner
+  let widgetOffset = { x: 0, y: 0 }; // Default offset from bottom-right corner
 
   // Create an offscreen container to measure widget size
-  const offscreenContainer = document.createElement('div');
-  offscreenContainer.style.position = 'absolute';
-  offscreenContainer.style.top = '-9999px';
-  offscreenContainer.style.left = '-9999px';
-  offscreenContainer.appendChild(widget);
-  document.body.appendChild(offscreenContainer);
+  // const offscreenContainer = document.createElement('div');
+  // offscreenContainer.style.position = 'absolute';
+  // offscreenContainer.style.top = '-9999px';
+  // offscreenContainer.style.left = '-9999px';
+  // offscreenContainer.appendChild(widget);
+  // document.body.appendChild(offscreenContainer);
 
   // Calculate initial position using input container and widget size
   if (inputContainer && inputContainer.offsetParent) {
@@ -408,18 +408,21 @@ function createWidget(inputField, inputContainer) {
     const parentRect = inputContainer.parentElement.getBoundingClientRect();
     const widgetRect = widget.getBoundingClientRect();
     let newLeft = containerRect.right + window.scrollX + widgetOffset.x;
-    let newTop = containerRect.bottom + window.scrollY + widgetOffset.y;
+    let newTop = containerRect.top + window.scrollY + widgetOffset.y;
+    let maxMinOffset = 10;
     // Enforce boundaries within parent element
-    newLeft = Math.max(parentRect.left + window.scrollX, Math.min(newLeft, parentRect.right + window.scrollX - widgetRect.width));
-    newTop = Math.max(parentRect.top + window.scrollY, Math.min(newTop, parentRect.bottom + window.scrollY - widgetRect.height));
+    newLeft = Math.max(parentRect.left + window.scrollX - maxMinOffset, Math.min(newLeft, parentRect.right + window.scrollX - widgetRect.width + maxMinOffset));
+    newTop = Math.max(parentRect.top + window.scrollY - maxMinOffset, Math.min(newTop, parentRect.bottom + window.scrollY - widgetRect.height + maxMinOffset));
     widget.style.left = `${newLeft}px`;
     widget.style.top = `${newTop}px`;
   }
 
   // Remove from offscreen container and append to body, then make visible
-  offscreenContainer.remove();
+  // offscreenContainer.remove();
   document.body.appendChild(widget);
-  widget.style.visibility = 'visible'; // Show widget after positioning
+  setTimeout(() => {
+    widget.style.visibility = 'visible'; // Show widget after positioning
+  }, 10); // Small delay to ensure visibility after positioning
 
   // Store initial container rectangle to detect position changes later
   widget.previousContainerRect = inputContainer.getBoundingClientRect();
@@ -427,23 +430,24 @@ function createWidget(inputField, inputContainer) {
   // Update position with saved offset if available
   chrome.storage.local.get(['widgetOffset'], (result) => {
     if (result.widgetOffset) {
-      updateWidgetPosition(result.widgetOffset);
+      widgetOffset = result.widgetOffset;
+      updateWidgetPosition();
     }
   });
 
   // Enforce widget position within container boundaries
   function enforceBoundaries(containerRect, parentRect, widgetRect) {
     let newLeft = containerRect.right + window.scrollX + widgetOffset.x;
-    let newTop = containerRect.bottom + window.scrollY + widgetOffset.y;
-
+    let newTop = containerRect.top + window.scrollY + widgetOffset.y;
+    let maxMinOffset = 10;
     // For grok.com, constrain strictly to query-bar bounds
     if (window.location.hostname.includes("grok.com")) {
-      newLeft = Math.max(containerRect.left + window.scrollX, Math.min(newLeft, containerRect.right + window.scrollX - widgetRect.width));
-      newTop = Math.max(containerRect.top + window.scrollY, Math.min(newTop, containerRect.bottom + window.scrollY - widgetRect.height));
+      newLeft = Math.max(containerRect.left + window.scrollX - maxMinOffset, Math.min(newLeft, containerRect.right + window.scrollX - widgetRect.width + maxMinOffset));
+      newTop = Math.max(containerRect.top + window.scrollY - maxMinOffset, Math.min(newTop, containerRect.bottom + window.scrollY - widgetRect.height + maxMinOffset));
     } else {
       // Generic bounds for other platforms
-      newLeft = Math.max(parentRect.left + window.scrollX, Math.min(newLeft, parentRect.right + window.scrollX - widgetRect.width));
-      newTop = Math.max(parentRect.top + window.scrollY, Math.min(newTop, parentRect.bottom + window.scrollY - widgetRect.height));
+      newLeft = Math.max(parentRect.left + window.scrollX - maxMinOffset, Math.min(newLeft, parentRect.right + window.scrollX - widgetRect.width + maxMinOffset));
+      newTop = Math.max(parentRect.top + window.scrollY - maxMinOffset, Math.min(newTop, parentRect.bottom + window.scrollY - widgetRect.height + maxMinOffset));
     }
 
     return { newLeft, newTop };
@@ -476,15 +480,15 @@ function createWidget(inputField, inputContainer) {
     extensionButton.style.transform = 'scale(1)';
   });
 
-  // Observe input container resizing
+  // Observe input container resizing (e.g., while typing)
   const resizeObserver = new ResizeObserver(debounce(() => {
     updateWidgetPosition();
-  }, 5)); // Debounced to prevent excessive updates
+  }, 100));
   resizeObserver.observe(inputContainer);
   widget.resizeObserver = resizeObserver;
 
-  // Update position on window resize (debounced for performance)
-  const updatePositionDebounced = debounce(() => updateWidgetPosition(), 5);
+  // Update position on window resize
+  const updatePositionDebounced = debounce(() => updateWidgetPosition(), 100);
   const resizeListener = () => updatePositionDebounced();
   window.addEventListener('resize', resizeListener);
   widget.resizeListener = resizeListener;
@@ -501,7 +505,12 @@ function createWidget(inputField, inputContainer) {
   let holdTimeout;
   let pointerStartTime;
 
-  extensionButton.addEventListener('pointerdown', (e) => {
+  // Trottle togglePopup to prevent rapid clicks
+  const throttledTogglePopup = throttle(() => {
+      chrome.runtime.sendMessage({ action: "togglePopup" })
+  }, 500);
+
+  widget.addEventListener('pointerdown', (e) => {
     e.preventDefault(); // Prevent default behaviors like text selection or scrolling
     if (document.getElementById('promptstash-popup')) return; // Prevent interaction if popup is open
     startX = e.clientX;
@@ -510,39 +519,44 @@ function createWidget(inputField, inputContainer) {
     isDragging = false;
     holdTimeout = setTimeout(() => {
       isDragging = true;
-      extensionButton.style.cursor = 'grabbing'; // Visual feedback for drag mode
+      widget.style.cursor = 'grabbing'; // Visual feedback for drag mode
     }, 300);
-  });
 
-  extensionButton.addEventListener('pointermove', (e) => {
-    // Detect movement to confirm drag intent
-    if (Math.abs(e.clientX - startX) > 1 || Math.abs(e.clientY - startY) > 1) {
+  const onPointerMove = (e) => {
+    if (!isDragging && (Math.abs(e.clientX - startX) > 1 || Math.abs(e.clientY - startY) > 1)) {
       isDragging = true;
+      widget.style.cursor = 'grabbing';
     }
-  });
+  };
 
-  extensionButton.addEventListener('pointerup', (e) => {
+  const onPointerUp = () => {
     // Handle popup opening on quick tap/click
     clearTimeout(holdTimeout);
     const duration = Date.now() - pointerStartTime;
     if (!isDragging && duration < 300 && !document.getElementById('promptstash-popup')) {
-      chrome.runtime.sendMessage({ action: "togglePopup" });
+      throttledTogglePopup();
     }
     isDragging = false;
-    extensionButton.style.cursor = ''; // Reset cursor
+    widget.style.cursor = '';
+    document.removeEventListener('pointermove', onPointerMove);
+    document.removeEventListener('pointerup', onPointerUp);
+  };
+
+  document.addEventListener('pointermove', onPointerMove);
+  document.addEventListener('pointerup', onPointerUp);
   });
 
-  extensionButton.addEventListener('pointercancel', () => {
+  widget.addEventListener('pointercancel', () => {
     // Handle interrupted interactions
     clearTimeout(holdTimeout);
     isDragging = false;
-    extensionButton.style.cursor = ''; // Reset cursor
+    widget.style.cursor = ''; // Reset cursor
   });
 
-  extensionButton.addEventListener('pointerleave', () => {
+  widget.addEventListener('pointerleave', () => {
     clearTimeout(holdTimeout);
     isDragging = false;
-    extensionButton.style.cursor = ''; // Reset cursor
+    widget.style.cursor = ''; // Reset cursor
   });
 
   // Ensure keyboard accessibility
@@ -550,9 +564,10 @@ function createWidget(inputField, inputContainer) {
     if (e.key === 'Enter' || e.key === ' ') { // Space key support per accessibility standards
       e.preventDefault();
       if (!document.getElementById('promptstash-popup')) {
-        chrome.runtime.sendMessage({ action: "togglePopup" });
+        throttledTogglePopup();
       }
       isDragging = false;
+      widget.style.cursor = ''; // Reset cursor
     }
   });
 
@@ -588,9 +603,10 @@ function makeDraggable(element, inputContainer, onPositionChange) {
 
     let newLeft = e.clientX - offsetX;
     let newTop = e.clientY - offsetY;
+    let maxMinOffset = 10;
 
-    newLeft = Math.max(boundaryRect.left + window.scrollX, Math.min(newLeft, boundaryRect.right + window.scrollX - widgetRect.width));
-    newTop = Math.max(boundaryRect.top + window.scrollY, Math.min(newTop, boundaryRect.bottom + window.scrollY - widgetRect.height));
+    newLeft = Math.max(boundaryRect.left + window.scrollX - maxMinOffset, Math.min(newLeft, boundaryRect.right + window.scrollX - widgetRect.width + maxMinOffset));
+    newTop = Math.max(boundaryRect.top + window.scrollY - maxMinOffset, Math.min(newTop, boundaryRect.bottom + window.scrollY - widgetRect.height + maxMinOffset));
 
     element.style.left = `${newLeft}px`;
     element.style.top = `${newTop}px`;
@@ -611,15 +627,6 @@ function makeDraggable(element, inputContainer, onPositionChange) {
     isDragging = false;
     element.style.cursor = ''; // Reset cursor
   }, { capture: true });
-
-  // Stop dragging when pointer enters the popup
-  const popup = document.getElementById('promptstash-popup');
-  if (popup) {
-    popup.addEventListener('pointerenter', () => {
-      isDragging = false;
-      element.style.cursor = ''; // Reset cursor
-    });
-  }
 
   // Observe popup creation dynamically
   const observer = new MutationObserver(() => {
@@ -647,6 +654,20 @@ function debounce(func, wait) {
   return function (...args) {
     clearTimeout(timeout);
     timeout = setTimeout(() => func.apply(this, args), wait);
+  };
+}
+
+// Throttle function to limit rapid calls to a function
+function throttle(func, wait) {
+  let inThrottle = false;
+  return function (...args) {
+    if (!inThrottle) {
+      func.apply(this, args);
+      inThrottle = true;
+      setTimeout(() => {
+        inThrottle = false;
+      }, wait);
+    }
   };
 }
 

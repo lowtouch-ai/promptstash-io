@@ -509,31 +509,6 @@ body.dark #buttons .btn svg {
   transform: scale(1.1);
 }
 
-/* Spinner styles for loading indicator */
-.spinner {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  border: 2px solid #888;
-  border-top: 2px solid #202124;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  position: absolute;
-  top: 50%;
-  right: 10px;
-  transform: translateY(-50%);
-}
-
-body.dark .spinner {
-  border: 2px solid #aaa;
-  border-top: 2px solid #e8eaed;
-}
-
-@keyframes spin {
-  0% { transform: translateY(-50%) rotate(0deg); }
-  100% { transform: translateY(-50%) rotate(360deg); }
-}
-
 .tooltip-inner {
   background: #000000;
   color: #e8eaed;

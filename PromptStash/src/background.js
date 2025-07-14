@@ -7,28 +7,6 @@ const supportedHosts = [
 ];
 const supportedHostsString = "grok.com, chatgpt.com, perplexity.ai, gemini.google.com, and claude.ai";
 
-// Add periodic content script injection to keep the extension active
-chrome.runtime.onConnect.addListener((port) => {
-  if (port.name === "keepAlive") {
-    port.onDisconnect.addListener(() => {
-      // console.log("Keep-alive port disconnected, re-injecting content script");
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (tabs[0] && !tabs[0].url.match(/^(chrome|file|about):\/\//)) {
-          document.getElementById("promptstash-widget").remove();
-          chrome.scripting.executeScript({
-            target: { tabId: tabs[0].id },
-            files: ["content.js"]
-          }, () => {
-            if (chrome.runtime.lastError) {
-              console.error("Periodic content script injection error:", chrome.runtime.lastError.message);
-            }
-          });
-        }
-      });
-    });
-  }
-});
-
 // Periodic check to ensure content script is active
 setInterval(() => {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -50,6 +28,7 @@ setInterval(() => {
   });
 }, 300000); // Check every 5 minutes
 
+// Listen for extension icon click to toggle popup
 chrome.action.onClicked.addListener((tab) => {
   // Check for restricted protocols
   if (tab.url.match(/^(chrome|file|about):\/\//)) {
@@ -63,13 +42,6 @@ chrome.action.onClicked.addListener((tab) => {
   }
 
   // Check if the tab URL matches supported hosts
-  // const supportedHosts = [
-  //   "https://grok.com/",
-  //   "https://www.perplexity.ai/",
-  //   "https://chatgpt.com/",
-  //   "https://gemini.google.com/",
-  //   "https://claude.ai/"
-  // ];
   const isSupported = supportedHosts.some(host => {
     const regex = new RegExp(`^${host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}.*`);
     return regex.test(tab.url);
@@ -102,24 +74,38 @@ chrome.action.onClicked.addListener((tab) => {
 
 // Function to toggle popup visibility
 function togglePopup() {
-  const popupId = "promptstash-popup";
-  let popup = document.getElementById(popupId);
+  let popup = document.getElementById("promptstash-popup");
 
   if (popup) {
     popup.remove();
-    console.log("------------------- Pop-up closed -------------------")
+    console.log("------------------- Pop-up closed -------------------");
   } else {
     popup = document.createElement("div");
-    popup.id = popupId;
+    popup.id = "promptstash-popup";
     popup.innerHTML = `
       <iframe src="${chrome.runtime.getURL("popup.html")}" style="width: 100%; height: 100%; border: none;"></iframe>
     `;
     document.body.appendChild(popup);
-    console.log("------------------- Pop-up opened -------------------")
+    // Make iframe unselectable
+    popup.style.userSelect = "none";
+    popup.style.webkitUserSelect = "none";
+    console.log("------------------- Pop-up opened -------------------");
+
+    // Temporarily disable all child elements of popup
+    Array.from(popup.querySelectorAll("*")).forEach(el => {
+      el.setAttribute("disabled", "true");
+      el.style.pointerEvents = "none";
+    });
+    setTimeout(() => {
+      Array.from(popup.querySelectorAll("*")).forEach(el => {
+      el.removeAttribute("disabled");
+      el.style.pointerEvents = "";
+      });
+      popup.style.pointerEvents = 'auto';
+    }, 250);
 
     // Retrieve stored fullscreen state and apply styles
     chrome.storage.local.get(["isFullscreen"], (result) => {
-      console.log("logged from background.js: value of isFullscreen in chrome.storage.local on opening popup =", result.isFullscreen)
       const isFullscreen = result.isFullscreen || false;
       const isSmallScreen = window.innerWidth <= 768;
       const defaultWidth = isFullscreen ? "100vw" : isSmallScreen ? "100vw" : "50vw";
@@ -147,18 +133,13 @@ function togglePopup() {
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && popup) {
         popup.remove();
-        chrome.storage.local.set({ isFullscreen: false });
       }
     });
 
     document.addEventListener("click", (e) => {
-      const widget = document.getElementById("promptstash-widget");  
-      if (popup && !popup.contains(e.target) && !widget.contains(e.target)) {
+      if (popup && !popup.contains(e.target)) {
         popup.remove();
-        // console.log("Is widget targeted (background):" + !widget.contains(e.target))
-        chrome.storage.local.set({ isFullscreen: false });
       }
-
     });
   }
 }
@@ -220,61 +201,41 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (chrome.runtime.lastError) {
           console.error("Close popup error:", chrome.runtime.lastError.message);
         }
-        chrome.storage.local.set({ isFullscreen: false }, () => {
-          if (chrome.runtime.lastError) {
-            console.error("Storage error:", chrome.runtime.lastError.message);
-          }
-        });
       });
     });
   } else if (message.action === "toggleFullscreen") {
     chrome.storage.local.get(["isFullscreen"], (result) => {
       const isFullscreen = result.isFullscreen;
-      // chrome.storage.local.set({ isFullscreen }, () => {
-      //   if (chrome.runtime.lastError) {
-      //     console.error("Storage set error:", chrome.runtime.lastError.message);
-      //     return;
-      //   }
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-          if (!tabs[0]) return;
-          chrome.scripting.executeScript({
-            target: { tabId: tabs[0].id },
-            function: (isFullscreen) => {
-              console.log("logged from background.js: value of isFullscreen passed as arg:",isFullscreen);
-              const popup = document.getElementById("promptstash-popup");
-              if (popup) {
-                const isSmallScreen = window.innerWidth <= 768;
-                Object.assign(popup.style, {
-                  width: isFullscreen ? "100vw" : isSmallScreen ? "100vw" : "50vw",
-                  height: isFullscreen ? "100vh" : isSmallScreen ? "100vh" : "96vh",
-                  left: isFullscreen ? "0" : isSmallScreen ? "0" : `${window.innerWidth * 0.49}px`,
-                  top: isFullscreen ? "0" : isSmallScreen ? "0" : "2vh",
-                  borderRadius: isFullscreen ? "0" : "10px",
-                  boxShadow: isFullscreen ? "none" : "0 4px 15px rgba(0, 0, 0, 0.2)",
-                  transition: "width 0.3s ease, height 0.3s ease, top 0.3s ease, left 0.3s ease"
-                });
-              }
-            },
-            args: [isFullscreen]
-          }, () => {
-            if (chrome.runtime.lastError) {
-              console.error("Fullscreen toggle error:", chrome.runtime.lastError.message);
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (!tabs[0]) return;
+        chrome.scripting.executeScript({
+          target: { tabId: tabs[0].id },
+          function: (isFullscreen) => {
+            const popup = document.getElementById("promptstash-popup");
+            if (popup) {
+              const isSmallScreen = window.innerWidth <= 768;
+              Object.assign(popup.style, {
+                width: isFullscreen ? "100vw" : isSmallScreen ? "100vw" : "50vw",
+                height: isFullscreen ? "100vh" : isSmallScreen ? "100vh" : "96vh",
+                left: isFullscreen ? "0" : isSmallScreen ? "0" : `${window.innerWidth * 0.49}px`,
+                top: isFullscreen ? "0" : isSmallScreen ? "0" : "2vh",
+                borderRadius: isFullscreen ? "0" : "10px",
+                boxShadow: isFullscreen ? "none" : "0 4px 15px rgba(0, 0, 0, 0.2)",
+                transition: "width 0.3s ease, height 0.3s ease, top 0.3s ease, left 0.3s ease"
+              });
             }
-          });
+          },
+          args: [isFullscreen]
+        }, () => {
+          if (chrome.runtime.lastError) {
+            console.error("Fullscreen toggle error:", chrome.runtime.lastError.message);
+          }
         });
       });
-    // });
+    });
   } else if (message.action === "getTargetTabId") {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0] && !tabs[0].url.match(/^(chrome|file|about):\/\//)) {
-        // Check if the tab URL matches supported hosts
-        // const supportedHosts = [
-        //   "https://grok.com/",
-        //   "https://www.perplexity.ai/",
-        //   "https://chatgpt.com/",
-        //   "https://gemini.google.com/",
-        //   "https://claude.ai/"
-        // ];
         const isSupported = supportedHosts.some(host => {
           const regex = new RegExp(`^${host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}.*`);
           return regex.test(tabs[0].url);

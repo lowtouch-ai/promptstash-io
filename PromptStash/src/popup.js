@@ -49,8 +49,8 @@ document.addEventListener("DOMContentLoaded", () => {
     closeBtn: document.getElementById("closeBtn"),
     minimizeBtn: document.getElementById("minimizeBtn"),
     newBtn: document.getElementById("newBtn"),
-    overlay: document.getElementById("overlay"),
-    confirmationOverlay: document.getElementById("confirmationOverlay"),
+    searchOverlay: document.getElementById("searchOverlay"),
+    toastOverlay: document.getElementById("toastOverlay"),
     toast: document.getElementById("toast"),
     themeToggle: document.getElementById("themeToggle")
   };
@@ -60,10 +60,10 @@ document.addEventListener("DOMContentLoaded", () => {
     .filter(([key, value]) => !value)
     .map(([key]) => key);
   if (missingElements.length > 0) {
-    console.error("Missing DOM elements:", missingElements);
+    // console.error("Missing DOM elements:", missingElements);
     showToast("Error: Extension UI failed to load. Please reload the extension.", 3000, "red", [], "init");
-  } else {
-    // console.log("All DOM elements found:", Object.keys(elements));
+  // } else {
+  //   console.log("All DOM elements found:", Object.keys(elements));
   }
 
   let selectedTemplateName = null;
@@ -78,13 +78,13 @@ document.addEventListener("DOMContentLoaded", () => {
     // Check if stored version matches current version
     const storedVersion = result.extensionVersion || "0.0.0";
     if (storedVersion !== EXTENSION_VERSION) {
-      console.log(`Version updated from ${storedVersion} to ${EXTENSION_VERSION}. No schema migration needed.`);
+      // console.log(`Version updated from ${storedVersion} to ${EXTENSION_VERSION}. No schema migration needed.`);
       chrome.storage.local.set({ extensionVersion: EXTENSION_VERSION });
     }
 
     // Initialize state, falling back to defaults if not present
     const state = result.popupState || {};
-    const defaultTest = `# Your Role
+    const defaultText = `# Your Role
 * 
 
 # Background Information
@@ -94,7 +94,7 @@ document.addEventListener("DOMContentLoaded", () => {
 * `;
     elements.templateName.value = state.name || "";
     elements.templateTags.value = state.tags || "";
-    elements.promptArea.value = (state.content === undefined) ? defaultTest : state.content;
+    elements.promptArea.value = state.content || defaultText;
     // console.log("state.content =", state.content)
     selectedTemplateName = state.selectedName || null;
     currentTheme = result.theme || "light";
@@ -116,7 +116,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.body.className = currentTheme;
     elements.fetchBtn2.style.display = elements.promptArea.value ? "none" : "block";
     elements.clearPrompt.style.display = elements.promptArea.value ? "block" : "none";
-    loadTemplates(elements.typeSelect.value, "", false);
+    loadTemplates();
   });
 
   // Save popup state
@@ -129,7 +129,7 @@ document.addEventListener("DOMContentLoaded", () => {
         selectedName: selectedTemplateName
       },
       theme: currentTheme,
-      isFullscreen: isFullscreen,
+      isFullscreen,
       extensionVersion: EXTENSION_VERSION
     };
     chrome.storage.local.set(state);
@@ -223,7 +223,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     elements.toast.classList.remove("show");
     elements.toast.classList.add("hide");
-    elements.confirmationOverlay.style.display = "none";
+    elements.toastOverlay.style.display = "none";
     setTimeout(() => {
       elements.toast.classList.remove("hide");
       elements.toast.innerHTML = "";
@@ -296,7 +296,7 @@ document.addEventListener("DOMContentLoaded", () => {
       });
       elements.toast.appendChild(buttonContainer);
 
-      elements.confirmationOverlay.style.display = "block";
+      elements.toastOverlay.style.display = "block";
       
       // Focus on the "Yes" button after buttons are added
       const yesButton = elements.toast.querySelector(".toast-action-btn[aria-label='Confirm action']");
@@ -508,7 +508,7 @@ document.addEventListener("DOMContentLoaded", () => {
     selectedTemplateName = null;
     elements.fetchBtn2.style.display = "block";
     elements.searchBox.value = "";
-    loadTemplates(elements.typeSelect.value, "", false);
+    loadTemplates();
     saveState();
     chrome.runtime.sendMessage({ action: "closePopup" });
   });
@@ -530,7 +530,7 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.fetchBtn2.style.display = "none";
     elements.clearPrompt.style.display = "block";
     elements.searchBox.value = "";
-    loadTemplates(elements.typeSelect.value, "", false);
+    loadTemplates();
     saveState();
     showToast("New template created.", 2000, "green", [], "new");
   });
@@ -538,7 +538,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Clear search input
   elements.clearSearch.addEventListener("click", () => {
     elements.searchBox.value = "";
-    loadTemplates(elements.typeSelect.value, "", false);
+    loadTemplates();
     elements.clearSearch.style.display = "none";
     elements.searchBox.focus();
   });
@@ -563,7 +563,7 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.fetchBtn2.style.display = "block";
     elements.clearPrompt.style.display = "none";
     elements.searchBox.value = "";
-    loadTemplates(elements.typeSelect.value, "", false);
+    loadTemplates();
     saveState();
     showToast("All fields cleared.", 2000, "green", [], "clearAll");
   });
@@ -665,26 +665,25 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // Load templates and suggestions
-  function loadTemplates(filter, query = "", showDropdown = false) {
+  function loadTemplates(query = "", showDropdown = false) {
     chrome.storage.local.get(["templates"], (result) => {
       // console.log(result);
       let templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
       elements.dropdownResults.innerHTML = "";
       elements.favoriteSuggestions.innerHTML = "";
 
-      let filteredTemplates = templates.filter(tmpl => filter === "all" || tmpl.type === filter);
       if (query) {
-        filteredTemplates = filteredTemplates.filter(t =>
+        templates = templates.filter(t =>
           t.name.toLowerCase().includes(query) || t.tags.toLowerCase().includes(query)
         );
-        filteredTemplates.sort((a, b) => {
+        templates.sort((a, b) => {
           const aMatch = a.name.toLowerCase().indexOf(query) + a.tags.toLowerCase().indexOf(query);
           const bMatch = b.name.toLowerCase().indexOf(query) + b.tags.toLowerCase().indexOf(query);
           if (aMatch !== bMatch) return aMatch - bMatch;
           return a.name.localeCompare(b.name);
         });
       } else {
-        filteredTemplates.sort((a, b) => {
+        templates.sort((a, b) => {
           const aIndex = recentIndices.indexOf(a.index);
           const bIndex = recentIndices.indexOf(b.index);
           if (aIndex === -1 && bIndex === -1) return a.name.localeCompare(b.name);
@@ -695,12 +694,12 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       if (showDropdown) {
-        filteredTemplates.forEach((tmpl, idx) => {
+        templates.forEach((tmpl, idx) => {
           const div = document.createElement("div");
           div.textContent = tmpl.tags ? `${tmpl.name} (${tmpl.tags})` : `${tmpl.name}`;
           div.setAttribute("role", "option");
           div.setAttribute("aria-selected", selectedTemplateName === tmpl.name);
-          elements.overlay.style.display = 'block';
+          elements.searchOverlay.style.display = 'block';
           elements.dropdownResults.style.display = 'block';
           elements.dropdownResults.classList.add("show");
           div.addEventListener("click", (event) => {
@@ -713,7 +712,7 @@ document.addEventListener("DOMContentLoaded", () => {
               elements.dropdownResults.innerHTML = "";
               elements.fetchBtn2.style.display = tmpl.content ? "none" : "block";
               elements.clearPrompt.style.display = tmpl.content ? "block" : "none";
-              elements.overlay.style.display = 'none';
+              elements.searchOverlay.style.display = 'none';
               elements.dropdownResults.style.display = 'none';
               elements.dropdownResults.classList.remove("show");
               saveState();
@@ -768,25 +767,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Show dropdown on search box focus
   elements.searchBox.addEventListener("focus", () => {
-    loadTemplates(elements.typeSelect.value, elements.searchBox.value.toLowerCase(), true);
+    loadTemplates(elements.searchBox.value.toLowerCase(), true);
   });
 
   // Search as user types
   elements.searchBox.addEventListener("input", () => {
-    loadTemplates(elements.typeSelect.value, elements.searchBox.value.toLowerCase(), true);
+    loadTemplates(elements.searchBox.value.toLowerCase(), true);
     elements.clearSearch.style.display = elements.searchBox.value ? "block" : "none";
   });
 
   // Handle type select
   elements.typeSelect.addEventListener("change", () => {
-    loadTemplates(elements.typeSelect.value, elements.searchBox.value.toLowerCase(), true);
+    loadTemplates(elements.searchBox.value.toLowerCase(), true);
   });
 
   // Close dropdowns when clicking outside
   document.addEventListener("click", (event) => {
     if (!elements.searchBox.contains(event.target) && !elements.dropdownResults.contains(event.target) && !elements.themeToggle.contains(event.target) && !elements.typeSelect.contains(event.target)) {
       elements.dropdownResults.innerHTML = "";
-      elements.overlay.style.display = 'none';
+      elements.searchOverlay.style.display = 'none';
       elements.dropdownResults.style.display = 'none';
       elements.dropdownResults.classList.remove("show");
     }
@@ -875,7 +874,7 @@ document.addEventListener("DOMContentLoaded", () => {
                   nextIndex++;
                   saveTemplates(templates, () => {
                     selectedTemplateName = name;
-                    loadTemplates(elements.typeSelect.value, "", false);
+                    loadTemplates();
                     saveState();
                     saveNextIndex();
                   }, true, elements.saveBtn);
@@ -905,7 +904,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
                   saveTemplates(templates, () => {
                     selectedTemplateName = name;
-                    loadTemplates(elements.typeSelect.value, "", false);
+                    loadTemplates();
                     saveState();
                   }, false, elements.saveBtn);
                 }
@@ -939,7 +938,7 @@ document.addEventListener("DOMContentLoaded", () => {
         nextIndex++;
         saveTemplates(templates, () => {
           selectedTemplateName = name;
-          loadTemplates(elements.typeSelect.value, "", false);
+          loadTemplates();
           saveState();
           saveNextIndex();
         }, true, elements.saveBtn);
@@ -969,7 +968,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         saveTemplates(templates, () => {
           selectedTemplateName = name;
-          loadTemplates(elements.typeSelect.value, "", false);
+          loadTemplates();
           saveState();
         }, false, elements.saveBtn);
       }
@@ -1050,7 +1049,7 @@ document.addEventListener("DOMContentLoaded", () => {
       saveTemplates(templates, () => {
         selectedTemplateName = name;
         elements.templateName.value = name;
-        loadTemplates(elements.typeSelect.value, "", false);
+        loadTemplates();
         saveState();
         saveNextIndex();
       }, true, button);
@@ -1216,7 +1215,7 @@ document.addEventListener("DOMContentLoaded", () => {
                   elements.searchBox.value = "";
                   elements.fetchBtn2.style.display = "block";
                   elements.clearPrompt.style.display = "none";
-                  loadTemplates(elements.typeSelect.value, "", false);
+                  loadTemplates();
                   saveState();
                 }
               });
@@ -1242,7 +1241,7 @@ document.addEventListener("DOMContentLoaded", () => {
       selectedTemplateName = lastState.selectedName || null;
       if (lastState.templates) {
         chrome.storage.local.set({ templates: lastState.templates }, () => {
-          loadTemplates(elements.typeSelect.value, "", false);
+          loadTemplates();
         });
         showToast("Action undone successfully.", 2000, "green", [], "undo");
       }
@@ -1267,7 +1266,7 @@ document.addEventListener("DOMContentLoaded", () => {
           }
           template.favorite = !template.favorite;
           chrome.storage.local.set({ templates }, () => {
-            loadTemplates(elements.typeSelect.value, elements.searchBox.value.toLowerCase(), true);
+            loadTemplates(elements.searchBox.value.toLowerCase(), true);
           });
         }
       });
