@@ -57,7 +57,7 @@ function setupFocusTracking() {
     const target = event.target;
     if (target.matches(allEditableSelectors)) {
       lastFocusedField = target;
-      console.log(`Focused field updated via focusin:`, target);
+      // console.log(`Focused field updated via focusin:`, target);
     }
   });
 
@@ -65,27 +65,27 @@ function setupFocusTracking() {
   const currentFocused = document.activeElement;
   if (currentFocused && currentFocused.matches(allEditableSelectors)) {
     lastFocusedField = currentFocused;
-    console.log(`Initial focused field set:`, currentFocused);
+    // console.log(`Initial focused field set:`, currentFocused);
   }
 }
 
 // Handle messages from popup/background
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log("Received message:", message);
+  // console.log("Received message:", message);
 
   // Use cached input field or find new one for widget positioning
   let inputField = cachedInputField || findPrimaryInputField();
   let targetField = lastFocusedField && isFieldValid(lastFocusedField) ? lastFocusedField : inputField;
 
   if (inputField) {
-    console.log("Primary input field found:", inputField.tagName, "Visible:", inputField.offsetParent !== null);
+    // console.log("Primary input field found:", inputField.tagName, "Visible:", inputField.offsetParent !== null);
   } else {
-    console.log("No primary input field found with initial querySelector.");
+    // console.log("No primary input field found with initial querySelector.");
   }
 
   // Retry finding the input field up to 3 times if not found for widget positioning
   if (!inputField && (message.action === "sendPrompt" || message.action === "getPrompt")) {
-    console.log("Retrying to find primary input field...");
+    // console.log("Retrying to find primary input field...");
     let retryCount = 0;
     const maxRetries = 3;
     const retryInterval = 500;
@@ -93,15 +93,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       retryCount++;
       inputField = findPrimaryInputField();
       if (inputField) {
-        console.log(`Primary input field found on retry ${retryCount}:`, inputField.tagName, "Visible:", inputField.offsetParent !== null);
+        // console.log(`Primary input field found on retry ${retryCount}:`, inputField.tagName, "Visible:", inputField.offsetParent !== null);
         cachedInputField = inputField;
         targetField = lastFocusedField && isFieldValid(lastFocusedField) ? lastFocusedField : inputField;
         processMessage(message, targetField, sendResponse);
       } else if (retryCount < maxRetries) {
-        console.log(`Retry ${retryCount} failed, retrying in ${retryInterval}ms...`);
+        // console.log(`Retry ${retryCount} failed, retrying in ${retryInterval}ms...`);
         setTimeout(retry, retryInterval);
       } else {
-        console.log("No primary input field found after max retries.");
+        // console.log("No primary input field found after max retries.");
         processMessage(message, targetField, sendResponse);
       }
     };
@@ -131,24 +131,24 @@ function isFieldEditable(field) {
 function processMessage(message, targetField, sendResponse) {
   if (message.action === "sendPrompt") {
     if (!message.prompt || !message.prompt.trim()) {
-      console.log("Empty or invalid prompt received.");
+      // console.log("Empty or invalid prompt received.");
       sendResponse({ success: false, error: "Prompt is empty or invalid" });
       return;
     }
 
     if (targetField) {
       if (isFieldEditable(targetField)) {
-        console.log("Target field for sendPrompt:", targetField, "Type:", targetField.tagName);
+        // console.log("Target field for sendPrompt:", targetField, "Type:", targetField.tagName);
         const hostname = window.location.hostname;
-        console.log(`Target field innerHTML before clearing:`, targetField.innerHTML);
+        // console.log(`Target field innerHTML before clearing:`, targetField.innerHTML);
 
         // Clear existing content based on field type
         if (targetField.tagName === "TEXTAREA" || targetField.tagName === "INPUT") {
           targetField.value = "";
-          console.log(`Target field value after clearing:`, targetField.value);
+          // console.log(`Target field value after clearing:`, targetField.value);
         } else {
           targetField.innerHTML = "";
-          console.log(`Target field innerHTML after clearing:`, targetField.innerHTML);
+          // console.log(`Target field innerHTML after clearing:`, targetField.innerHTML);
         }
 
         // Handle Perplexity.ai
@@ -218,7 +218,7 @@ function processMessage(message, targetField, sendResponse) {
               selection.removeAllRanges();
               selection.addRange(range);
               
-              console.log("Perplexity Lexical editor updated with new content");
+              // console.log("Perplexity Lexical editor updated with new content");
             }, 5);
           }
           // Handle textarea elements for follow-up queries and edit-mode
@@ -233,24 +233,24 @@ function processMessage(message, targetField, sendResponse) {
             // Set cursor to end
             targetField.setSelectionRange(targetField.value.length, targetField.value.length);
             
-            console.log("Perplexity textarea updated with new content");
+            // console.log("Perplexity textarea updated with new content");
           }
         }
         // Handle ProseMirror or Quill editor
         else if (targetField.tagName === "DIV" && targetField.contentEditable === "true" && (targetField.classList.contains("ProseMirror") || targetField.classList.contains("ql-editor"))) {
           const lines = message.prompt.split("\n");
           targetField.innerHTML = lines.map(line => `<p>${line}<br></p>`).join("");
-          console.log("Set innerHTML for ProseMirror or Quill editor with <p> and <br> tags.");
+          // console.log("Set innerHTML for ProseMirror or Quill editor with <p> and <br> tags.");
         }
         // Handle generic contenteditable div
         else if (targetField.tagName === "DIV" && targetField.contentEditable === "true") {
           targetField.innerHTML = message.prompt.replace(/\n/g, "<br>");
-          console.log("Set innerHTML for contenteditable div with <br> for newlines.");
+          // console.log("Set innerHTML for contenteditable div with <br> for newlines.");
         }
         // Handle textarea or input elements
         else {
           targetField.value = message.prompt;
-          console.log("Set value for input/textarea.");
+          // console.log("Set value for input/textarea.");
         }
 
         // Dispatch input and change events for non-Perplexity platforms
@@ -261,16 +261,16 @@ function processMessage(message, targetField, sendResponse) {
       targetField.focus(); // Restore focus to the target field
       sendResponse({ success: true });
       } else {
-        console.log("Target field is not editable");
+        // console.log("Target field is not editable");
         sendResponse({ success: false, error: "Target field is not editable" });
       }
     } else {
-      console.log("No target field found for sendPrompt");
+      // console.log("No target field found for sendPrompt");
       sendResponse({ success: false, error: "No target field found" });
     }
   } else if (message.action === "getPrompt") {
     if (targetField) {
-      console.log("Target field for getPrompt:", targetField, "Type:", targetField.tagName);
+      // console.log("Target field for getPrompt:", targetField, "Type:", targetField.tagName);
       let prompt;
       // Retrieve prompt from Perplexity.ai Lexical editor
       if (window.location.hostname.includes("perplexity.ai") && targetField.id === "ask-input" && targetField.getAttribute("data-lexical-editor") === "true") {
@@ -280,10 +280,10 @@ function processMessage(message, targetField, sendResponse) {
             .map(span => span.textContent.trimEnd())
             .filter(text => text)
             .join("\n");
-          console.log("Retrieved prompt from Perplexity.ai Lexical editor:", prompt);
+          // console.log("Retrieved prompt from Perplexity.ai Lexical editor:", prompt);
         } else {
           prompt = targetField.textContent.replace(/\n+/g, "\n").trimEnd();
-          console.log("Retrieved prompt from Perplexity.ai Lexical editor (fallback):", prompt);
+          // console.log("Retrieved prompt from Perplexity.ai Lexical editor (fallback):", prompt);
         }
       }
       // Retrieve prompt from ProseMirror or Quill editor
@@ -291,30 +291,30 @@ function processMessage(message, targetField, sendResponse) {
         const paragraphs = Array.from(targetField.querySelectorAll("p"));
         if (paragraphs.length > 0) {
           prompt = paragraphs.map(p => p.textContent.trimEnd()).join("\n");
-          console.log("Retrieved prompt from ProseMirror or Quill editor:", prompt);
+          // console.log("Retrieved prompt from ProseMirror or Quill editor:", prompt);
         } else {
           prompt = targetField.textContent.replace(/\n+/g, "\n").trimEnd();
-          console.log("Retrieved prompt from ProseMirror or Quill editor (fallback):", prompt);
+          // console.log("Retrieved prompt from ProseMirror or Quill editor (fallback):", prompt);
         }
       }
       // Retrieve prompt from generic contenteditable div
       else if (targetField.tagName === "DIV" && targetField.contentEditable === "true") {
         prompt = targetField.innerHTML.replace(/<br\s*\/?>/gi, "\n").replace(/<\/?[^>]+(>|$)/g, "").trimEnd();
-        console.log("Retrieved prompt from contenteditable div:", prompt);
+        // console.log("Retrieved prompt from contenteditable div:", prompt);
       }
       // Retrieve prompt from textarea or input
       else {
         prompt = targetField.value || "";
-        console.log("Retrieved prompt from input/textarea:", prompt);
+        // console.log("Retrieved prompt from input/textarea:", prompt);
       }
       sendResponse({ prompt });
     } else {
-      console.log("No target field found for getPrompt");
+      // console.log("No target field found for getPrompt");
       sendResponse({ prompt: "" });
     }
   } else if (message.action === "getSelectedText") {
     const selectedText = window.getSelection().toString();
-    console.log("Retrieved selected text:", selectedText);
+    // console.log("Retrieved selected text:", selectedText);
     sendResponse({ selectedText });
   } else if (message.action === "ping") {
     sendResponse({ status: "alive" });
@@ -324,20 +324,20 @@ function processMessage(message, targetField, sendResponse) {
 // Find the primary input field based on platform-specific selectors
 function findPrimaryInputField() {
   const hostname = window.location.hostname;
-  console.log("Checking hostname for platform detection:", hostname);
+  // console.log("Checking hostname for platform detection:", hostname);
   const platform = Object.keys(SUPPORTED_HOSTS).find(host => hostname.includes(host));
   if (!platform) {
-    console.log("No supported platform detected for hostname:", hostname);
+    // console.log("No supported platform detected for hostname:", hostname);
     return null;
   }
   const { primarySelector, name } = SUPPORTED_HOSTS[platform];
-  console.log(`Attempting to find primary input field for ${name} with selector: ${primarySelector}`);
+  // console.log(`Attempting to find primary input field for ${name} with selector: ${primarySelector}`);
   const inputField = document.querySelector(primarySelector);
   if (inputField && inputField.offsetParent !== null) {
-    console.log(`Found primary input field for ${name}:`, inputField.tagName, "Visible:", true);
+    // console.log(`Found primary input field for ${name}:`, inputField.tagName, "Visible:", true);
     return inputField;
   }
-  console.log(`No primary input field found for ${name} with selector: ${primarySelector}`);
+  // console.log(`No primary input field found for ${name} with selector: ${primarySelector}`);
   return null;
 }
 
@@ -348,7 +348,7 @@ function findInputContainer(inputField) {
   if (window.location.hostname.includes("grok.com")) {
     const queryBar = inputField.closest("div.query-bar");
     if (queryBar) {
-      console.log("Found query-bar container for grok.com:", queryBar);
+      // console.log("Found query-bar container for grok.com:", queryBar);
       return queryBar;
     }
   }
@@ -392,7 +392,7 @@ function createWidget(inputField, inputContainer) {
   widget.style.borderRadius = '100%';
 
   // Initialize widget position with default offset
-  let widgetOffset = { x: 0, y: 0 }; // Default offset from bottom-right corner
+  let widgetOffset = { x: 30, y: -30 }; // Default offset from bottom-right corner
 
   // Create an offscreen container to measure widget size
   // const offscreenContainer = document.createElement('div');
@@ -409,7 +409,7 @@ function createWidget(inputField, inputContainer) {
     const widgetRect = widget.getBoundingClientRect();
     let newLeft = containerRect.right + window.scrollX + widgetOffset.x;
     let newTop = containerRect.top + window.scrollY + widgetOffset.y;
-    let maxMinOffset = 10;
+    let maxMinOffset = 0.3 * widgetRect.width;
     // Enforce boundaries within parent element
     newLeft = Math.max(parentRect.left + window.scrollX - maxMinOffset, Math.min(newLeft, parentRect.right + window.scrollX - widgetRect.width + maxMinOffset));
     newTop = Math.max(parentRect.top + window.scrollY - maxMinOffset, Math.min(newTop, parentRect.bottom + window.scrollY - widgetRect.height + maxMinOffset));
@@ -422,7 +422,7 @@ function createWidget(inputField, inputContainer) {
   document.body.appendChild(widget);
   setTimeout(() => {
     widget.style.visibility = 'visible'; // Show widget after positioning
-  }, 10); // Small delay to ensure visibility after positioning
+  }, 50); // Small delay to ensure visibility after positioning
 
   // Store initial container rectangle to detect position changes later
   widget.previousContainerRect = inputContainer.getBoundingClientRect();
@@ -439,7 +439,7 @@ function createWidget(inputField, inputContainer) {
   function enforceBoundaries(containerRect, parentRect, widgetRect) {
     let newLeft = containerRect.right + window.scrollX + widgetOffset.x;
     let newTop = containerRect.top + window.scrollY + widgetOffset.y;
-    let maxMinOffset = 10;
+    let maxMinOffset = 0.3 * widgetRect.width;
     // For grok.com, constrain strictly to query-bar bounds
     if (window.location.hostname.includes("grok.com")) {
       newLeft = Math.max(containerRect.left + window.scrollX - maxMinOffset, Math.min(newLeft, containerRect.right + window.scrollX - widgetRect.width + maxMinOffset));
@@ -496,6 +496,7 @@ function createWidget(inputField, inputContainer) {
   // Make widget draggable and handle popup interaction
   makeDraggable(widget, inputContainer, (newOffset) => {
     widgetOffset = newOffset;
+    // console.log("Widget position updated:", widgetOffset);
     chrome.storage.local.set({ widgetOffset }, () => {});
   });
 
@@ -603,7 +604,7 @@ function makeDraggable(element, inputContainer, onPositionChange) {
 
     let newLeft = e.clientX - offsetX;
     let newTop = e.clientY - offsetY;
-    let maxMinOffset = 10;
+    let maxMinOffset = 0.3 * widgetRect.width;
 
     newLeft = Math.max(boundaryRect.left + window.scrollX - maxMinOffset, Math.min(newLeft, boundaryRect.right + window.scrollX - widgetRect.width + maxMinOffset));
     newTop = Math.max(boundaryRect.top + window.scrollY - maxMinOffset, Math.min(newTop, boundaryRect.bottom + window.scrollY - widgetRect.height + maxMinOffset));
@@ -613,7 +614,7 @@ function makeDraggable(element, inputContainer, onPositionChange) {
 
     // Calculate offset from bottom-right corner
     const newOffsetX = newLeft - (containerRect.right + window.scrollX);
-    const newOffsetY = newTop - (containerRect.bottom + window.scrollY);
+    const newOffsetY = newTop - (containerRect.top + window.scrollY);
     onPositionChange({ x: newOffsetX, y: newOffsetY });
   }, { capture: true }); // Capture phase for iframe compatibility
 

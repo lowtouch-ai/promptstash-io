@@ -153,7 +153,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Show toast notification with operation-based queueing and duplicate debouncing
   function showToast(message, duration = 4000, type = "red", buttons = [], operationId) {
-    console.log("Queueing toast:", { message, duration, type, hasButtons: buttons.length > 0, operationId });
+    // console.log("Queueing toast:", { message, duration, type, hasButtons: buttons.length > 0, operationId });
     
     // Create a unique key for the toast based on message and operationId
     const toastKey = `${message}|${operationId}`;

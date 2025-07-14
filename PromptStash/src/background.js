@@ -78,7 +78,7 @@ function togglePopup() {
 
   if (popup) {
     popup.remove();
-    console.log("------------------- Pop-up closed -------------------");
+    // console.log("------------------- Pop-up closed -------------------");
   } else {
     popup = document.createElement("div");
     popup.id = "promptstash-popup";
@@ -89,7 +89,7 @@ function togglePopup() {
     // Make iframe unselectable
     popup.style.userSelect = "none";
     popup.style.webkitUserSelect = "none";
-    console.log("------------------- Pop-up opened -------------------");
+    // console.log("------------------- Pop-up opened -------------------");
 
     // Temporarily disable all child elements of popup
     Array.from(popup.querySelectorAll("*")).forEach(el => {
