@@ -821,155 +821,148 @@ document.addEventListener("DOMContentLoaded", () => {
     // });
   }
 
-// Save changes to existing template or create new template
-elements.saveBtn.addEventListener("click", () => {
-  chrome.storage.local.get(["templates"], (result) => {
-    let templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
-    const nameValidation = validateTemplateName(elements.templateName.value, templates);
-    if (!nameValidation.isValid) {
-      elements.templateName.focus();
-      return;
-    }
-    const name = nameValidation.sanitizedName;
-    const tagsInput = elements.templateTags.value;
-    const tags = sanitizeTags(tagsInput);
-    if (tags === null) {
-      elements.templateTags.focus();
-      return;
-    }
-    const content = elements.promptArea.value;
-
-    if (!content.trim()) {
-      showToast("Prompt content is required to save a template.", 3000, "red", [], "save");
-      elements.promptArea.focus();
-      return;
-    }
-
-      if (!tagsInput.trim()) {
-        showToast(
-          "No tags provided. Save without tags?",
-          0,
-          "red",
-          [
-            {
-              text: "Yes",
-              callback: () => {
-                if (!selectedTemplateName) {
-                  storeLastState();
-                  lastState.templates = [...templates];
-                  const newTemplate = {
-                    name,
-                    tags,
-                    content,
-                    type: "custom",
-                    favorite: false,
-                    index: nextIndex
-                  };
-                  templates.push(newTemplate);
-                  updateRecentIndices(nextIndex);
-                  nextIndex++;
-                  saveTemplates(templates, () => {
-                    selectedTemplateName = name;
-                    loadTemplates();
-                    saveState();
-                    saveNextIndex();
-                  }, true, elements.saveBtn);
-                } else {
-      const template = templates.find(t => t.name === selectedTemplateName);
-      if (!template) {
-        showToast("Selected template not found.", 3000, "red", [], "save");
+  // Save changes to existing template or create new template
+  elements.saveBtn.addEventListener("click", () => {
+    chrome.storage.local.get(["templates"], (result) => {
+      let templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
+      const nameValidation = validateTemplateName(elements.templateName.value, templates);
+      if (!nameValidation.isValid) {
+        elements.templateName.focus();
         return;
       }
-      const isEdited = elements.templateName.value !== template.name || sanitizeTags(elements.templateTags.value) !== template.tags || elements.promptArea.value !== template.content;
-      if (!isEdited) {
-        showToast("No changes to save.", 3000, "red", [], "save");
+      const name = nameValidation.sanitizedName;
+      const tagsInput = elements.templateTags.value;
+      const tags = sanitizeTags(tagsInput);
+      if (tags === null) {
+        elements.templateTags.focus();
         return;
       }
-                  storeLastState();
-                  lastState.templates = [...templates];
+      const content = elements.promptArea.value;
 
-                  const templateIndex = templates.findIndex(t => t.name === selectedTemplateName);
-                  templates[templateIndex] = {
-                    name,
-                    tags,
-                    content,
-                    type: "custom",
-                    favorite: template.favorite || false,
-                    index: template.index
-                  };
-
-                  saveTemplates(templates, () => {
-                    selectedTemplateName = name;
-                    loadTemplates();
-                    saveState();
-                  }, false, elements.saveBtn);
-                }
-              }
-            },
-            {
-              text: "No",
-              callback: () => {
-                elements.templateTags.focus();
-              }
-            }
-          ],
-          "save"
-        );
+      if (!content.trim()) {
+        showToast("Prompt content is required to save a template.", 3000, "red", [], "save");
+        elements.promptArea.focus();
         return;
       }
 
-      if (!selectedTemplateName) {
-        storeLastState();
-        lastState.templates = [...templates];
-        const newTemplate = {
-          name,
-          tags,
-          content,
-          type: "custom",
-          favorite: false,
-          index: nextIndex
-        };
-        templates.push(newTemplate);
-        updateRecentIndices(nextIndex);
-        nextIndex++;
-        saveTemplates(templates, () => {
-          selectedTemplateName = name;
-          loadTemplates();
-          saveState();
-          saveNextIndex();
-        }, true, elements.saveBtn);
-      } else {
+      // Check for no changes when editing an existing template
+      if (selectedTemplateName) {
         const template = templates.find(t => t.name === selectedTemplateName);
         if (!template) {
           showToast("Selected template not found.", 3000, "red", [], "save");
           return;
         }
-        const isEdited = elements.templateName.value !== template.name || sanitizeTags(elements.templateTags.value) !== template.tags || elements.promptArea.value !== template.content;
+        const isEdited = elements.templateName.value !== template.name ||
+                        sanitizeTags(elements.templateTags.value) !== template.tags ||
+                        elements.promptArea.value !== template.content;
         if (!isEdited) {
           showToast("No changes to save.", 3000, "red", [], "save");
           return;
         }
-        storeLastState();
-        lastState.templates = [...templates];
-
-        const templateIndex = templates.findIndex(t => t.name === selectedTemplateName);
-        templates[templateIndex] = {
-          name,
-          tags,
-          content,
-          type: "custom",
-          favorite: template.favorite || false,
-          index: template.index
-        };
-
-        saveTemplates(templates, () => {
-          selectedTemplateName = name;
-          loadTemplates();
-          saveState();
-        }, false, elements.saveBtn);
       }
+
+      // Helper function to save template
+      const saveTemplate = () => {
+        if (!selectedTemplateName) {
+          storeLastState();
+          lastState.templates = [...templates];
+          const newTemplate = {
+            name,
+            tags,
+            content,
+            type: "custom",
+            favorite: false,
+            index: nextIndex
+          };
+          templates.push(newTemplate);
+          updateRecentIndices(nextIndex);
+          nextIndex++;
+          saveTemplates(templates, () => {
+            selectedTemplateName = name;
+            loadTemplates();
+            saveState();
+            saveNextIndex();
+          }, true, elements.saveBtn);
+        } else {
+          const template = templates.find(t => t.name === selectedTemplateName);
+          if (!template) {
+            showToast("Selected template not found.", 3000, "red", [], "save");
+            return;
+          }
+          storeLastState();
+          lastState.templates = [...templates];
+
+          const templateIndex = templates.findIndex(t => t.name === selectedTemplateName);
+          templates[templateIndex] = {
+            name,
+            tags,
+            content,
+            type: "custom",
+            favorite: template.favorite || false,
+            index: template.index
+          };
+
+          saveTemplates(templates, () => {
+            selectedTemplateName = name;
+            loadTemplates();
+            saveState();
+          }, false, elements.saveBtn);
+        }
+      };
+
+      // Skip confirmation for new templates with tags and no other issues
+      if (!selectedTemplateName && tagsInput.trim()) {
+        saveTemplate();
+        return;
+      }
+
+      // Construct confirmation message
+      const isEditing = !!selectedTemplateName;
+      const isRenamed = isEditing && elements.templateName.value !== selectedTemplateName;
+      const noTags = !tagsInput.trim();
+      const hasContentChanges = isEditing && elements.promptArea.value !== templates.find(t => t.name === selectedTemplateName)?.content;
+      const hasTagChanges = isEditing && sanitizeTags(elements.templateTags.value) !== templates.find(t => t.name === selectedTemplateName)?.tags;
+
+      let messages = [];
+      if (noTags) {
+        messages.push("No tags added");
+      }
+      if (isRenamed) {
+        messages.push(`Name changed from ‘${selectedTemplateName}’ to ‘${name}’`);
+      }
+      if (hasContentChanges || hasTagChanges) {
+        messages.push("Changes made to content or tags");
+      }
+      messages.push(isEditing ? "Overwrite template?" : "Save template?");
+
+      const message = messages.join("\n");
+
+      // Show confirmation toast
+      showToast(
+        message,
+        0,
+        "gray",
+        [
+          {
+            text: "Yes",
+            callback: saveTemplate
+          },
+          {
+            text: "No",
+            callback: () => {
+              if (noTags) {
+                elements.templateTags.focus();
+              } else {
+                elements.templateName.focus();
+              }
+            }
+          }
+        ],
+        "save"
+      );
+    });
   });
-});
+
     
   // Save as new template
   elements.saveAsBtn.addEventListener("click", () => {
