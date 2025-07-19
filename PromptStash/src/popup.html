@@ -44,14 +44,6 @@
       <button id="clearSearch" class="clrbtn rounded-pill position-absolute top-50 translate-middle-y end-0" style="z-index: 11; display: none;" aria-label="Clear search" data-bs-toggle="tooltip" data-bs-placement="top" title="Clear search">
         <svg width="13" height="13"><use href="sprite.svg#clear"></use></svg>
       </button>
-      <select id="typeSelect" class="btn position-absolute end-0" style="display: none;">
-        <option value="all">All templates</option>
-        <!-- <option value="pre-built">Pre-built</option>
-        <option value="custom">User-made</option> -->
-        <svg id="filterIcon" class="position-absolute top-50 translate-middle-y me-5" style="pointer-events:none; display: none; z-index: 11; right: 10px;" width="11" height="11">
-          <use href="sprite.svg#0000"></use>
-        </svg>
-      </select>
       <button id="newBtn" class="topbtn m-0" aria-label="Toggle theme" data-bs-toggle="tooltip" data-bs-placement="top" title="New template">
         <svg width="30" height="30"><use href="sprite.svg#new"></use></svg>
       </button>    
@@ -79,7 +71,7 @@
     </div>
   </div>
 
-  <div id="buttons" class="d-flex column gap-3 justify-content-center flex-wrap py-1 mt-2 mb-3">
+  <div id="buttons" class="d-flex column justify-content-center flex-wrap py-1 mt-2 mb-2">
     <div class="d-flex flex-column align-items-center">
       <button id="fetchBtn" class="btn rounded-pill" aria-label="Fetch prompt from chat" data-bs-toggle="tooltip" data-bs-placement="top" title="Fetch prompt from chat">
         <svg><use href="sprite.svg#fetch"></use></svg>

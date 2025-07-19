@@ -7,6 +7,10 @@ const supportedHosts = [
 ];
 const supportedHostsString = "grok.com, chatgpt.com, perplexity.ai, gemini.google.com, and claude.ai";
 
+const LARGE_SCREEN_MIN = 767;
+const SMALL_SCREEN_MAX = 400; // Half of LARGE_SCREEN_MIN + padding on both sides
+const defaultWidthRatio = 0.5;
+
 // Periodic check to ensure content script is active
 setInterval(() => {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -72,13 +76,29 @@ chrome.action.onClicked.addListener((tab) => {
   });
 });
 
+// Debounce utility to limit resize event frequency
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
 // Function to toggle popup visibility
 function togglePopup() {
   let popup = document.getElementById("promptstash-popup");
 
   if (popup) {
+    // Clean up existing popup and its event listeners
+    if (popup.resizeListener) {
+      window.removeEventListener('resize', popup.resizeListener);
+    }
     popup.remove();
-    // console.log("------------------- Pop-up closed -------------------");
   } else {
     popup = document.createElement("div");
     popup.id = "promptstash-popup";
@@ -89,7 +109,6 @@ function togglePopup() {
     // Make iframe unselectable
     popup.style.userSelect = "none";
     popup.style.webkitUserSelect = "none";
-    // console.log("------------------- Pop-up opened -------------------");
 
     // Temporarily disable all child elements of popup
     Array.from(popup.querySelectorAll("*")).forEach(el => {
@@ -98,49 +117,86 @@ function togglePopup() {
     });
     setTimeout(() => {
       Array.from(popup.querySelectorAll("*")).forEach(el => {
-      el.removeAttribute("disabled");
-      el.style.pointerEvents = "";
+        el.removeAttribute("disabled");
+        el.style.pointerEvents = "";
       });
       popup.style.pointerEvents = 'auto';
     }, 250);
 
-    // Retrieve stored fullscreen state and apply styles
-    chrome.storage.local.get(["isFullscreen"], (result) => {
-      const isFullscreen = result.isFullscreen || false;
-      const isSmallScreen = window.innerWidth <= 768;
-      const defaultWidth = isFullscreen ? "100vw" : isSmallScreen ? "100vw" : "50vw";
-      const defaultHeight = isFullscreen ? "100vh" : isSmallScreen ? "100vh" : "96vh";
-      const defaultLeft = isFullscreen ? "0" : isSmallScreen ? "0" : `${window.innerWidth * 0.49}px`;
-      const defaultTop = isFullscreen ? "0" : isSmallScreen ? "0" : "2vh";
+    // Function to apply popup styles based on screen size
+    function applyPopupStyles(isFullscreen) {
+      const isLargeScreen = window.innerWidth > LARGE_SCREEN_MIN;
+      const isSmallScreen = window.innerWidth < SMALL_SCREEN_MAX;
+      const needFullscreen = isFullscreen || isSmallScreen;
 
       Object.assign(popup.style, {
-        width: defaultWidth,
-        height: defaultHeight,
+        width: needFullscreen ? "100vw" : isLargeScreen ? `${defaultWidthRatio * 100}vw` : `${defaultWidthRatio * LARGE_SCREEN_MIN}px`,
+        height: needFullscreen ? "100vh" : "96vh",
         position: "absolute",
-        top: defaultTop,
-        left: defaultLeft,
+        right: needFullscreen ? "0" : "8px",
+        top: needFullscreen ? "0" : "8px",
         zIndex: "10000",
         backgroundColor: "none",
         border: "2px solid #8888",
-        borderRadius: isFullscreen ? "0" : "10px",
-        boxShadow: isFullscreen ? "none" : "0 4px 15px rgba(0, 0, 0, 0.2)",
+        borderRadius: needFullscreen ? "0" : "10px",
+        boxShadow: needFullscreen ? "none" : "0 4px 15px rgba(0, 0, 0, 0.2)",
         overflow: "hidden",
-        transition: "width 0.3s ease, height 0.3s ease, top 0.3s ease, left 0.3s ease"
+        transition: "width 0.3s ease, height 0.3s ease, top 0.3s ease, right 0.3s ease"
       });
+    }
+
+    // Retrieve stored fullscreen state and apply initial styles
+    chrome.storage.local.get(["isFullscreen"], (result) => {
+      const isFullscreen = result.isFullscreen || false;
+      applyPopupStyles(isFullscreen);
     });
 
-    // Universal close functionality
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && popup) {
-        popup.remove();
+    // Debounced resize handler to adjust popup size and position
+    const updatePopupStyles = debounce(() => {
+      if (!document.getElementById("promptstash-popup")) return;
+      chrome.storage.local.get(["isFullscreen"], (result) => {
+        const isFullscreen = result.isFullscreen || false;
+        applyPopupStyles(isFullscreen);
+      });
+    }, 10);
+
+    // Attach resize event listener
+    window.addEventListener('resize', updatePopupStyles);
+    popup.resizeListener = updatePopupStyles; // Store for cleanup
+
+    // Universal close functionality for Escape key
+    const handleEscape = (e) => {
+      if (e.key === "Escape") {
+        const popup = document.getElementById("promptstash-popup");
+        if (popup) {
+          if (popup.resizeListener) {
+            window.removeEventListener('resize', popup.resizeListener);
+          }
+          popup.remove();
+          // Remove the keydown listener to prevent memory leaks
+          document.removeEventListener("keydown", handleEscape);
+        }
       }
-    });
+    };
 
-    document.addEventListener("click", (e) => {
+    // Attach keydown event listener
+    document.addEventListener("keydown", handleEscape);
+
+    // Universal close functionality for outside clicks
+    const handleOutsideClick = (e) => {
+      const popup = document.getElementById("promptstash-popup");
       if (popup && !popup.contains(e.target)) {
+        if (popup.resizeListener) {
+          window.removeEventListener('resize', popup.resizeListener);
+        }
         popup.remove();
+        // Remove the click listener to prevent memory leaks
+        document.removeEventListener("click", handleOutsideClick);
       }
-    });
+    };
+
+    // Attach click event listener
+    document.addEventListener("click", handleOutsideClick);
   }
 }
 
@@ -195,7 +251,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         target: { tabId: tabs[0].id },
         function: () => {
           const popup = document.getElementById("promptstash-popup");
-          if (popup) popup.remove();
+          if (popup.resizeListener) {
+            window.removeEventListener('resize', popup.resizeListener); // Clean up resize listener
+          }
+          if (popup) {
+            popup.remove(); // Remove the popup
+          }
         }
       }, () => {
         if (chrome.runtime.lastError) {
@@ -213,14 +274,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           function: (isFullscreen) => {
             const popup = document.getElementById("promptstash-popup");
             if (popup) {
-              const isSmallScreen = window.innerWidth <= 768;
+              const isLargeScreen = window.innerWidth > LARGE_SCREEN_MIN;
+              const isSmallScreen = window.innerWidth < SMALL_SCREEN_MAX;
+              const needFullscreen = isFullscreen || isSmallScreen;
+
               Object.assign(popup.style, {
-                width: isFullscreen ? "100vw" : isSmallScreen ? "100vw" : "50vw",
-                height: isFullscreen ? "100vh" : isSmallScreen ? "100vh" : "96vh",
-                left: isFullscreen ? "0" : isSmallScreen ? "0" : `${window.innerWidth * 0.49}px`,
-                top: isFullscreen ? "0" : isSmallScreen ? "0" : "2vh",
-                borderRadius: isFullscreen ? "0" : "10px",
-                boxShadow: isFullscreen ? "none" : "0 4px 15px rgba(0, 0, 0, 0.2)",
+                width: needFullscreen ? "100vw" : isLargeScreen ? `${defaultWidthRatio * 100}vw` : `${defaultWidthRatio * LARGE_SCREEN_MIN}px`,
+                height: needFullscreen ? "100vh" : "96vh",
+                right: needFullscreen ? "0" : "8px",
+                top: needFullscreen ? "0" : "8px",
+                borderRadius: needFullscreen ? "0" : "10px",
+                boxShadow: needFullscreen ? "none" : "0 4px 15px rgba(0, 0, 0, 0.2)",
                 transition: "width 0.3s ease, height 0.3s ease, top 0.3s ease, left 0.3s ease"
               });
             }

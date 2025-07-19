@@ -184,39 +184,6 @@ body.dark #searchBox:hover, body.dark #searchBox:focus {
   color: #888;
 }
 
-#typeSelect {
-  border: none;
-  background: transparent;
-  font-size: 0.70rem;
-  padding: 10px;
-  padding-right: 70px;
-  color: #5f6368;
-  max-width: 36px;
-  height: 36px;
-  appearance: none;
-  z-index: 10;
-  cursor: pointer;
-}
-
-body.dark #typeSelect {
-  color: #bdc1c6;
-}
-
-#typeSelect option {
-  background: #ffffff;
-  color: #202124;
-}
-
-body.dark #typeSelect option {
-  background: #303134;
-  color: #e8eaed;
-}
-
-#filterIcon {
-  fill: #ccc;
-  mix-blend-mode: difference;
-}
-
 .dropdown {
   margin-top: -24px;
   position: absolute;
@@ -405,7 +372,7 @@ body.dark .favorite-suggestion:hover, body.dark .favorite-suggestion:focus {
   flex: 1;
   border: 1px solid #dadce0;
   min-height: 50px;
-  height: calc(100vh - 320px);
+  height: calc(100vh - 300px); /* Adjust based on your layout */
   overflow: both;
   transition: 0.2s;
 }
@@ -471,6 +438,7 @@ body.dark .clrbtn:hover {
 
 #buttons .btn {
   border: none;
+  margin-inline: 1vw;
   position: relative; /* Enable positioning for spinner */
 }
 
@@ -526,25 +494,14 @@ body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
 }
 
 /* Responsive adjustments */
-@media (min-width: 800px) {
-  body {
-    padding: 0 30px;
-  }
-}
-
-@media (max-width: 240px) {
-  body {
-    padding: 0 10px;
-    font-size: small;
+@media (max-width: 400px) {
+  #buttons .btn svg {
+    width: 20px;
+    height: 20px;
   }
 
   #buttons .btn {
-    margin-inline: 2vw;
-  }  
-  
-  #buttons .btn svg {
-    width: 10vw;
-    height: 10vw;
+    padding: 6px 10px;
   }
 }
 
@@ -573,7 +530,7 @@ body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
   }  
   
   #buttons .btn svg {
-    width: calc(8px + 4vh);
-    height: calc(8px + 4vh);
+    width: calc(8px + (16 * 100vh / 400));
+    height: calc(8px + (16 * 100vh / 400));
   }
 }
