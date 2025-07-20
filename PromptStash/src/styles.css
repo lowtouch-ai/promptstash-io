@@ -410,7 +410,7 @@ body.dark .favorite-suggestion:hover, body.dark .favorite-suggestion:focus {
   flex: 1;
   border: 1px solid #dadce0;
   min-height: 50px;
-  height: calc(100vh - 300px); /* Adjust based on your layout */
+  height: calc(100vh - 320px); /* Adjust based on your layout */
   overflow: both;
   transition: 0.2s;
 }
