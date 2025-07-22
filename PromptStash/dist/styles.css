@@ -21,18 +21,31 @@ header, .search-select, #template, #buttons {
   flex-shrink: 0;
 }
 
+/* Toast notification styles */
 .toast {
   position: fixed;
   top: 20px;
   right: 20px;
-  padding: 10px 20px;
-  border-radius: 6px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  box-shadow: 0 3px 5px -1px rgba(0, 0, 0, 0.2),
+              0 6px 10px 0 rgba(0, 0, 0, 0.14),
+              0 1px 18px 0 rgba(0, 0, 0, 0.12);
+  font-family: 'Roboto', sans-serif;
+  font-size: 10px;
+  line-height: 15px;
+  max-width: 320px;
+  z-index: 10000;
   opacity: 0;
   transform: translateY(-20px);
   transition: opacity 0.3s ease, transform 0.3s ease;
-  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  white-space: pre-line; /* Support multi-line messages */
 }
 
+/* Toast show/hide states */
 .toast.show {
   opacity: 1;
   transform: translateY(0);
@@ -43,77 +56,102 @@ header, .search-select, #template, #buttons {
   transform: translateY(-20px);
 }
 
+/* Error toast (red) */
 .toast.red {
-  background: #fdd;
-  color: #800;
+  background: #ffa8a8; /* Material Design red 700 */
+  color: #7e1717;
 }
 
-body.dark .toast.red {
-  background: #800;
-  color: #fff;
-}
-
+/* Success toast (green) */
 .toast.green {
-  background: #dfd;
-  color: #050;
+  background: #c7ffc9; /* Material Design green 500 */
+  color: #006417;
+}
+
+/* Neutral toast (gray) */
+.toast.gray {
+  background: #eeeeee; /* Material Design gray 700 */
+  color: #000;
+}
+
+/* Dark mode adjustments */
+body.dark .toast.red {
+  background: #570404; /* Darker red for contrast */
+  color: #f4afaf;
 }
 
 body.dark .toast.green {
-  background: #050;
+  background: #044207; /* Darker green for contrast */
+  color: #a3f4b1;
+}
+
+body.dark .toast.gray {
+  background: #444; /* Darker gray for contrast */
   color: #fff;
 }
 
+/* Toast close button */
 .toast-close-btn {
   position: absolute;
-  top: 5px;
-  right: 5px;
+  top: 4px;
+  right: 8px;
   background: none;
   border: none;
-  font-size: 0.8rem;
+  font-size: 14px;
   cursor: pointer;
-  color: #444a;
+  color: #444;
   padding: 0;
   line-height: 1;
 }
 
 body.dark .toast-close-btn {
-  color: #fff;
+  color: #e0e0e0;
 }
 
-.toast-close-btn:hover, .toast-close-btn:focus {
+.toast-close-btn:hover,
+.toast-close-btn:focus {
   color: #000;
 }
 
-body.dark .toast-close-btn:hover, body.dark .toast-close-btn:focus {
-  color: #ccc;
+body.dark .toast-close-btn:hover,
+body.dark .toast-close-btn:focus {
+  color: #fff;
 }
 
+/* Toast action buttons */
 .toast-button-container {
   display: flex;
-  gap: 10px;
-  margin-top: 10px;
+  gap: 12px;
 }
 
 .toast-action-btn {
-  padding: 5px 10px;
-  border: 1px solid #888;
+  padding: 4px 8px;
+  border: none;
   border-radius: 4px;
-  background: #fff8;
+  background: #bbb3; /* Semi-transparent white */
+  color: #212121;
   cursor: pointer;
-  font-size: 0.8rem;
+  font-family: 'Roboto', sans-serif;
+  font-size: 8px;
+  text-transform: uppercase;
 }
 
 body.dark .toast-action-btn {
-  background: #3a3c4088;
+  background: #ffffff1a; /* Adjusted for dark mode */
   color: #e8eaed;
 }
 
-.toast-action-btn:hover, .toast-action-btn:focus {
-  background: #f1f3f488;
+.toast-action-btn:hover {
+  background: #bbb5;
 }
 
-body.dark .toast-action-btn:hover, body.dark .toast-action-btn:focus {
-  background: #4b4f5788;
+body.dark .toast-action-btn:hover {
+  background: #ffffff33;
+}
+
+/* Accessibility enhancements */
+.toast[role="alertdialog"] {
+  outline: none;
 }
 
 .logo {
@@ -176,45 +214,12 @@ body.dark #searchBox {
   box-shadow: 0 0 0.5rem 1px rgba(0, 0, 0, 0.15);
 }
 
-body.dark #searchBox:hover, #searchBox:focus {
+body.dark #searchBox:hover, body.dark #searchBox:focus {
   border: 1px solid rgb(208, 208, 208);
 }
 
 #searchBox::placeholder {
   color: #888;
-}
-
-#typeSelect {
-  border: none;
-  background: transparent;
-  font-size: 0.70rem;
-  padding: 10px;
-  padding-right: 70px;
-  color: #5f6368;
-  max-width: 36px;
-  height: 36px;
-  appearance: none;
-  z-index: 10;
-  cursor: pointer;
-}
-
-body.dark #typeSelect {
-  color: #bdc1c6;
-}
-
-#typeSelect option {
-  background: #ffffff;
-  color: #202124;
-}
-
-body.dark #typeSelect option {
-  background: #303134;
-  color: #e8eaed;
-}
-
-#filterIcon {
-  fill: #ccc;
-  mix-blend-mode: difference;
 }
 
 .dropdown {
@@ -405,7 +410,7 @@ body.dark .favorite-suggestion:hover, body.dark .favorite-suggestion:focus {
   flex: 1;
   border: 1px solid #dadce0;
   min-height: 50px;
-  height: calc(100vh - 320px);
+  height: calc(100vh - 320px); /* Adjust based on your layout */
   overflow: both;
   transition: 0.2s;
 }
@@ -449,12 +454,8 @@ body.dark .topbtn {
   border: none;
   padding: 0;
   margin-right: 10px;
-  fill: none;
-  z-index: 10;
-}
-
-:hover + .clrbtn {
   fill: #888;
+  z-index: 10;
 }
 
 .clrbtn:hover {
@@ -475,6 +476,7 @@ body.dark .clrbtn:hover {
 
 #buttons .btn {
   border: none;
+  margin-inline: 1vw;
   position: relative; /* Enable positioning for spinner */
 }
 
@@ -513,31 +515,6 @@ body.dark #buttons .btn svg {
   transform: scale(1.1);
 }
 
-/* Spinner styles for loading indicator */
-.spinner {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  border: 2px solid #888;
-  border-top: 2px solid #202124;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  position: absolute;
-  top: 50%;
-  right: 10px;
-  transform: translateY(-50%);
-}
-
-body.dark .spinner {
-  border: 2px solid #aaa;
-  border-top: 2px solid #e8eaed;
-}
-
-@keyframes spin {
-  0% { transform: translateY(-50%) rotate(0deg); }
-  100% { transform: translateY(-50%) rotate(360deg); }
-}
-
 .tooltip-inner {
   background: #000000;
   color: #e8eaed;
@@ -549,30 +526,20 @@ body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
   color: #edede8;
 }
 
+
 :root {
   --base-font-size: 16px; /* Default */
 }
 
 /* Responsive adjustments */
-@media (min-width: 800px) {
-  body {
-    padding: 0 30px;
-  }
-}
-
-@media (max-width: 240px) {
-  body {
-    padding: 0 10px;
-    font-size: small;
+@media (max-width: 400px) {
+  #buttons .btn svg {
+    width: 20px;
+    height: 20px;
   }
 
   #buttons .btn {
-    margin-inline: 2vw;
-  }  
-  
-  #buttons .btn svg {
-    width: 10vw;
-    height: 10vw;
+    padding: 6px 10px;
   }
 }
 
@@ -601,7 +568,7 @@ body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
   }  
   
   #buttons .btn svg {
-    width: calc(8px + 4vh);
-    height: calc(8px + 4vh);
+    width: calc(8px + (16 * 100vh / 400));
+    height: calc(8px + (16 * 100vh / 400));
   }
 }
