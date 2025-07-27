@@ -13,6 +13,19 @@ function debounce(func, wait) {
   };
 }
 
+// --- PromptStash: Default Template Name (0008732) START ---
+function getDefaultTemplateName() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  // Use dash instead of colon
+  return `Stash @ ${year}-${month}-${day} ${hours}-${minutes}`;
+}
+// --- PromptStash: Default Template Name (0008732) END ---
+
 // Toast message queue and timestamp tracking
 let toastQueue = [];
 let isToastShowing = false;
@@ -91,7 +104,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 # Your Task
 * `;
-    elements.templateName.value = state.name || "";
+    elements.templateName.value = state.name || getDefaultTemplateName(); // (0008732)
     elements.templateTags.value = state.tags || "";
     elements.promptArea.value = state.content || defaultText;
     // console.log("state.content =", state.content)
@@ -515,7 +528,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // New template button
   elements.newBtn.addEventListener("click", () => {
     storeLastState();
-    elements.templateName.value = "";
+    elements.templateName.value = getDefaultTemplateName(); // (0008732)
     elements.templateTags.value = "";
     elements.promptArea.value = `# Your Role
 * 
@@ -1191,7 +1204,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 } else {
                   showToast("Template deleted successfully. Press Ctrl+Z to undo.", 3000, "green", [], "delete");
                   selectedTemplateName = null;
-                  elements.templateName.value = "";
+                  elements.templateName.value = getDefaultTemplateName(); // (0008732)
                   elements.templateTags.value = "";
                   elements.promptArea.value = `# Your Role
 * 
