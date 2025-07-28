@@ -693,34 +693,48 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       if (showDropdown) {
-        templates.forEach((tmpl, idx) => {
-          const div = document.createElement("div");
-          div.textContent = tmpl.tags ? `${tmpl.name} (${tmpl.tags})` : `${tmpl.name}`;
-          div.setAttribute("role", "option");
-          div.setAttribute("aria-selected", selectedTemplateName === tmpl.name);
-          elements.searchOverlay.style.display = 'block';
-          elements.dropdownResults.style.display = 'block';
+        if (templates.length === 0) {
+          elements.searchOverlay.style.display = "block";
+          elements.dropdownResults.style.display = "block";
           elements.dropdownResults.classList.add("show");
-          div.addEventListener("click", (event) => {
-            if (!event.target.classList.contains("favorite-toggle")) {
-              selectedTemplateName = tmpl.name;
-              elements.templateName.value = tmpl.name;
-              elements.templateTags.value = tmpl.tags;
-              elements.promptArea.value = tmpl.content;
-              elements.searchBox.value = "";
-              elements.dropdownResults.innerHTML = "";
-              elements.fetchBtn2.style.display = tmpl.content ? "none" : "block";
-              elements.clearPrompt.style.display = tmpl.content ? "block" : "none";
-              elements.searchOverlay.style.display = 'none';
-              elements.dropdownResults.style.display = 'none';
-              elements.dropdownResults.classList.remove("show");
-              saveState();
-              elements.promptArea.focus();
-            }
+          const noResultsDiv = document.createElement("div");
+          noResultsDiv.className = "no-results-found text-center py-2 text-muted";
+          // (Removed JS inline centering styles; now handled by CSS)
+          noResultsDiv.setAttribute("role", "alert");
+          noResultsDiv.setAttribute("aria-live", "polite");
+          noResultsDiv.textContent = "No results found";
+          elements.dropdownResults.appendChild(noResultsDiv);
+        }else{
+          templates.forEach((tmpl, idx) => {
+            const div = document.createElement("div");
+            div.textContent = tmpl.tags ? `${tmpl.name} (${tmpl.tags})` : `${tmpl.name}`;
+            div.setAttribute("role", "option");
+            div.setAttribute("aria-selected", selectedTemplateName === tmpl.name);
+            elements.searchOverlay.style.display = 'block';
+            elements.dropdownResults.style.display = 'block';
+            elements.dropdownResults.classList.add("show");
+            div.addEventListener("click", (event) => {
+              if (!event.target.classList.contains("favorite-toggle")) {
+                selectedTemplateName = tmpl.name;
+                elements.templateName.value = tmpl.name;
+                elements.templateTags.value = tmpl.tags;
+                elements.promptArea.value = tmpl.content;
+                elements.searchBox.value = "";
+                elements.dropdownResults.innerHTML = "";
+                elements.fetchBtn2.style.display = tmpl.content ? "none" : "block";
+                elements.clearPrompt.style.display = tmpl.content ? "block" : "none";
+                elements.searchOverlay.style.display = 'none';
+                elements.dropdownResults.style.display = 'none';
+                elements.dropdownResults.classList.remove("show");
+                saveState();
+                elements.promptArea.focus();
+              }
+            });
+            div.innerHTML += `<button class="favorite-toggle ${tmpl.favorite ? 'favorited' : 'unfavorited'}" data-name="${tmpl.name}" aria-label="${tmpl.favorite ? 'Unfavorite' : 'Favorite'} template">${tmpl.favorite ? '★' : '☆'}</button>`;
+            elements.dropdownResults.appendChild(div);
           });
-          div.innerHTML += `<button class="favorite-toggle ${tmpl.favorite ? 'favorited' : 'unfavorited'}" data-name="${tmpl.name}" aria-label="${tmpl.favorite ? 'Unfavorite' : 'Favorite'} template">${tmpl.favorite ? '★' : '☆'}</button>`;
-          elements.dropdownResults.appendChild(div);
-        });
+        }
+
       }
 
       const favorites = templates.filter(tmpl => tmpl.favorite);

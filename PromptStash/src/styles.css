@@ -531,6 +531,14 @@ body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
   --base-font-size: 16px; /* Default */
 }
 
+/* Keep .no-results-found styling simple and consistent */
+.no-results-found {
+  font-size: 1rem;
+  padding: 1px 80px 1px 36px;
+  width: 100%;
+  box-sizing: border-box;
+  justify-content: center !important;
+}
 /* Responsive adjustments */
 @media (max-width: 400px) {
   #buttons .btn svg {
