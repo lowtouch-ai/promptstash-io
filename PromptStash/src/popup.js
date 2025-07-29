@@ -25,7 +25,41 @@ function getDefaultTemplateName() {
   return `Stash @ ${year}-${month}-${day} ${hours}-${minutes}`;
 }
 // --- PromptStash: Default Template Name (0008732) END ---
+// --- PromptStash: Indentation with TAB/Shift+TAB (0008899) START ---
+function handleIndent(textarea, start, end, value, indentSpaces) {
+  if (start === end) {
+    // No selection: insert spaces at cursor
+    textarea.value = value.slice(0, start) + indentSpaces + value.slice(end);
+    textarea.setSelectionRange(start + indentSpaces.length, start + indentSpaces.length);
+  } else {
+    // Selection: indent each line
+    const { before, selection, after } = getTextParts(value, start, end);
+    const indented = selection.replace(/^/gm, indentSpaces);
+    const addedLength = indented.length - selection.length;
+    
+    textarea.value = before + indented + after;
+    textarea.setSelectionRange(start, end + addedLength);
+  }
+}
 
+function handleUnindent(textarea, start, end, value, indentSize) {
+  const { before, selection, after } = getTextParts(value, start, end);
+  const unindentRegex = new RegExp(`^ {1,${indentSize}}`, 'gm');
+  const unindented = selection.replace(unindentRegex, "");
+  const removedLength = selection.length - unindented.length;
+  
+  textarea.value = before + unindented + after;
+  textarea.setSelectionRange(start, end - removedLength);
+}
+
+function getTextParts(value, start, end) {
+  return {
+    before: value.slice(0, start),
+    selection: value.slice(start, end),
+    after: value.slice(end)
+  };
+}
+// --- PromptStash: Indentation with TAB/Shift+TAB (0008899) END ---
 // Toast message queue and timestamp tracking
 let toastQueue = [];
 let isToastShowing = false;
@@ -594,18 +628,28 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Handle TAB key for indenting
-  elements.promptArea.addEventListener("keydown", (event) => {
-    if (event.key === "Tab") {
-      event.preventDefault();
-      const start = elements.promptArea.selectionStart;
-      const end = elements.promptArea.selectionEnd;
-      const value = elements.promptArea.value;
-      elements.promptArea.value = value.substring(0, start) + "  " + value.substring(end);
-      elements.promptArea.selectionStart = elements.promptArea.selectionEnd = start + 2;
-      saveState();
-    }
-  });
+// --- PromptStash: Indentation with TAB/Shift+TAB (0008899) START ---
+elements.promptArea.addEventListener("keydown", function (event) {
+  if (event.key !== "Tab") return;
+  
+  event.preventDefault();
+  
+  const textarea = elements.promptArea;
+  const { selectionStart: start, selectionEnd: end, value } = textarea;
+  const INDENT_SIZE = 4;
+  const INDENT_SPACES = " ".repeat(INDENT_SIZE);
+  
+  if (event.shiftKey) {
+    // Shift+TAB: Unindent selected lines
+    handleUnindent(textarea, start, end, value, INDENT_SIZE);
+  } else {
+    // TAB: Indent or insert spaces
+    handleIndent(textarea, start, end, value, INDENT_SPACES);
+  }
+  
+  saveState?.();
+});
+// --- PromptStash: Indentation with TAB/Shift+TAB (0008899) END ---
 
   // Control fetchBtn2 visibility on input
   elements.promptArea.addEventListener("input", () => {
