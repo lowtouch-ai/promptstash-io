@@ -1,3 +1,4 @@
+import jsyaml from "js-yaml"; // Importing js-yaml
 // Import default templates
 import defaultTemplates from './defaultTemplates.mjs';
 
@@ -59,6 +60,60 @@ function getTextParts(value, start, end) {
   };
 }
 // --- PromptStash: Indentation with TAB/Shift+TAB (0008899) END ---
+// --- PromptStash: Support Export & Imports of Promts (0008903) START ---
+
+// Utility: Convert prompts array to YAML string using js-yaml
+function promptToYAML(prompts) {
+  // jsyaml.dump() converts a JS object/array to YAML format
+  return jsyaml.dump(prompts);
+}
+
+// Utility: Download a YAML file in the browser
+function downloadYAML(yaml, filename) {
+  // Create a Blob from the YAML string
+  const blob = new Blob([yaml], { type: "text/yaml" });
+  // Create a temporary URL for the Blob
+  const url = URL.createObjectURL(blob);
+  // Create a temporary <a> element to trigger the download
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click(); // Trigger the download
+  setTimeout(() => {
+    document.body.removeChild(a); // Clean up
+    URL.revokeObjectURL(url); // Release the Blob URL
+  }, 100);
+}
+  // --- Disable/Enable Export Single Button ---
+function updateExportSingleBtnState() {
+  chrome.storage.local.get(["templates"], (result) => {
+    const templates = result.templates || [];
+    const name = document.getElementById("templateName").value.trim();
+    const exists = templates.some((t) => t.name === name);
+    const btn = document.getElementById("exportSingleBtn");
+
+    btn.disabled = !exists;
+    btn.setAttribute("aria-disabled", !exists);
+
+    // Set only the Bootstrap tooltip text
+    const tooltipText = exists
+      ? "Export this template"
+      : "Save this template first to export";
+    btn.setAttribute("data-bs-original-title", tooltipText);
+
+    // Update Bootstrap tooltip instance if it exists
+    if (window.bootstrap) {
+      const tooltip = bootstrap.Tooltip.getInstance(btn);
+      if (tooltip) {
+        tooltip.setContent({ ".tooltip-inner": tooltipText });
+      }
+    }
+  });
+}
+// --- PromptStash: Support Export & Imports of Promts (0008903) END ---
+
+
 // Toast message queue and timestamp tracking
 let toastQueue = [];
 let isToastShowing = false;
@@ -144,6 +199,126 @@ document.addEventListener("DOMContentLoaded", () => {
   elements.editTagsBtn.addEventListener("click", switchToTagsEditMode);
 
 
+// --- PromptStash: Support Export & Imports of Promts (0008903) START ---
+
+  // When the Import button is clicked, trigger the hidden file input
+  document.getElementById("importBtn").addEventListener("click", () => {
+    document.getElementById("importFileInput").click();
+  });
+
+  // When a file is selected, read and import the YAML
+  document
+    .getElementById("importFileInput")
+    .addEventListener("change", function (event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        try {
+          // Parse YAML
+          const imported = jsyaml.load(e.target.result);
+
+          // Validate: must be an array of objects
+          if (!Array.isArray(imported)) {
+            showToast("Invalid YAML: Expected a list of prompts.", 3000, "red");
+            return;
+          }
+
+          chrome.storage.local.get(["templates"], (result) => {
+            let templates = result.templates || [];
+            let added = 0,
+              overwritten = 0,
+              assigned = 0;
+
+            imported.forEach((imp, idx) => {
+              // Ensure required fields
+              if (
+                !imp.name ||
+                typeof imp.name !== "string" ||
+                !imp.name.trim()
+              ) {
+                imp.name = `Imported Prompt ${idx + 1}`;
+                assigned++;
+              }
+              // Overwrite if exists, else add
+              const existingIdx = templates.findIndex(
+                (t) => t.name === imp.name
+              );
+              if (existingIdx !== -1) {
+                templates[existingIdx] = { ...templates[existingIdx], ...imp };
+                overwritten++;
+              } else {
+                // Assign a new index if missing
+                if (typeof imp.index !== "number") {
+                  imp.index = templates.length
+                    ? Math.max(...templates.map((t) => t.index || 0)) + 1
+                    : 0;
+                }
+                templates.push(imp);
+                added++;
+              }
+            });
+
+            chrome.storage.local.set({ templates }, () => {
+              loadTemplates();
+              showToast(
+                `Imported: ${added} new, ${overwritten} overwritten${
+                  assigned ? `, ${assigned} assigned default name` : ""
+                }.`,
+                4000,
+                "green"
+              );
+            });
+          });
+        } catch (err) {
+          showToast("Failed to import: " + err.message, 4000, "red");
+        }
+      };
+      reader.readAsText(file);
+      // Reset input so user can import the same file again if needed
+      event.target.value = "";
+    });
+
+  // new tooltip for export single button
+  const exportSingleBtn = document.getElementById("exportSingleBtn");
+  if (exportSingleBtn) {
+    new bootstrap.Tooltip(exportSingleBtn, { trigger: "hover" });
+  }
+
+  // Export All: Download all prompts as a YAML file
+  document.getElementById("exportAllBtn").addEventListener("click", () => {
+    chrome.storage.local.get(["templates"], (result) => {
+      const templates = result.templates || [];
+      const yaml = promptToYAML(templates); // Convert to YAML
+      downloadYAML(yaml, "promptstash_export_all.yaml"); // Download as .yaml
+      showToast("All prompts exported!", 2000, "green");
+    });
+  });
+
+  // Export Single: Download the currently loaded template as a YAML file
+  document.getElementById("exportSingleBtn").addEventListener("click", () => {
+    chrome.storage.local.get(["templates"], (result) => {
+      const templates = result.templates || [];
+      const name = elements.templateName.value.trim();
+      const prompt = templates.find((t) => t.name === name);
+      if (prompt) {
+        const yaml = promptToYAML([prompt]); // Convert single prompt to YAML
+        downloadYAML(
+          yaml,
+          `promptstash_export_${prompt.name || "prompt"}.yaml`
+        );
+        showToast("Prompt exported!", 2000, "green");
+      } else {
+        showToast("No template selected to export.", 2000, "red");
+      }
+    });
+  });
+
+
+  elements.templateName.addEventListener("input", updateExportSingleBtnState);
+
+    // --- PromptStash: Support Export & Imports of Promts (0008903) END ---
 
   // Log missing elements
   const missingElements = Object.entries(elements)
@@ -912,6 +1087,8 @@ elements.promptArea.addEventListener("keydown", function (event) {
       } else {
         elements.favoriteSuggestions.classList.add("d-none");
       }
+      // Always update the export single button state after loading templates
+      updateExportSingleBtnState();
     });
   }
 
@@ -1041,6 +1218,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
             saveState();
             saveNextIndex();
             switchToTagsViewMode();
+            updateExportSingleBtnState(); // Export single template
           }, true, elements.saveBtn);
         } else {
           const template = templates.find(t => t.name === selectedTemplateName);
@@ -1066,6 +1244,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
             loadTemplates();
             saveState();
             switchToTagsViewMode();
+            updateExportSingleBtnState(); // Export single template
           }, false, elements.saveBtn);
         }
       };
@@ -1202,6 +1381,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
         saveState();
         saveNextIndex();
         switchToTagsViewMode();
+        updateExportSingleBtnState(); // Export single template
       }, true, button);
     });
   }
@@ -1368,6 +1548,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
                   elements.clearPrompt.style.display = "none";
                   loadTemplates();
                   saveState();
+                  updateExportSingleBtnState(); // Export single template
                 }
               });
             }
