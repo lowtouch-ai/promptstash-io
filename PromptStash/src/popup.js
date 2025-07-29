@@ -12,7 +12,6 @@ function debounce(func, wait) {
     timeout = setTimeout(() => func.apply(this, args), wait);
   };
 }
-
 // --- PromptStash: Default Template Name (0008732) START ---
 function getDefaultTemplateName() {
   const now = new Date();
@@ -79,6 +78,8 @@ document.addEventListener("DOMContentLoaded", () => {
     template: document.getElementById("template"),
     templateName: document.getElementById("templateName"),
     templateTags: document.getElementById("templateTags"),
+    tagsDisplay: document.getElementById("tagsDisplay"),
+    editTagsBtn: document.getElementById("editTagsBtn"),
     promptArea: document.getElementById("promptArea"),
     buttons: document.getElementById("buttons"),
     fetchBtns: document.querySelectorAll("#fetchBtn, #fetchBtn2"),
@@ -100,6 +101,49 @@ document.addEventListener("DOMContentLoaded", () => {
     toast: document.getElementById("toast"),
     themeToggle: document.getElementById("themeToggle")
   };
+  // --- Enable Tag Based Prompt (0008901) START ---
+  function switchToTagsViewMode() {
+    const tagsArray = elements.templateTags.value
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+
+    // If there are no tags, stay in edit mode so the user can type.
+    if (tagsArray.length === 0) {
+      switchToTagsEditMode();
+      return;
+    }
+
+    elements.tagsDisplay.innerHTML = ""; // Clear old tags
+    tagsArray.forEach((tag) => {
+      const tagLink = document.createElement("span");
+      tagLink.className = "tag-link";
+      tagLink.textContent = tag;
+      tagLink.addEventListener("click", () => {
+        elements.searchBox.value = tag;
+        loadTemplates(tag.toLowerCase(), true);
+        elements.searchBox.focus(); // Give focus to the search box
+      });
+      elements.tagsDisplay.appendChild(tagLink);
+    });
+
+    // Show the display div and hide the real input
+    elements.tagsDisplay.classList.remove("hidden");
+    elements.editTagsBtn.classList.remove("hidden");
+    elements.templateTags.classList.add("hidden");
+  }
+
+  function switchToTagsEditMode() {
+    // Show the real input and hide the display div
+    elements.tagsDisplay.classList.add("hidden");
+    elements.editTagsBtn.classList.add("hidden");
+    elements.templateTags.classList.remove("hidden");
+    elements.templateTags.focus();
+  }
+  // --- Enable Tag Based Prompt (0008901) END ---
+  elements.editTagsBtn.addEventListener("click", switchToTagsEditMode);
+
+
 
   // Log missing elements
   const missingElements = Object.entries(elements)
@@ -140,6 +184,9 @@ document.addEventListener("DOMContentLoaded", () => {
 * `;
     elements.templateName.value = state.name || getDefaultTemplateName(); // (0008732)
     elements.templateTags.value = state.tags || "";
+    // After loading the tags, immediately switch to the correct view.
+    switchToTagsViewMode();
+
     elements.promptArea.value = state.content || defaultText;
     // console.log("state.content =", state.content)
     selectedTemplateName = state.selectedName || null;
@@ -151,13 +198,22 @@ document.addEventListener("DOMContentLoaded", () => {
     svg.setAttribute("href", isFullscreen ? "sprite.svg#compress" : "sprite.svg#fullscreen");
     
 
-    // Ensure templates are initialized
-    const templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
+// Ensure templates are initialized and tags are in the correct format
+let templates = result.templates;
+if (!templates) {
+  // This block runs only the very first time the extension is installed
+  templates = defaultTemplates.map((t, i) => {
+    // Check if tags are a string and convert them to an array
+    const tagsArray = typeof t.tags === 'string' 
+      ? t.tags.split(',').map(tag => tag.trim()).filter(Boolean) 
+      : (t.tags || []); // Use existing array or default to empty
 
-    // Save templates if they were initialized from defaults
-    if (!result.templates) {
-      chrome.storage.local.set({ templates });
-    }
+    return { ...t, tags: tagsArray, index: i };
+  });
+  
+  // Save the properly formatted templates
+  chrome.storage.local.set({ templates });
+}
 
     document.body.className = currentTheme;
     elements.fetchBtn2.style.display = elements.promptArea.value ? "none" : "block";
@@ -419,7 +475,7 @@ document.addEventListener("DOMContentLoaded", () => {
       showToast("Each tag must contain only letters, numbers, underscores(_), hyphens(-), periods(.), at(@), or spaces, and be 20 characters or less.", 3000, "red", [], "save");
       return null;
     }
-    return sanitizedTags.join(", ");
+    return sanitizedTags;
   }
 
   // Check total storage usage
@@ -477,46 +533,38 @@ document.addEventListener("DOMContentLoaded", () => {
     saveState();
   }, 10));
 
-  // Real-time tags validation
-  elements.templateTags.addEventListener("input", debounce(() => {
-    storeLastState();
+// Real-time tags validation
+elements.templateTags.addEventListener("input", debounce(() => {
+    // This function will ONLY perform validation. It will NOT save state.
     let value = elements.templateTags.value;
     if (value) {
-      // Normalize input: remove leading/trailing commas/spaces, standardize comma-space separator
-      value = value.replace(/^[,\s]+/g, "").replace(/[\s]*,[,\s]*/g, ", ");
-      value = value.replace(/\s+/g, " "); // Replace multiple spaces with single space
-      const tags = value.split(", ");
-      
-      // Validate tag count
-      if (tags.length > 5) {
-        showToast("Maximum of 5 tags allowed per template.", 3000, "red", [], "tagsLength");
-        value = tags.slice(0, 5).join(", ");
-      }
-      
-      // Validate and sanitize tags
-      if (tags.some(tag => tag.length > 20)) {
-        showToast("Each tag must be 20 characters or less.", 3000, "red", [], "tagLength");
-      }
-      const trimmedTags = tags.map(tag => tag.slice(0, 20));
-      
-      const sanitizedTags = trimmedTags.map(tag => tag.replace(/[^a-zA-Z0-9-_.@\s]/g, ""));
-      if (sanitizedTags.some((tag, i) => tag !== trimmedTags[i])) {
-        showToast("Each tag must contain only letters, numbers, underscores(_), hyphens(-), periods(.), at(@), or spaces.", 3000, "red", [], "tagChar");
-      }
-      
-      // Update input value with sanitized tags
-      value = sanitizedTags.join(", ");
-      elements.templateTags.value = value;
+        // Normalize input
+        value = value.replace(/^[,\s]+/g, "").replace(/[\s]*,[,\s]*/g, ", ");
+        value = value.replace(/\s+/g, " ");
+        const tags = value.split(", ");
+        
+        // Validate tag count
+        if (tags.length > 5) {
+            showToast("Maximum of 5 tags allowed per template.", 3000, "red", [], "tagsLength");
+            value = tags.slice(0, 5).join(", ");
+        }
+        
+        // Validate tag length
+        if (tags.some(tag => tag.length > 20)) {
+            showToast("Each tag must be 20 characters or less.", 3000, "red", [], "tagLength");
+        }
+        const trimmedTags = tags.map(tag => tag.slice(0, 20));
+
+        // Sanitize characters
+        const sanitizedTags = trimmedTags.map(tag => tag.replace(/[^a-zA-Z0-9-_.@\s]/g, ""));
+        if (sanitizedTags.some((tag, i) => tag !== trimmedTags[i])) {
+            showToast("Each tag must contain only letters, numbers, underscores(_), hyphens(-), periods(.), at(@), or spaces.", 3000, "red", [], "tagChar");
+        }
+        
+        // Update input value with sanitized tags
+        elements.templateTags.value = sanitizedTags.join(", ");
     }
-    
-    // Adjust cursor position to avoid landing on comma or space
-    const cursorPos = elements.templateTags.selectionStart;
-    if (value && cursorPos > 0 && value[cursorPos] === " " && value[cursorPos - 1] === ",") {
-      elements.templateTags.selectionStart = elements.templateTags.selectionEnd = cursorPos - 1;
-    }
-    
-    saveState();
-  }, 10));
+}, 100)); // Increased debounce time slightly for better performance
 
   // Theme toggle
   elements.themeToggle.addEventListener("click", () => {
@@ -559,27 +607,39 @@ document.addEventListener("DOMContentLoaded", () => {
     chrome.runtime.sendMessage({ action: "closePopup" });
   });
 
-  // New template button
-  elements.newBtn.addEventListener("click", () => {
-    storeLastState();
-    elements.templateName.value = getDefaultTemplateName(); // (0008732)
-    elements.templateTags.value = "";
-    elements.promptArea.value = `# Your Role
-* 
+// New template button
+elements.newBtn.addEventListener("click", () => {
+    storeLastState(); // Store the previous state for undo
 
-# Background Information
-* 
-
-# Your Task
-* `;
+    // 1. Reset all variables and UI elements
     selectedTemplateName = null;
+    elements.templateName.value = getDefaultTemplateName(); // (0008732) // You can use getDefaultTemplateName() here if you want
+    elements.templateTags.value = "";
+    elements.promptArea.value = `# Your Role\n*\n\n# Background Information\n*\n\n# Your Task\n*`;
+    
+    // 2. Go to edit mode for tags
+    switchToTagsEditMode();
+
+    // 3. Update button visibility
     elements.fetchBtn2.style.display = "none";
     elements.clearPrompt.style.display = "block";
     elements.searchBox.value = "";
-    loadTemplates();
-    saveState();
-    showToast("New template created.", 2000, "green", [], "new");
-  });
+    
+    // 4. IMPORTANT: Explicitly save a CLEARED state to storage
+    const clearedState = {
+        popupState: {
+            name: elements.templateName.value,
+            tags: "",
+            content: elements.promptArea.value,
+            selectedName: null
+        }
+    };
+    chrome.storage.local.set(clearedState, () => {
+        // 5. Now, refresh the templates list and show the toast
+        loadTemplates();
+        showToast("New template created.", 2000, "green", [], "new");
+    });
+});
 
   // Clear search input
   elements.clearSearch.addEventListener("click", () => {
@@ -729,12 +789,17 @@ elements.promptArea.addEventListener("keydown", function (event) {
       elements.favoriteSuggestions.innerHTML = "";
 
       if (query) {
-        templates = templates.filter(t =>
-          t.name.toLowerCase().includes(query) || t.tags.toLowerCase().includes(query)
-        );
+        // We now check if the `tags` property is an array and search inside it.
+        // This is much more reliable than searching a comma-separated string.
+        templates = templates.filter((t) => {
+          const nameMatch = t.name.toLowerCase().includes(query);
+          // Check if t.tags is an array and if any tag in it includes the query
+          const tagMatch = Array.isArray(t.tags) && t.tags.some((tag) => tag.toLowerCase().includes(query));
+          return nameMatch || tagMatch;
+        });
         templates.sort((a, b) => {
-          const aMatch = a.name.toLowerCase().indexOf(query) + a.tags.toLowerCase().indexOf(query);
-          const bMatch = b.name.toLowerCase().indexOf(query) + b.tags.toLowerCase().indexOf(query);
+          const aMatch = a.name.toLowerCase().indexOf(query) + (Array.isArray(a.tags)? a.tags.join(" ").toLowerCase().indexOf(query): -1);
+          const bMatch = b.name.toLowerCase().indexOf(query) +(Array.isArray(b.tags)? b.tags.join(" ").toLowerCase().indexOf(query): -1);
           if (aMatch !== bMatch) return aMatch - bMatch;
           return a.name.localeCompare(b.name);
         });
@@ -764,17 +829,27 @@ elements.promptArea.addEventListener("keydown", function (event) {
         }else{
           templates.forEach((tmpl, idx) => {
             const div = document.createElement("div");
-            div.textContent = tmpl.tags ? `${tmpl.name} (${tmpl.tags})` : `${tmpl.name}`;
+            // We join the array to create a readable string for the dropdown list.
+          const tagsString = Array.isArray(tmpl.tags) ? tmpl.tags.join(", "): "";
+          div.textContent = tagsString ? `${tmpl.name} (${tagsString})`: `${tmpl.name}`;
             div.setAttribute("role", "option");
             div.setAttribute("aria-selected", selectedTemplateName === tmpl.name);
             elements.searchOverlay.style.display = 'block';
             elements.dropdownResults.style.display = 'block';
             elements.dropdownResults.classList.add("show");
-            div.addEventListener("click", (event) => {
+  
+          div.addEventListener("click", (event) => {
               if (!event.target.classList.contains("favorite-toggle")) {
                 selectedTemplateName = tmpl.name;
                 elements.templateName.value = tmpl.name;
-                elements.templateTags.value = tmpl.tags;
+  
+              // Get the tags as an array (or an empty one if they don't exist)
+              const tagsArray = Array.isArray(tmpl.tags) ? tmpl.tags : [];
+              // Set the input field's value for editing
+              elements.templateTags.value = tagsArray.join(", ");
+              // RENDER THE CLICKABLE TAGS! This is the new function call.
+              switchToTagsViewMode();
+
                 elements.promptArea.value = tmpl.content;
                 elements.searchBox.value = "";
                 elements.dropdownResults.innerHTML = "";
@@ -814,7 +889,12 @@ elements.promptArea.addEventListener("keydown", function (event) {
           span.addEventListener("click", () => {
             selectedTemplateName = tmpl.name;
             elements.templateName.value = tmpl.name;
-            elements.templateTags.value = tmpl.tags;
+            // Get the tags as an array
+            const tagsArray = Array.isArray(tmpl.tags) ? tmpl.tags : [];
+            // Set the input field's value
+            elements.templateTags.value = tagsArray.join(", ");
+            // Render the clickable tags
+            switchToTagsViewMode();
             elements.promptArea.value = tmpl.content;
             elements.searchBox.value = "";
             elements.fetchBtn2.style.display = tmpl.content ? "none" : "block";
@@ -923,9 +1003,16 @@ elements.promptArea.addEventListener("keydown", function (event) {
           showToast("Selected template not found.", 3000, "red", [], "save");
           return;
         }
+        
+        // --- THIS IS THE FIX ---
+        // We must convert the tag arrays to strings to compare them correctly.
+        const currentTagsString = (sanitizeTags(elements.templateTags.value) || []).join(',');
+        const savedTagsString = (template.tags || []).join(',');
+      
         const isEdited = elements.templateName.value !== template.name ||
-                        sanitizeTags(elements.templateTags.value) !== template.tags ||
+                        currentTagsString !== savedTagsString || // <-- THE CORRECTED COMPARISON
                         elements.promptArea.value !== template.content;
+      
         if (!isEdited) {
           showToast("No changes to save.", 3000, "red", [], "save");
           return;
@@ -953,6 +1040,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
             loadTemplates();
             saveState();
             saveNextIndex();
+            switchToTagsViewMode();
           }, true, elements.saveBtn);
         } else {
           const template = templates.find(t => t.name === selectedTemplateName);
@@ -977,6 +1065,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
             selectedTemplateName = name;
             loadTemplates();
             saveState();
+            switchToTagsViewMode();
           }, false, elements.saveBtn);
         }
       };
@@ -1112,6 +1201,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
         loadTemplates();
         saveState();
         saveNextIndex();
+        switchToTagsViewMode();
       }, true, button);
     });
   }
@@ -1264,6 +1354,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
                   selectedTemplateName = null;
                   elements.templateName.value = getDefaultTemplateName(); // (0008732)
                   elements.templateTags.value = "";
+                  switchToTagsEditMode();
                   elements.promptArea.value = `# Your Role
 * 
 

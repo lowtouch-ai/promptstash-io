@@ -61,6 +61,20 @@
     <div class="position-relative">
       <span id="tags-label" class="position-absolute ps-3" aria-hidden="true"> Tags:</span>
       <input type="text" id="templateTags" class="form-control rounded-2 pe-3 py-2" placeholder="(comma-separated)" aria-label="Template tags">
+        <!-- The display that LOOKS like text but is clickable. Starts hidden. -->
+        <div
+        id="tagsDisplay"
+        class="form-control tags-display-view hidden"
+      ></div>
+
+      <!-- A simple icon to switch back to editing mode. Starts hidden. -->
+      <button
+        id="editTagsBtn"
+        class="edit-tags-btn hidden"
+        aria-label="Edit tags"
+      >
+        &#9998;
+      </button>
     </div>
     <div class="position-relative">
       <textarea id="promptArea" class="form-control rounded-2 px-3 py-2" placeholder="Edit your prompt here..." style="resize: none;" aria-label="Prompt text"></textarea>

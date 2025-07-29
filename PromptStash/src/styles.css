@@ -531,6 +531,70 @@ body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
   --base-font-size: 16px; /* Default */
 }
 
+/* Wrapper to hold the input and the display view */
+.tags-wrapper {
+  position: relative;
+}
+
+/* The view that contains the clickable links */
+.tags-display-view {
+  padding-left: 55px !important;
+  display: flex; /* Use flex to align tags */
+  align-items: center;
+  gap: 8px; /* Space between tags */
+  padding-right: 35px; /* Make space for the edit icon */
+
+  flex-wrap: wrap; /* Allow tags to wrap to the next line */
+  height: auto; /* Allow the container to grow in height */
+  padding-top: 6px; /* Add a little top/bottom padding for when it wraps */
+  padding-bottom: 6px;
+  line-height: 1.5; /* Improves spacing between wrapped lines */
+}
+
+/* This is the individual clickable tag "link" */
+.tag-link {
+  color: #0d6efd; /* Bootstrap's link blue */
+  text-decoration: none;
+  cursor: pointer;
+  background-color: #e9ecef;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.tag-link:hover {
+  background-color: #0d6efd;
+  color: #fff;
+}
+
+/* Dark theme link styles */
+body.dark .tag-link {
+  background-color: #3e444a;
+  color: #adb5bd;
+}
+body.dark .tag-link:hover {
+  background-color: #58a6ff;
+  color: #000;
+}
+
+/* The edit button ('✎') positioned inside the field */
+.edit-tags-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  color: #6c757d;
+  font-size: 16px;
+}
+
+/* Helper class to hide/show elements */
+.hidden {
+  display: none !important;
+}
+
 /* Keep .no-results-found styling simple and consistent */
 .no-results-found {
   font-size: 1rem;
