@@ -1,9 +1,9 @@
 const supportedHosts = [
-  "https://grok.com/",
-  "https://chatgpt.com/",
-  "https://www.perplexity.ai/",
-  "https://gemini.google.com/",
-  "https://claude.ai/"
+  "grok.com",
+  "chatgpt.com",
+  "perplexity.ai",
+  "gemini.google.com",
+  "claude.ai"
 ];
 const supportedHostsString = "grok.com, chatgpt.com, perplexity.ai, gemini.google.com, and claude.ai";
 
@@ -45,11 +45,9 @@ chrome.action.onClicked.addListener((tab) => {
     return;
   }
 
-  // Check if the tab URL matches supported hosts
-  const isSupported = supportedHosts.some(host => {
-    const regex = new RegExp(`^${host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}.*`);
-    return regex.test(tab.url);
-  });
+  // 2. MODIFICATION: Replace regex with a simple, reliable hostname check.
+  const tabHostname = new URL(tab.url).hostname;
+  const isSupported = supportedHosts.some(host => tabHostname.includes(host));
 
   if (!isSupported) {
     console.error("Tab URL not supported:", tab.url);
@@ -63,7 +61,8 @@ chrome.action.onClicked.addListener((tab) => {
 
   chrome.scripting.executeScript({
     target: { tabId: tab.id },
-    function: togglePopup
+    function: togglePopup,
+    args: [LARGE_SCREEN_MIN, SMALL_SCREEN_MAX, defaultWidthRatio]
   }, () => {
     if (chrome.runtime.lastError) {
       console.error("Injection error:", chrome.runtime.lastError.message);
@@ -89,124 +88,178 @@ function debounce(func, wait) {
   };
 }
 
-// Function to toggle popup visibility
-function togglePopup() {
-  let popup = document.getElementById("promptstash-popup");
+/**
+ * This function is injected into the content page to create/destroy the PromptStash popup.
+ * It is self-contained and handles all its own logic for styling, dragging, and event listener cleanup.
+ */
+function togglePopup(LARGE_SCREEN_MIN, SMALL_SCREEN_MAX, defaultWidthRatio) {
+  const POPUP_ID = "promptstash-popup";
+  const DRAG_HANDLE_ID = "promptstash-drag-handle";
+  let popup = document.getElementById(POPUP_ID);
+
+  let isDragging = false;
+  let offsetX, offsetY;
+
+  const onPointerMove = (e) => {
+    if (!isDragging) return;
+    e.preventDefault();
+    let newLeft = e.clientX - offsetX;
+    let newTop = e.clientY - offsetY;
+    popup.style.left = `${newLeft}px`;
+    popup.style.top = `${newTop}px`;
+    popup.style.right = 'auto';
+    popup.style.transition = 'none';
+  };
+
+  const onPointerUp = (e) => {
+    if (!isDragging) return;
+    isDragging = false;
+    const dragHandle = document.getElementById(DRAG_HANDLE_ID);
+    const iframe = popup.querySelector('iframe');
+    if (dragHandle) dragHandle.style.cursor = 'grab';
+    if (iframe) iframe.style.pointerEvents = 'auto';
+    document.body.style.userSelect = '';
+    
+    // FIX #1: Restore transition *after* dragging is finished.
+    popup.style.transition = "width 0.3s ease, height 0.3s ease, top 0.3s ease, right 0.3s ease, left 0.3s ease";
+    
+    const rect = popup.getBoundingClientRect();
+    // Constrain the final saved position to be within the viewport
+    let finalX = rect.left;
+    let finalY = rect.top;
+    if (finalX + rect.width > window.innerWidth) finalX = window.innerWidth - rect.width;
+    if (finalY + rect.height > window.innerHeight) finalY = window.innerHeight - rect.height;
+    if (finalX < 0) finalX = 0;
+    if (finalY < 0) finalY = 0;
+
+    chrome.storage.local.set({ popupPosition: { x: finalX, y: finalY } });
+
+    document.removeEventListener('pointermove', onPointerMove);
+    document.removeEventListener('pointerup', onPointerUp);
+  };
+
+  const onPointerDown = (e) => {
+    const isSmallScreen = window.innerWidth < SMALL_SCREEN_MAX;
+    chrome.storage.local.get(["isFullscreen"], (result) => {
+      if (result.isFullscreen || isSmallScreen) return;
+      isDragging = true;
+      const rect = popup.getBoundingClientRect();
+      offsetX = e.clientX - rect.left;
+      offsetY = e.clientY - rect.top;
+      e.target.style.cursor = 'grabbing';
+      popup.querySelector('iframe').style.pointerEvents = 'none';
+      document.body.style.userSelect = 'none';
+
+      // FIX #1: Disable transition *during* drag for smooth movement.
+      popup.style.transition = 'none'; 
+      // FIX #2: Ensure 'right' doesn't conflict with 'left'.
+      popup.style.right = 'auto';
+
+      document.addEventListener('pointermove', onPointerMove);
+      document.addEventListener('pointerup', onPointerUp);
+    });
+  };
+
+  const cleanup = () => {
+    if (!popup) return;
+    window.removeEventListener('resize', popup.resizeListener);
+    document.removeEventListener('keydown', popup.escapeListener);
+    document.removeEventListener('click', popup.outsideClickListener);
+    const dragHandle = document.getElementById(DRAG_HANDLE_ID);
+    if(dragHandle) dragHandle.removeEventListener('pointerdown', onPointerDown);
+    document.removeEventListener('pointermove', onPointerMove);
+    document.removeEventListener('pointerup', onPointerUp);
+    popup.remove();
+  };
 
   if (popup) {
-    // Clean up existing popup and its event listeners
-    if (popup.resizeListener) {
-      window.removeEventListener('resize', popup.resizeListener);
-    }
-    popup.remove();
+    cleanup();
   } else {
     popup = document.createElement("div");
-    popup.id = "promptstash-popup";
-    popup.innerHTML = `
-      <iframe src="${chrome.runtime.getURL("popup.html")}" style="width: 100%; height: 100%; border: none;"></iframe>
-    `;
-    document.body.appendChild(popup);
-    // Make iframe unselectable
+    popup.id = POPUP_ID;
+    popup.style.position = "fixed";
     popup.style.userSelect = "none";
-    popup.style.webkitUserSelect = "none";
+    const dragHandle = document.createElement("div");
+    dragHandle.id = DRAG_HANDLE_ID;
+    dragHandle.style.cssText = `position: absolute; top: 0; left: 0; width: 100%; height: 20px; cursor: grab; z-index: 1;`;
+    const iframe = document.createElement("iframe");
+    iframe.src = chrome.runtime.getURL("popup.html");
+    iframe.style.cssText = "width: 100%; height: 100%; border: none;";
+    popup.append(dragHandle, iframe);
+    document.body.appendChild(popup);
 
-    // Temporarily disable all child elements of popup
-    Array.from(popup.querySelectorAll("*")).forEach(el => {
-      el.setAttribute("disabled", "true");
-      el.style.pointerEvents = "none";
-    });
-    setTimeout(() => {
-      Array.from(popup.querySelectorAll("*")).forEach(el => {
-        el.removeAttribute("disabled");
-        el.style.pointerEvents = "";
-      });
-      popup.style.pointerEvents = 'auto';
-    }, 250);
-
-    // Function to apply popup styles based on screen size
-    function applyPopupStyles(isFullscreen) {
+    const applyPopupStyles = (isFullscreen, position) => {
       const isLargeScreen = window.innerWidth > LARGE_SCREEN_MIN;
       const isSmallScreen = window.innerWidth < SMALL_SCREEN_MAX;
       const needFullscreen = isFullscreen || isSmallScreen;
+      dragHandle.style.display = needFullscreen ? "none" : "block";
+
+      const popupWidth = needFullscreen ? window.innerWidth : (isLargeScreen ? defaultWidthRatio * window.innerWidth : defaultWidthRatio * LARGE_SCREEN_MIN);
+      const popupHeight = needFullscreen ? window.innerHeight : window.innerHeight * 0.96;
+      
+      let finalPos = { x: 'auto', y: '8px', right: '8px' };
+      if (position && !needFullscreen) {
+        // FIX #3: Validate the saved position against current window size.
+        let validatedX = position.x;
+        let validatedY = position.y;
+        if (validatedX + popupWidth > window.innerWidth) validatedX = window.innerWidth - popupWidth;
+        if (validatedY + popupHeight > window.innerHeight) validatedY = window.innerHeight - popupHeight;
+        if (validatedX < 0) validatedX = 0;
+        if (validatedY < 0) validatedY = 0;
+        finalPos = { x: `${validatedX}px`, y: `${validatedY}px`, right: 'auto' };
+      } else if (needFullscreen) {
+        finalPos = { x: '0px', y: '0px', right: 'auto' };
+      }
 
       Object.assign(popup.style, {
-        width: needFullscreen ? "100vw" : isLargeScreen ? `${defaultWidthRatio * 100}vw` : `${defaultWidthRatio * LARGE_SCREEN_MIN}px`,
-        height: needFullscreen ? "100vh" : "96vh",
-        position: "absolute",
-        right: needFullscreen ? "0" : "8px",
-        top: needFullscreen ? "0" : "8px",
+        width: `${popupWidth}px`,
+        height: `${popupHeight}px`,
+        left: finalPos.x,
+        top: finalPos.y,
+        right: finalPos.right,
         zIndex: "10000",
-        backgroundColor: "none",
         border: "2px solid #8888",
         borderRadius: needFullscreen ? "0" : "10px",
         boxShadow: needFullscreen ? "none" : "0 4px 15px rgba(0, 0, 0, 0.2)",
         overflow: "hidden",
-        transition: "width 0.3s ease, height 0.3s ease, top 0.3s ease, right 0.3s ease"
+        transition: "width 0.3s ease, height 0.3s ease, top 0.3s ease, right 0.3s ease, left 0.3s ease"
       });
-    }
+    };
 
-    // Retrieve stored fullscreen state and apply initial styles
-    chrome.storage.local.get(["isFullscreen"], (result) => {
-      const isFullscreen = result.isFullscreen || false;
-      applyPopupStyles(isFullscreen);
+    chrome.storage.local.get(["isFullscreen", "popupPosition"], (result) => {
+      applyPopupStyles(result.isFullscreen || false, result.popupPosition);
     });
 
-    // Debounced resize handler to adjust popup size and position
-    const updatePopupStyles = debounce(() => {
-      if (!document.getElementById("promptstash-popup")) return;
-      chrome.storage.local.get(["isFullscreen"], (result) => {
-        const isFullscreen = result.isFullscreen || false;
-        applyPopupStyles(isFullscreen);
-      });
-    }, 10);
-
-    // Attach resize event listener
-    window.addEventListener('resize', updatePopupStyles);
-    popup.resizeListener = updatePopupStyles; // Store for cleanup
-
-    // Universal close functionality for Escape key
-    const handleEscape = (e) => {
-      if (e.key === "Escape") {
-        const popup = document.getElementById("promptstash-popup");
-        if (popup) {
-          if (popup.resizeListener) {
-            window.removeEventListener('resize', popup.resizeListener);
-          }
-          popup.remove();
-          // Remove the keydown listener to prevent memory leaks
-          document.removeEventListener("keydown", handleEscape);
-        }
-      }
-    };
-
-    // Attach keydown event listener
-    document.addEventListener("keydown", handleEscape);
-
-    // Universal close functionality for outside clicks
+    const debouncedUpdate = debounce(() => {
+        if(!document.getElementById(POPUP_ID)) return;
+        chrome.storage.local.get(["isFullscreen", "popupPosition"], (result) => {
+            applyPopupStyles(result.isFullscreen || false, result.popupPosition);
+        });
+    }, 150);
+    const handleEscape = (e) => e.key === "Escape" && cleanup();
     const handleOutsideClick = (e) => {
-      const popup = document.getElementById("promptstash-popup");
-      if (popup && !popup.contains(e.target)) {
-        if (popup.resizeListener) {
-          window.removeEventListener('resize', popup.resizeListener);
-        }
-        popup.remove();
-        // Remove the click listener to prevent memory leaks
-        document.removeEventListener("click", handleOutsideClick);
-      }
+        const p = document.getElementById(POPUP_ID);
+        if (p && !p.contains(e.target)) cleanup();
     };
-
-    // Attach click event listener
-    document.addEventListener("click", handleOutsideClick);
+    window.addEventListener('resize', debouncedUpdate);
+    document.addEventListener('keydown', handleEscape);
+    setTimeout(() => document.addEventListener('click', handleOutsideClick), 100);
+    dragHandle.addEventListener('pointerdown', onPointerDown);
+    popup.resizeListener = debouncedUpdate;
+    popup.escapeListener = handleEscape;
+    popup.outsideClickListener = handleOutsideClick;
+    popup.updateStyles = () => {
+        if(!document.getElementById(POPUP_ID)) return;
+        chrome.storage.local.get(["isFullscreen", "popupPosition"], (result) => {
+            applyPopupStyles(result.isFullscreen || false, result.popupPosition);
+        });
+    };
   }
 }
 
-// Function to display toast notification for unsupported sites
 function showUnsupportedSiteToast(message) {
   let toast = document.getElementById("promptstash-toast");
-  if (toast) {
-    toast.remove();
-  }
-
+  if (toast) toast.remove();
   toast = document.createElement("div");
   toast.id = "promptstash-toast";
   toast.className = "promptstash-toast";
@@ -215,16 +268,9 @@ function showUnsupportedSiteToast(message) {
 
   // Apply styles to match popup.js toast
   Object.assign(toast.style, {
-    position: "fixed",
-    top: "20px",
-    right: "20px",
-    padding: "10px 20px",
-    borderRadius: "6px",
-    background: "#fdd",
-    color: "#800",
-    zIndex: "10001",
-    opacity: "0",
-    transform: "translateY(-20px)",
+    position: "fixed", top: "20px", right: "20px", padding: "10px 20px",
+    borderRadius: "6px", background: "#fdd", color: "#800", zIndex: "10001",
+    opacity: "0", transform: "translateY(-20px)",
     transition: "opacity 0.3s ease, transform 0.3s ease"
   });
 
@@ -246,115 +292,70 @@ function showUnsupportedSiteToast(message) {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "closePopup") {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (!tabs[0]) return;
-      chrome.scripting.executeScript({
-        target: { tabId: tabs[0].id },
-        function: () => {
-          const popup = document.getElementById("promptstash-popup");
-          if (popup.resizeListener) {
-            window.removeEventListener('resize', popup.resizeListener); // Clean up resize listener
-          }
-          if (popup) {
-            popup.remove(); // Remove the popup
-          }
-        }
-      }, () => {
-        if (chrome.runtime.lastError) {
-          console.error("Close popup error:", chrome.runtime.lastError.message);
-        }
-      });
-    });
-  } else if (message.action === "toggleFullscreen") {
-    chrome.storage.local.get(["isFullscreen"], (result) => {
-      const isFullscreen = result.isFullscreen;
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (!tabs[0]) return;
+      if (tabs[0]) {
         chrome.scripting.executeScript({
           target: { tabId: tabs[0].id },
-          function: (isFullscreen) => {
+          function: () => {
             const popup = document.getElementById("promptstash-popup");
-            if (popup) {
-              const isLargeScreen = window.innerWidth > LARGE_SCREEN_MIN;
-              const isSmallScreen = window.innerWidth < SMALL_SCREEN_MAX;
-              const needFullscreen = isFullscreen || isSmallScreen;
-
-              Object.assign(popup.style, {
-                width: needFullscreen ? "100vw" : isLargeScreen ? `${defaultWidthRatio * 100}vw` : `${defaultWidthRatio * LARGE_SCREEN_MIN}px`,
-                height: needFullscreen ? "100vh" : "96vh",
-                right: needFullscreen ? "0" : "8px",
-                top: needFullscreen ? "0" : "8px",
-                borderRadius: needFullscreen ? "0" : "10px",
-                boxShadow: needFullscreen ? "none" : "0 4px 15px rgba(0, 0, 0, 0.2)",
-                transition: "width 0.3s ease, height 0.3s ease, top 0.3s ease, left 0.3s ease"
-              });
+            if (popup && typeof popup.escapeListener === 'function') {
+              popup.escapeListener({ key: "Escape" }); 
             }
-          },
-          args: [isFullscreen]
-        }, () => {
-          if (chrome.runtime.lastError) {
-            console.error("Fullscreen toggle error:", chrome.runtime.lastError.message);
           }
         });
-      });
+      }
+    });
+  } else if (message.action === "toggleFullscreen") {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]) {
+        chrome.scripting.executeScript({
+          target: { tabId: tabs[0].id },
+          function: () => {
+            const popup = document.getElementById("promptstash-popup");
+            if (popup && typeof popup.updateStyles === 'function') {
+              popup.updateStyles();
+            }
+          }
+        });
+      }
     });
   } else if (message.action === "getTargetTabId") {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0] && !tabs[0].url.match(/^(chrome|file|about):\/\//)) {
-        const isSupported = supportedHosts.some(host => {
-          const regex = new RegExp(`^${host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}.*`);
-          return regex.test(tabs[0].url);
-        });
-
+      if (tabs[0] && tabs[0].url && !tabs[0].url.match(/^(chrome|file|about):\/\//)) {
+        // 2. MODIFICATION: Use the same reliable hostname check here.
+        const tabHostname = new URL(tabs[0].url).hostname;
+        const isSupported = supportedHosts.some(host => tabHostname.includes(host));
+        
         if (isSupported) {
           sendResponse({ tabId: tabs[0].id });
         } else {
-          console.error("Tab URL not supported:", tabs[0].url);
-          chrome.scripting.executeScript({
-            target: { tabId: tabs[0].id },
-            function: showUnsupportedSiteToast,
-            args: [`PromptStash is only supported on ${supportedHostsString}. Please navigate to a supported site.`]
-          });
           sendResponse({ tabId: null });
         }
       } else {
-        console.error("Restricted URL:", tabs[0]?.url || "No active tab");
-        chrome.scripting.executeScript({
-          target: { tabId: tabs[0]?.id },
-          function: showUnsupportedSiteToast,
-          args: [`PromptStash cannot be used on restricted URLs (e.g., chrome://, file://, about://). Please navigate to a supported AI platform (e.g., ${supportedHostsString.replace(", and ", ", or ")}).`]
-        });
         sendResponse({ tabId: null });
       }
     });
-    return true; // Keep message channel open for async response
+    return true;
   } else if (message.action === "reInjectContentScript") {
     // Re-inject content.js into the specified tab
     chrome.scripting.executeScript({
       target: { tabId: message.tabId },
       files: ["content.js"]
     }, () => {
-      if (chrome.runtime.lastError) {
-        console.error("Content script re-injection error:", chrome.runtime.lastError.message);
-        sendResponse({ success: false });
-      } else {
-        // console.log("Content script re-injected successfully");
-        sendResponse({ success: true });
-      }
+      sendResponse({ success: !chrome.runtime.lastError });
     });
-    return true; // Keep message channel open for async response
+    return true;
   } else if (message.action === "togglePopup") {
-    // Open the popup normally
-    chrome.storage.local.set({ openWithSearch: false }, () => {
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (tabs[0]) {
-          chrome.scripting.executeScript({
-            target: { tabId: tabs[0].id },
-            function: togglePopup
-          });
-        }
-      });
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]) {
+        chrome.scripting.executeScript({
+          target: { tabId: tabs[0].id },
+          function: togglePopup,
+          args: [LARGE_SCREEN_MIN, SMALL_SCREEN_MAX, defaultWidthRatio]
+        });
+      }
     });
   } else if (message.action === "ping") {
     sendResponse({ status: "alive" });
   }
+  return true; // Keep channel open for async responses in general
 });
