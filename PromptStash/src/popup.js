@@ -64,6 +64,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // If there are no tags, stay in edit mode so the user can type.
     if (tagsArray.length === 0) {
+      originalTagsBeforeEdit = null
       switchToTagsEditMode(false); // Stay in edit mode, but don't focus
       return;
     }
@@ -1059,19 +1060,21 @@ elements.templateTags.addEventListener("input", debounce(() => {
       const hasContentChanges = isEditing && elements.promptArea.value !== templates.find(t => t.name === selectedTemplateName)?.content;
       const hasTagChanges = isEditing && sanitizeTags(elements.templateTags.value) !== templates.find(t => t.name === selectedTemplateName)?.tags;
 
-      let messages = [];
-      if (noTags) {
-        messages.push("No tags added");
-      }
-      if (isRenamed) {
-        messages.push(`Name changed from ‘${selectedTemplateName}’ to ‘${name}’`);
-      }
-      if (hasContentChanges || hasTagChanges) {
-        messages.push("Changes made to content or tags");
-      }
-      messages.push(isEditing ? "Overwrite template?" : "Save template?");
+      const getTemplateMessageWithIcons = () => {
+        const action = isEditing ? "Overwrite" : "Save";
+        
+        if (noTags) {
+          return `⚠️ No tags added ${action} template?`;
+        }
+        
+        if (isRenamed || hasContentChanges || hasTagChanges) {
+          return `✏️ Template modified ${action} changes?`;
+        }
+        
+        return `💾 ${action} template?`;
+      };
 
-      const message = messages.join("\n");
+      const message = getTemplateMessageWithIcons()
 
       // Show confirmation toast
       showToast(
@@ -1097,12 +1100,6 @@ elements.templateTags.addEventListener("input", debounce(() => {
         "save"
       );
     });
-      if (saveIsSuccessful) { // pseudo-code
-        showToast("Template saved!", 2000, "green");
-        
-        // ADD THIS LINE to make tags clickable after saving
-        switchToTagsViewMode(); 
-      }
   });
 
     
