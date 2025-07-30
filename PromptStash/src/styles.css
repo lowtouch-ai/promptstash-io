@@ -520,7 +520,7 @@ body.dark #buttons .btn svg {
   color: #e8eaed;
 }
 
-body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
+body.dark #templateName, body.dark #templateTags,body.dark #tagsDisplay, body.dark #promptArea {
   border-color: #333;
   background: #151515;
   color: #edede8;
@@ -595,7 +595,15 @@ body.dark .tag-link:hover {
 .hidden {
   display: none !important;
 }
-
+/* Dark theme link styles */
+body.dark .tag-link {
+  background-color: #3e444a;
+  color: #0d6efd;
+}
+body.dark .tag-link:hover {
+  background-color: #fff;
+  color: #0d6efd;
+}
 /* Responsive adjustments */
 @media (max-width: 400px) {
   #buttons .btn svg {
