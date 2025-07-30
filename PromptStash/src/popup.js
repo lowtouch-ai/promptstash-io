@@ -76,7 +76,8 @@ document.addEventListener("DOMContentLoaded", () => {
       tagLink.addEventListener("click", () => {
         elements.searchBox.value = tag;
         loadTemplates(tag.toLowerCase(), true);
-        elements.searchBox.focus(); // Give focus to the search box
+        elements.searchBox.focus();
+        elements.clearSearch.style.display = "block";
       });
       elements.tagsDisplay.appendChild(tagLink);
     });
@@ -91,8 +92,7 @@ document.addEventListener("DOMContentLoaded", () => {
     saveState();
   }
 
-  function switchToTagsEditMode(setFocus = false) {
-    // Show the real input and hide the display div
+  function switchToTagsEditMode(setFocus = true) {
     elements.tagsDisplay.classList.add("hidden");
     elements.editTagsBtn.classList.add("hidden");
     elements.templateTags.classList.remove("hidden");
@@ -122,7 +122,7 @@ document.addEventListener("DOMContentLoaded", () => {
   elements.editTagsBtn.addEventListener("click", () => {
     // Store the current tags right before switching to edit mode
     originalTagsBeforeEdit = elements.templateTags.value;
-    switchToTagsEditMode(true);
+    switchToTagsEditMode();
   });
 
 
@@ -208,7 +208,7 @@ if (!templates) {
   });
 
   // Save popup state
-  function saveState(isNew=false) {
+  function saveState() {
     const state = {
       popupState: {
         name: elements.templateName.value,
@@ -216,8 +216,8 @@ if (!templates) {
         content: elements.promptArea.value,
         selectedName: selectedTemplateName,
         // NEW: Save the editing state of the tags field
-        isTagsInEditMode: isNew??!elements.templateTags.classList.contains('hidden'),
-        originalTags: isNew?null:originalTagsBeforeEdit,
+        isTagsInEditMode: !elements.templateTags.classList.contains('hidden'),
+        originalTags: originalTagsBeforeEdit,
       },
       theme: currentTheme,
       isFullscreen,
@@ -238,6 +238,8 @@ if (!templates) {
       tags: elements.templateTags.value,
       content: elements.promptArea.value,
       selectedName: selectedTemplateName,
+      isTagsInEditMode: !elements.templateTags.classList.contains('hidden'),
+      originalTags: originalTagsBeforeEdit,
       templates: null // Will be populated for save/delete
     };
   }
@@ -593,10 +595,11 @@ elements.templateTags.addEventListener("input", debounce(() => {
 # Your Task
 * `;
     selectedTemplateName = null;
+    originalTagsBeforeEdit = null; 
     elements.fetchBtn2.style.display = "block";
     elements.searchBox.value = "";
     loadTemplates();
-    saveState(true);
+    saveState();
     chrome.runtime.sendMessage({ action: "closePopup" });
   });
 
@@ -662,11 +665,12 @@ elements.templateTags.addEventListener("input", debounce(() => {
     elements.templateTags.value = "";
     elements.promptArea.value = "";
     selectedTemplateName = null;
+    originalTagsBeforeEdit = null; 
+    switchToTagsEditMode(); 
     elements.fetchBtn2.style.display = "block";
     elements.clearPrompt.style.display = "none";
     elements.searchBox.value = "";
     loadTemplates();
-    saveState(true);
     showToast("All fields cleared.", 2000, "green", [], "clearAll");
   });
 
@@ -1330,6 +1334,7 @@ elements.templateTags.addEventListener("input", debounce(() => {
                 } else {
                   showToast("Template deleted successfully. Press Ctrl+Z to undo.", 3000, "green", [], "delete");
                   selectedTemplateName = null;
+                  originalTagsBeforeEdit = null; 
                   elements.templateName.value = "";
                   elements.templateTags.value = "";
                   switchToTagsEditMode();
@@ -1345,7 +1350,6 @@ elements.templateTags.addEventListener("input", debounce(() => {
                   elements.fetchBtn2.style.display = "block";
                   elements.clearPrompt.style.display = "none";
                   loadTemplates();
-                  saveState(true);
                 }
               });
             }
@@ -1368,6 +1372,11 @@ elements.templateTags.addEventListener("input", debounce(() => {
       elements.templateTags.value = lastState.tags || "";
       elements.promptArea.value = lastState.content || "";
       selectedTemplateName = lastState.selectedName || null;
+      
+      // Restore the tag UI state from the last state
+      originalTagsBeforeEdit = lastState.originalTags || null;
+
+      // Restore the full template list if it was part of the action
       if (lastState.templates) {
         chrome.storage.local.set({ templates: lastState.templates }, () => {
           loadTemplates();
@@ -1376,8 +1385,16 @@ elements.templateTags.addEventListener("input", debounce(() => {
       }
       elements.fetchBtn2.style.display = elements.promptArea.value ? "none" : "block";
       elements.clearPrompt.style.display = elements.promptArea.value ? "block" : "none";
+
+      // Set the correct tag UI mode based on the restored state
+      if (lastState.isTagsInEditMode) {
+        switchToTagsEditMode();
+      } else {
+        switchToTagsViewMode();
+      }
+      
+      // Clear the last state so it can't be used again
       lastState = null;
-      saveState();
     }
   });
 
