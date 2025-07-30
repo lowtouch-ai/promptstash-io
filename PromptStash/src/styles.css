@@ -520,7 +520,7 @@ body.dark #buttons .btn svg {
   color: #e8eaed;
 }
 
-body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
+body.dark #templateName, body.dark #templateTags,body.dark #tagsDisplay, body.dark #promptArea {
   border-color: #333;
   background: #151515;
   color: #edede8;
@@ -589,12 +589,32 @@ body.dark .tag-link:hover {
   color: #6c757d;
   font-size: 16px;
 }
+.cancel-tags-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  color: #6c757d;
+  font-size: 16px;
+}
 
 /* Helper class to hide/show elements */
 .hidden {
   display: none !important;
 }
-
+/* Dark theme link styles */
+body.dark .tag-link {
+  background-color: #3e444a;
+  color: #0d6efd;
+}
+body.dark .tag-link:hover {
+  background-color: #fff;
+  color: #0d6efd;
+}
 /* Keep .no-results-found styling simple and consistent */
 .no-results-found {
   font-size: 1rem;
