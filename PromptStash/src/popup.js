@@ -33,6 +33,7 @@ document.addEventListener("DOMContentLoaded", () => {
     templateTags: document.getElementById("templateTags"),
     tagsDisplay: document.getElementById("tagsDisplay"),
     editTagsBtn: document.getElementById("editTagsBtn"),
+    cancelTagsEditBtn: document.getElementById("cancelTagsEditBtn"),
     promptArea: document.getElementById("promptArea"),
     buttons: document.getElementById("buttons"),
     fetchBtns: document.querySelectorAll("#fetchBtn, #fetchBtn2"),
@@ -63,7 +64,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // If there are no tags, stay in edit mode so the user can type.
     if (tagsArray.length === 0) {
-      switchToTagsEditMode();
+      switchToTagsEditMode(false); // Stay in edit mode, but don't focus
       return;
     }
 
@@ -84,17 +85,45 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.tagsDisplay.classList.remove("hidden");
     elements.editTagsBtn.classList.remove("hidden");
     elements.templateTags.classList.add("hidden");
+    elements.cancelTagsEditBtn.classList.add("hidden"); // Hide cancel button
+    
+    originalTagsBeforeEdit = null; // Clear the temporary state
+    saveState();
   }
 
-  function switchToTagsEditMode() {
+  function switchToTagsEditMode(setFocus = false) {
     // Show the real input and hide the display div
     elements.tagsDisplay.classList.add("hidden");
     elements.editTagsBtn.classList.add("hidden");
     elements.templateTags.classList.remove("hidden");
-    elements.templateTags.focus();
+
+    // Only show the cancel button if we have a state to revert to
+    if (originalTagsBeforeEdit !== null) {
+      elements.cancelTagsEditBtn.classList.remove("hidden");
+    } else {
+      elements.cancelTagsEditBtn.classList.add("hidden");
+    }
+    
+    if (setFocus) {
+      elements.templateTags.focus();
+    }
+    saveState();
   }
-  // --- Enable Tag Based Prompt (0008901) END ---
-  elements.editTagsBtn.addEventListener("click", switchToTagsEditMode);
+  // NEW: Listener for the cancel button
+  elements.cancelTagsEditBtn.addEventListener("click", () => {
+    if (originalTagsBeforeEdit !== null) {
+      // Revert the input value to the stored original state
+      elements.templateTags.value = originalTagsBeforeEdit;
+      // Switch back to view mode, which re-renders links and saves the reverted state
+      switchToTagsViewMode();
+    }
+  });
+// UPDATED: editTagsBtn listener
+  elements.editTagsBtn.addEventListener("click", () => {
+    // Store the current tags right before switching to edit mode
+    originalTagsBeforeEdit = elements.templateTags.value;
+    switchToTagsEditMode(true);
+  });
 
 
 
@@ -115,6 +144,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let nextIndex = 0;
   let isFullscreen = false;
   let recentIndices = [];
+  let originalTagsBeforeEdit = null;
 
   // Load popup state, recent indices, and initialize index with version check
   chrome.storage.local.get(["popupState", "theme", "extensionVersion", "recentIndices", "templates", "nextIndex", "isFullscreen"], (result) => {
@@ -127,22 +157,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Initialize state, falling back to defaults if not present
     const state = result.popupState || {};
-    const defaultText = `# Your Role
-* 
+    // Load the pre-edit tags state from storage
+    originalTagsBeforeEdit = state.originalTags || null; 
+    // Get the saved edit mode, default to true for a new session (so it's an empty text box)
+    const isTagsInEditMode = state.isTagsInEditMode === undefined ? true : state.isTagsInEditMode;
 
-# Background Information
-* 
-
-# Your Task
-* `;
+    const defaultText = `# Your Role*\n\n# Background Information\n*\n\n# Your Task\n*`;
     elements.templateName.value = state.name || "";
     elements.templateTags.value = state.tags || "";
-    // After loading the tags, immediately switch to the correct view.
-    switchToTagsViewMode();
-
     elements.promptArea.value = state.content || defaultText;
-    // console.log("state.content =", state.content)
+    
     selectedTemplateName = state.selectedName || null;
+    
+    // NEW LOGIC: Use the saved flag to set the initial mode
+    if (isTagsInEditMode || !selectedTemplateName) {
+        switchToTagsEditMode();
+    } else {
+        switchToTagsViewMode();
+    }
+
     currentTheme = result.theme || "light";
     nextIndex = result.nextIndex || defaultTemplates.length;
     recentIndices = result.recentIndices || [];
@@ -175,13 +208,16 @@ if (!templates) {
   });
 
   // Save popup state
-  function saveState() {
+  function saveState(isNew=false) {
     const state = {
       popupState: {
         name: elements.templateName.value,
         tags: elements.templateTags.value,
         content: elements.promptArea.value,
-        selectedName: selectedTemplateName
+        selectedName: selectedTemplateName,
+        // NEW: Save the editing state of the tags field
+        isTagsInEditMode: isNew??!elements.templateTags.classList.contains('hidden'),
+        originalTags: isNew?null:originalTagsBeforeEdit,
       },
       theme: currentTheme,
       isFullscreen,
@@ -486,9 +522,9 @@ if (!templates) {
     saveState();
   }, 10));
 
-// Real-time tags validation
+// Real-time tags validation and state saving
 elements.templateTags.addEventListener("input", debounce(() => {
-    // This function will ONLY perform validation. It will NOT save state.
+    // This function will perform validation AND save the state.
     let value = elements.templateTags.value;
     if (value) {
         // Normalize input
@@ -517,7 +553,11 @@ elements.templateTags.addEventListener("input", debounce(() => {
         // Update input value with sanitized tags
         elements.templateTags.value = sanitizedTags.join(", ");
     }
-}, 100)); // Increased debounce time slightly for better performance
+    
+    // Save the current state (including tags) to local storage.
+    saveState();
+
+}, 100));
 
   // Theme toggle
   elements.themeToggle.addEventListener("click", () => {
@@ -556,17 +596,18 @@ elements.templateTags.addEventListener("input", debounce(() => {
     elements.fetchBtn2.style.display = "block";
     elements.searchBox.value = "";
     loadTemplates();
-    saveState();
+    saveState(true);
     chrome.runtime.sendMessage({ action: "closePopup" });
   });
 
-// New template button
-elements.newBtn.addEventListener("click", () => {
+ // UPDATED: newBtn listener
+  elements.newBtn.addEventListener("click", () => {
     storeLastState(); // Store the previous state for undo
 
     // 1. Reset all variables and UI elements
     selectedTemplateName = null;
-    elements.templateName.value = ""; // You can use getDefaultTemplateName() here if you want
+    originalTagsBeforeEdit = null; // Ensure no revert state on a new template
+    elements.templateName.value = "";
     elements.templateTags.value = "";
     elements.promptArea.value = `# Your Role\n*\n\n# Background Information\n*\n\n# Your Task\n*`;
     
@@ -580,12 +621,14 @@ elements.newBtn.addEventListener("click", () => {
     
     // 4. IMPORTANT: Explicitly save a CLEARED state to storage
     const clearedState = {
-        popupState: {
-            name: elements.templateName.value,
-            tags: "",
-            content: elements.promptArea.value,
-            selectedName: null
-        }
+      popupState: {
+        name: "",
+        tags: "",
+        content: elements.promptArea.value,
+        selectedName: null,
+        isTagsInEditMode: true,
+        originalTags: null
+      }
     };
     chrome.storage.local.set(clearedState, () => {
         // 5. Now, refresh the templates list and show the toast
@@ -623,7 +666,7 @@ elements.newBtn.addEventListener("click", () => {
     elements.clearPrompt.style.display = "none";
     elements.searchBox.value = "";
     loadTemplates();
-    saveState();
+    saveState(true);
     showToast("All fields cleared.", 2000, "green", [], "clearAll");
   });
 
@@ -1050,6 +1093,12 @@ elements.newBtn.addEventListener("click", () => {
         "save"
       );
     });
+      if (saveIsSuccessful) { // pseudo-code
+        showToast("Template saved!", 2000, "green");
+        
+        // ADD THIS LINE to make tags clickable after saving
+        switchToTagsViewMode(); 
+      }
   });
 
     
@@ -1296,7 +1345,7 @@ elements.newBtn.addEventListener("click", () => {
                   elements.fetchBtn2.style.display = "block";
                   elements.clearPrompt.style.display = "none";
                   loadTemplates();
-                  saveState();
+                  saveState(true);
                 }
               });
             }
