@@ -92,14 +92,20 @@ function updateExportSingleBtnState() {
     const name = document.getElementById("templateName").value.trim();
     const exists = templates.some((t) => t.name === name);
     const btn = document.getElementById("exportSingleBtn");
-
+    if(!exists){
+      btn.style.display = "none"; // Hide the button
+      // Optionally, you can also disable and update ARIA for accessibility
+      btn.disabled = true;
+      btn.setAttribute("aria-disabled", "true");
+      return
+    }
+    
+    btn.style.display = ""; // Show the button
     btn.disabled = !exists;
     btn.setAttribute("aria-disabled", !exists);
 
     // Set only the Bootstrap tooltip text
-    const tooltipText = exists
-      ? "Export this template"
-      : "Save this template first to export";
+    const tooltipText = "Export this template"
     btn.setAttribute("data-bs-original-title", tooltipText);
 
     // Update Bootstrap tooltip instance if it exists
@@ -1035,7 +1041,8 @@ elements.promptArea.addEventListener("keydown", function (event) {
                 elements.dropdownResults.classList.remove("show");
                 saveState();
                 elements.promptArea.focus();
-              }
+                updateExportSingleBtnState();
+            }
             });
             div.innerHTML += `<button class="favorite-toggle ${tmpl.favorite ? 'favorited' : 'unfavorited'}" data-name="${tmpl.name}" aria-label="${tmpl.favorite ? 'Unfavorite' : 'Favorite'} template">${tmpl.favorite ? '★' : '☆'}</button>`;
             elements.dropdownResults.appendChild(div);
