@@ -93,7 +93,7 @@ document.addEventListener("DOMContentLoaded", () => {
     saveState();
   }
 
-  function switchToTagsEditMode(setFocus = true) {
+  function switchToTagsEditMode(setFocus = false) {
     elements.tagsDisplay.classList.add("hidden");
     elements.editTagsBtn.classList.add("hidden");
     elements.templateTags.classList.remove("hidden");
@@ -123,7 +123,7 @@ document.addEventListener("DOMContentLoaded", () => {
   elements.editTagsBtn.addEventListener("click", () => {
     // Store the current tags right before switching to edit mode
     originalTagsBeforeEdit = elements.templateTags.value;
-    switchToTagsEditMode();
+    switchToTagsEditMode(true);
   });
 
 
