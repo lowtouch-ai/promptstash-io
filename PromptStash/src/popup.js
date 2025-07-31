@@ -1,3 +1,4 @@
+import jsyaml from "js-yaml"; // Importing js-yaml
 // Import default templates
 import defaultTemplates from './defaultTemplates.mjs';
 
@@ -12,6 +13,112 @@ function debounce(func, wait) {
     timeout = setTimeout(() => func.apply(this, args), wait);
   };
 }
+// --- PromptStash: Default Template Name (0008732) START ---
+function getDefaultTemplateName() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  // Use dash instead of colon
+  return `Stash @ ${year}-${month}-${day} ${hours}-${minutes}`;
+}
+// --- PromptStash: Default Template Name (0008732) END ---
+// --- PromptStash: Indentation with TAB/Shift+TAB (0008899) START ---
+function handleIndent(textarea, start, end, value, indentSpaces) {
+  if (start === end) {
+    // No selection: insert spaces at cursor
+    textarea.value = value.slice(0, start) + indentSpaces + value.slice(end);
+    textarea.setSelectionRange(start + indentSpaces.length, start + indentSpaces.length);
+  } else {
+    // Selection: indent each line
+    const { before, selection, after } = getTextParts(value, start, end);
+    const indented = selection.replace(/^/gm, indentSpaces);
+    const addedLength = indented.length - selection.length;
+    
+    textarea.value = before + indented + after;
+    textarea.setSelectionRange(start, end + addedLength);
+  }
+}
+
+function handleUnindent(textarea, start, end, value, indentSize) {
+  const { before, selection, after } = getTextParts(value, start, end);
+  const unindentRegex = new RegExp(`^ {1,${indentSize}}`, 'gm');
+  const unindented = selection.replace(unindentRegex, "");
+  const removedLength = selection.length - unindented.length;
+  
+  textarea.value = before + unindented + after;
+  textarea.setSelectionRange(start, end - removedLength);
+}
+
+function getTextParts(value, start, end) {
+  return {
+    before: value.slice(0, start),
+    selection: value.slice(start, end),
+    after: value.slice(end)
+  };
+}
+// --- PromptStash: Indentation with TAB/Shift+TAB (0008899) END ---
+// --- PromptStash: Support Export & Imports of Promts (0008903) START ---
+
+// Utility: Convert prompts array to YAML string using js-yaml
+function promptToYAML(prompts) {
+  // jsyaml.dump() converts a JS object/array to YAML format
+  return jsyaml.dump(prompts);
+}
+
+// Utility: Download a YAML file in the browser
+function downloadYAML(yaml, filename) {
+  // Create a Blob from the YAML string
+  const blob = new Blob([yaml], { type: "text/yaml" });
+  // Create a temporary URL for the Blob
+  const url = URL.createObjectURL(blob);
+  // Create a temporary <a> element to trigger the download
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click(); // Trigger the download
+  setTimeout(() => {
+    document.body.removeChild(a); // Clean up
+    URL.revokeObjectURL(url); // Release the Blob URL
+  }, 100);
+}
+  // --- Disable/Enable Export Single Button ---
+function updateExportSingleBtnState() {
+  chrome.storage.local.get(["templates"], (result) => {
+    const templates = result.templates || [];
+    const name = document.getElementById("templateName").value.trim();
+    const exists = templates.some((t) => t.name === name);
+    const btn = document.getElementById("exportSingleBtn");
+    if(!exists){
+      btn.style.display = "none"; // Hide the button
+      // Optionally, you can also disable and update ARIA for accessibility
+      btn.disabled = true;
+      btn.setAttribute("aria-disabled", "true");
+      return
+    }
+    
+    btn.style.display = ""; // Show the button
+    btn.disabled = !exists;
+    btn.setAttribute("aria-disabled", !exists);
+
+    // Set only the Bootstrap tooltip text
+    const tooltipText = "Export this template"
+    btn.setAttribute("data-bs-original-title", tooltipText);
+
+    // Update Bootstrap tooltip instance if it exists
+    if (window.bootstrap) {
+      const tooltip = bootstrap.Tooltip.getInstance(btn);
+      if (tooltip) {
+        tooltip.setContent({ ".tooltip-inner": tooltipText });
+      }
+    }
+  });
+}
+// --- PromptStash: Support Export & Imports of Promts (0008903) END ---
+
 
 // Toast message queue and timestamp tracking
 let toastQueue = [];
@@ -32,6 +139,9 @@ document.addEventListener("DOMContentLoaded", () => {
     template: document.getElementById("template"),
     templateName: document.getElementById("templateName"),
     templateTags: document.getElementById("templateTags"),
+    tagsDisplay: document.getElementById("tagsDisplay"),
+    editTagsBtn: document.getElementById("editTagsBtn"),
+    cancelTagsEditBtn: document.getElementById("cancelTagsEditBtn"),
     promptArea: document.getElementById("promptArea"),
     buttons: document.getElementById("buttons"),
     fetchBtns: document.querySelectorAll("#fetchBtn, #fetchBtn2"),
@@ -53,6 +163,198 @@ document.addEventListener("DOMContentLoaded", () => {
     toast: document.getElementById("toast"),
     themeToggle: document.getElementById("themeToggle")
   };
+  // --- Enable Tag Based Prompt (0008901) START ---
+  function switchToTagsViewMode() {
+    const tagsArray = elements.templateTags.value
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+
+    // If there are no tags, stay in edit mode so the user can type.
+    if (tagsArray.length === 0) {
+      originalTagsBeforeEdit = null
+      switchToTagsEditMode(false); // Stay in edit mode, but don't focus
+      return;
+    }
+
+    elements.tagsDisplay.innerHTML = ""; // Clear old tags
+    tagsArray.forEach((tag) => {
+      const tagLink = document.createElement("span");
+      tagLink.className = "tag-link";
+      tagLink.textContent = tag;
+      tagLink.addEventListener("click", () => {
+        elements.searchBox.value = tag;
+        loadTemplates(tag.toLowerCase(), true);
+        elements.searchBox.focus();
+        elements.clearSearch.style.display = "block";
+      });
+      elements.tagsDisplay.appendChild(tagLink);
+    });
+
+    // Show the display div and hide the real input
+    elements.tagsDisplay.classList.remove("hidden");
+    elements.editTagsBtn.classList.remove("hidden");
+    elements.templateTags.classList.add("hidden");
+    elements.cancelTagsEditBtn.classList.add("hidden"); // Hide cancel button
+    
+    originalTagsBeforeEdit = null; // Clear the temporary state
+    saveState();
+  }
+
+  function switchToTagsEditMode(setFocus = false) {
+    elements.tagsDisplay.classList.add("hidden");
+    elements.editTagsBtn.classList.add("hidden");
+    elements.templateTags.classList.remove("hidden");
+
+    // Only show the cancel button if we have a state to revert to
+    if (originalTagsBeforeEdit !== null) {
+      elements.cancelTagsEditBtn.classList.remove("hidden");
+    } else {
+      elements.cancelTagsEditBtn.classList.add("hidden");
+    }
+    
+    if (setFocus) {
+      elements.templateTags.focus();
+    }
+    saveState();
+  }
+  // NEW: Listener for the cancel button
+  elements.cancelTagsEditBtn.addEventListener("click", () => {
+    if (originalTagsBeforeEdit !== null) {
+      // Revert the input value to the stored original state
+      elements.templateTags.value = originalTagsBeforeEdit;
+      // Switch back to view mode, which re-renders links and saves the reverted state
+      switchToTagsViewMode();
+    }
+  });
+// UPDATED: editTagsBtn listener
+  elements.editTagsBtn.addEventListener("click", () => {
+    // Store the current tags right before switching to edit mode
+    originalTagsBeforeEdit = elements.templateTags.value;
+    switchToTagsEditMode(true);
+  });
+
+
+// --- PromptStash: Support Export & Imports of Promts (0008903) START ---
+
+  // When the Import button is clicked, trigger the hidden file input
+  document.getElementById("importBtn").addEventListener("click", () => {
+    document.getElementById("importFileInput").click();
+  });
+
+  // When a file is selected, read and import the YAML
+  document
+    .getElementById("importFileInput")
+    .addEventListener("change", function (event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        try {
+          // Parse YAML
+          const imported = jsyaml.load(e.target.result);
+
+          // Validate: must be an array of objects
+          if (!Array.isArray(imported)) {
+            showToast("Invalid YAML: Expected a list of prompts.", 3000, "red");
+            return;
+          }
+
+          chrome.storage.local.get(["templates"], (result) => {
+            let templates = result.templates || [];
+            let added = 0,
+              overwritten = 0,
+              assigned = 0;
+
+            imported.forEach((imp, idx) => {
+              // Ensure required fields
+              if (
+                !imp.name ||
+                typeof imp.name !== "string" ||
+                !imp.name.trim()
+              ) {
+                imp.name = `Imported Prompt ${idx + 1}`;
+                assigned++;
+              }
+              // Overwrite if exists, else add
+              const existingIdx = templates.findIndex(
+                (t) => t.name === imp.name
+              );
+              if (existingIdx !== -1) {
+                templates[existingIdx] = { ...templates[existingIdx], ...imp };
+                overwritten++;
+              } else {
+                // Assign a new index if missing
+                if (typeof imp.index !== "number") {
+                  imp.index = templates.length
+                    ? Math.max(...templates.map((t) => t.index || 0)) + 1
+                    : 0;
+                }
+                templates.push(imp);
+                added++;
+              }
+            });
+
+            chrome.storage.local.set({ templates }, () => {
+              loadTemplates();
+              showToast(
+                `Imported: ${added} new, ${overwritten} overwritten${
+                  assigned ? `, ${assigned} assigned default name` : ""
+                }.`,
+                4000,
+                "green"
+              );
+            });
+          });
+        } catch (err) {
+          showToast("Failed to import: " + err.message, 4000, "red");
+        }
+      };
+      reader.readAsText(file);
+      // Reset input so user can import the same file again if needed
+      event.target.value = "";
+    });
+
+  // new tooltip for export single button
+  const exportSingleBtn = document.getElementById("exportSingleBtn");
+  if (exportSingleBtn) {
+    new bootstrap.Tooltip(exportSingleBtn, { trigger: "hover" });
+  }
+
+  // Export All: Download all prompts as a YAML file
+  document.getElementById("exportAllBtn").addEventListener("click", () => {
+    chrome.storage.local.get(["templates"], (result) => {
+      const templates = result.templates || [];
+      const yaml = promptToYAML(templates); // Convert to YAML
+      downloadYAML(yaml, "promptstash_export_all.yaml"); // Download as .yaml
+      showToast("All prompts exported!", 2000, "green");
+    });
+  });
+
+  // Export Single: Download the currently loaded template as a YAML file
+  document.getElementById("exportSingleBtn").addEventListener("click", () => {
+    chrome.storage.local.get(["templates"], (result) => {
+      const templates = result.templates || [];
+      const name = elements.templateName.value.trim();
+      const prompt = templates.find((t) => t.name === name);
+      if (prompt) {
+        const yaml = promptToYAML([prompt]); // Convert single prompt to YAML
+        downloadYAML(
+          yaml,
+          `promptstash_export_${prompt.name || "prompt"}.yaml`
+        );
+        showToast("Prompt exported!", 2000, "green");
+      } else {
+        showToast("No template selected to export.", 2000, "red");
+      }
+    });
+  });
+
+
+  elements.templateName.addEventListener("input", updateExportSingleBtnState);
+
+    // --- PromptStash: Support Export & Imports of Promts (0008903) END ---
 
   // Log missing elements
   const missingElements = Object.entries(elements)
@@ -71,6 +373,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let nextIndex = 0;
   let isFullscreen = false;
   let recentIndices = [];
+  let originalTagsBeforeEdit = null;
 
   // Load popup state, recent indices, and initialize index with version check
   chrome.storage.local.get(["popupState", "theme", "extensionVersion", "recentIndices", "templates", "nextIndex", "isFullscreen"], (result) => {
@@ -83,19 +386,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Initialize state, falling back to defaults if not present
     const state = result.popupState || {};
-    const defaultText = `# Your Role
-* 
+    // Load the pre-edit tags state from storage
+    originalTagsBeforeEdit = state.originalTags || null; 
+    // Get the saved edit mode, default to true for a new session (so it's an empty text box)
+    const isTagsInEditMode = state.isTagsInEditMode === undefined ? true : state.isTagsInEditMode;
 
-# Background Information
-* 
-
-# Your Task
-* `;
-    elements.templateName.value = state.name || "";
+    const defaultText = `# Your Role*\n\n# Background Information\n*\n\n# Your Task\n*`;
+    elements.templateName.value = state.name || getDefaultTemplateName(); // (0008732)
     elements.templateTags.value = state.tags || "";
     elements.promptArea.value = state.content || defaultText;
-    // console.log("state.content =", state.content)
+    
     selectedTemplateName = state.selectedName || null;
+    
+    // NEW LOGIC: Use the saved flag to set the initial mode
+    if (isTagsInEditMode || !selectedTemplateName) {
+        switchToTagsEditMode();
+    } else {
+        switchToTagsViewMode();
+    }
+
     currentTheme = result.theme || "light";
     nextIndex = result.nextIndex || defaultTemplates.length;
     recentIndices = result.recentIndices || [];
@@ -104,13 +413,22 @@ document.addEventListener("DOMContentLoaded", () => {
     svg.setAttribute("href", isFullscreen ? "sprite.svg#compress" : "sprite.svg#fullscreen");
     
 
-    // Ensure templates are initialized
-    const templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
+// Ensure templates are initialized and tags are in the correct format
+let templates = result.templates;
+if (!templates) {
+  // This block runs only the very first time the extension is installed
+  templates = defaultTemplates.map((t, i) => {
+    // Check if tags are a string and convert them to an array
+    const tagsArray = typeof t.tags === 'string' 
+      ? t.tags.split(',').map(tag => tag.trim()).filter(Boolean) 
+      : (t.tags || []); // Use existing array or default to empty
 
-    // Save templates if they were initialized from defaults
-    if (!result.templates) {
-      chrome.storage.local.set({ templates });
-    }
+    return { ...t, tags: tagsArray, index: i };
+  });
+  
+  // Save the properly formatted templates
+  chrome.storage.local.set({ templates });
+}
 
     document.body.className = currentTheme;
     elements.fetchBtn2.style.display = elements.promptArea.value ? "none" : "block";
@@ -125,7 +443,10 @@ document.addEventListener("DOMContentLoaded", () => {
         name: elements.templateName.value,
         tags: elements.templateTags.value,
         content: elements.promptArea.value,
-        selectedName: selectedTemplateName
+        selectedName: selectedTemplateName,
+        // NEW: Save the editing state of the tags field
+        isTagsInEditMode: !elements.templateTags.classList.contains('hidden'),
+        originalTags: originalTagsBeforeEdit,
       },
       theme: currentTheme,
       isFullscreen,
@@ -146,6 +467,8 @@ document.addEventListener("DOMContentLoaded", () => {
       tags: elements.templateTags.value,
       content: elements.promptArea.value,
       selectedName: selectedTemplateName,
+      isTagsInEditMode: !elements.templateTags.classList.contains('hidden'),
+      originalTags: originalTagsBeforeEdit,
       templates: null // Will be populated for save/delete
     };
   }
@@ -372,7 +695,7 @@ document.addEventListener("DOMContentLoaded", () => {
       showToast("Each tag must contain only letters, numbers, underscores(_), hyphens(-), periods(.), at(@), or spaces, and be 20 characters or less.", 3000, "red", [], "save");
       return null;
     }
-    return sanitizedTags.join(", ");
+    return sanitizedTags;
   }
 
   // Check total storage usage
@@ -430,46 +753,42 @@ document.addEventListener("DOMContentLoaded", () => {
     saveState();
   }, 10));
 
-  // Real-time tags validation
-  elements.templateTags.addEventListener("input", debounce(() => {
-    storeLastState();
+// Real-time tags validation and state saving
+elements.templateTags.addEventListener("input", debounce(() => {
+    // This function will perform validation AND save the state.
     let value = elements.templateTags.value;
     if (value) {
-      // Normalize input: remove leading/trailing commas/spaces, standardize comma-space separator
-      value = value.replace(/^[,\s]+/g, "").replace(/[\s]*,[,\s]*/g, ", ");
-      value = value.replace(/\s+/g, " "); // Replace multiple spaces with single space
-      const tags = value.split(", ");
-      
-      // Validate tag count
-      if (tags.length > 5) {
-        showToast("Maximum of 5 tags allowed per template.", 3000, "red", [], "tagsLength");
-        value = tags.slice(0, 5).join(", ");
-      }
-      
-      // Validate and sanitize tags
-      if (tags.some(tag => tag.length > 20)) {
-        showToast("Each tag must be 20 characters or less.", 3000, "red", [], "tagLength");
-      }
-      const trimmedTags = tags.map(tag => tag.slice(0, 20));
-      
-      const sanitizedTags = trimmedTags.map(tag => tag.replace(/[^a-zA-Z0-9-_.@\s]/g, ""));
-      if (sanitizedTags.some((tag, i) => tag !== trimmedTags[i])) {
-        showToast("Each tag must contain only letters, numbers, underscores(_), hyphens(-), periods(.), at(@), or spaces.", 3000, "red", [], "tagChar");
-      }
-      
-      // Update input value with sanitized tags
-      value = sanitizedTags.join(", ");
-      elements.templateTags.value = value;
+        // Normalize input
+        value = value.replace(/^[,\s]+/g, "").replace(/[\s]*,[,\s]*/g, ", ");
+        value = value.replace(/\s+/g, " ");
+        const tags = value.split(", ");
+        
+        // Validate tag count
+        if (tags.length > 5) {
+            showToast("Maximum of 5 tags allowed per template.", 3000, "red", [], "tagsLength");
+            value = tags.slice(0, 5).join(", ");
+        }
+        
+        // Validate tag length
+        if (tags.some(tag => tag.length > 20)) {
+            showToast("Each tag must be 20 characters or less.", 3000, "red", [], "tagLength");
+        }
+        const trimmedTags = tags.map(tag => tag.slice(0, 20));
+
+        // Sanitize characters
+        const sanitizedTags = trimmedTags.map(tag => tag.replace(/[^a-zA-Z0-9-_.@\s]/g, ""));
+        if (sanitizedTags.some((tag, i) => tag !== trimmedTags[i])) {
+            showToast("Each tag must contain only letters, numbers, underscores(_), hyphens(-), periods(.), at(@), or spaces.", 3000, "red", [], "tagChar");
+        }
+        
+        // Update input value with sanitized tags
+        elements.templateTags.value = sanitizedTags.join(", ");
     }
     
-    // Adjust cursor position to avoid landing on comma or space
-    const cursorPos = elements.templateTags.selectionStart;
-    if (value && cursorPos > 0 && value[cursorPos] === " " && value[cursorPos - 1] === ",") {
-      elements.templateTags.selectionStart = elements.templateTags.selectionEnd = cursorPos - 1;
-    }
-    
+    // Save the current state (including tags) to local storage.
     saveState();
-  }, 10));
+
+}, 100));
 
   // Theme toggle
   elements.themeToggle.addEventListener("click", () => {
@@ -505,6 +824,7 @@ document.addEventListener("DOMContentLoaded", () => {
 # Your Task
 * `;
     selectedTemplateName = null;
+    originalTagsBeforeEdit = null; 
     elements.fetchBtn2.style.display = "block";
     elements.searchBox.value = "";
     loadTemplates();
@@ -512,27 +832,42 @@ document.addEventListener("DOMContentLoaded", () => {
     chrome.runtime.sendMessage({ action: "closePopup" });
   });
 
-  // New template button
+ // UPDATED: newBtn listener
   elements.newBtn.addEventListener("click", () => {
-    storeLastState();
-    elements.templateName.value = "";
-    elements.templateTags.value = "";
-    elements.promptArea.value = `# Your Role
-* 
+    storeLastState(); // Store the previous state for undo
 
-# Background Information
-* 
-
-# Your Task
-* `;
+    // 1. Reset all variables and UI elements
     selectedTemplateName = null;
+    originalTagsBeforeEdit = null; // Ensure no revert state on a new template
+    elements.templateName.value = getDefaultTemplateName(); // (0008732)
+    elements.templateTags.value = "";
+    elements.promptArea.value = `# Your Role\n*\n\n# Background Information\n*\n\n# Your Task\n*`;
+    
+    // 2. Go to edit mode for tags
+    switchToTagsEditMode();
+
+    // 3. Update button visibility
     elements.fetchBtn2.style.display = "none";
     elements.clearPrompt.style.display = "block";
     elements.searchBox.value = "";
-    loadTemplates();
-    saveState();
-    showToast("New template created.", 2000, "green", [], "new");
-  });
+    
+    // 4. IMPORTANT: Explicitly save a CLEARED state to storage
+    const clearedState = {
+      popupState: {
+        name: "",
+        tags: "",
+        content: elements.promptArea.value,
+        selectedName: null,
+        isTagsInEditMode: true,
+        originalTags: null
+      }
+    };
+    chrome.storage.local.set(clearedState, () => {
+        // 5. Now, refresh the templates list and show the toast
+        loadTemplates();
+        showToast("New template created.", 2000, "green", [], "new");
+    });
+});
 
   // Clear search input
   elements.clearSearch.addEventListener("click", () => {
@@ -559,11 +894,12 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.templateTags.value = "";
     elements.promptArea.value = "";
     selectedTemplateName = null;
+    originalTagsBeforeEdit = null; 
+    switchToTagsEditMode(); 
     elements.fetchBtn2.style.display = "block";
     elements.clearPrompt.style.display = "none";
     elements.searchBox.value = "";
     loadTemplates();
-    saveState();
     showToast("All fields cleared.", 2000, "green", [], "clearAll");
   });
 
@@ -581,18 +917,28 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Handle TAB key for indenting
-  elements.promptArea.addEventListener("keydown", (event) => {
-    if (event.key === "Tab") {
-      event.preventDefault();
-      const start = elements.promptArea.selectionStart;
-      const end = elements.promptArea.selectionEnd;
-      const value = elements.promptArea.value;
-      elements.promptArea.value = value.substring(0, start) + "  " + value.substring(end);
-      elements.promptArea.selectionStart = elements.promptArea.selectionEnd = start + 2;
-      saveState();
-    }
-  });
+// --- PromptStash: Indentation with TAB/Shift+TAB (0008899) START ---
+elements.promptArea.addEventListener("keydown", function (event) {
+  if (event.key !== "Tab") return;
+  
+  event.preventDefault();
+  
+  const textarea = elements.promptArea;
+  const { selectionStart: start, selectionEnd: end, value } = textarea;
+  const INDENT_SIZE = 4;
+  const INDENT_SPACES = " ".repeat(INDENT_SIZE);
+  
+  if (event.shiftKey) {
+    // Shift+TAB: Unindent selected lines
+    handleUnindent(textarea, start, end, value, INDENT_SIZE);
+  } else {
+    // TAB: Indent or insert spaces
+    handleIndent(textarea, start, end, value, INDENT_SPACES);
+  }
+  
+  saveState?.();
+});
+// --- PromptStash: Indentation with TAB/Shift+TAB (0008899) END ---
 
   // Control fetchBtn2 visibility on input
   elements.promptArea.addEventListener("input", () => {
@@ -672,12 +1018,17 @@ document.addEventListener("DOMContentLoaded", () => {
       elements.favoriteSuggestions.innerHTML = "";
 
       if (query) {
-        templates = templates.filter(t =>
-          t.name.toLowerCase().includes(query) || t.tags.toLowerCase().includes(query)
-        );
+        // We now check if the `tags` property is an array and search inside it.
+        // This is much more reliable than searching a comma-separated string.
+        templates = templates.filter((t) => {
+          const nameMatch = t.name.toLowerCase().includes(query);
+          // Check if t.tags is an array and if any tag in it includes the query
+          const tagMatch = Array.isArray(t.tags) && t.tags.some((tag) => tag.toLowerCase().includes(query));
+          return nameMatch || tagMatch;
+        });
         templates.sort((a, b) => {
-          const aMatch = a.name.toLowerCase().indexOf(query) + a.tags.toLowerCase().indexOf(query);
-          const bMatch = b.name.toLowerCase().indexOf(query) + b.tags.toLowerCase().indexOf(query);
+          const aMatch = a.name.toLowerCase().indexOf(query) + (Array.isArray(a.tags)? a.tags.join(" ").toLowerCase().indexOf(query): -1);
+          const bMatch = b.name.toLowerCase().indexOf(query) +(Array.isArray(b.tags)? b.tags.join(" ").toLowerCase().indexOf(query): -1);
           if (aMatch !== bMatch) return aMatch - bMatch;
           return a.name.localeCompare(b.name);
         });
@@ -693,34 +1044,59 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       if (showDropdown) {
-        templates.forEach((tmpl, idx) => {
-          const div = document.createElement("div");
-          div.textContent = tmpl.tags ? `${tmpl.name} (${tmpl.tags})` : `${tmpl.name}`;
-          div.setAttribute("role", "option");
-          div.setAttribute("aria-selected", selectedTemplateName === tmpl.name);
-          elements.searchOverlay.style.display = 'block';
-          elements.dropdownResults.style.display = 'block';
+        if (templates.length === 0) {
+          elements.searchOverlay.style.display = "block";
+          elements.dropdownResults.style.display = "block";
           elements.dropdownResults.classList.add("show");
+          const noResultsDiv = document.createElement("div");
+          noResultsDiv.className = "no-results-found text-center py-2 text-muted";
+          // (Removed JS inline centering styles; now handled by CSS)
+          noResultsDiv.setAttribute("role", "alert");
+          noResultsDiv.setAttribute("aria-live", "polite");
+          noResultsDiv.textContent = "No results found";
+          elements.dropdownResults.appendChild(noResultsDiv);
+        }else{
+          templates.forEach((tmpl, idx) => {
+            const div = document.createElement("div");
+            // We join the array to create a readable string for the dropdown list.
+          const tagsString = Array.isArray(tmpl.tags) ? tmpl.tags.join(", "): "";
+          div.textContent = tagsString ? `${tmpl.name} (${tagsString})`: `${tmpl.name}`;
+            div.setAttribute("role", "option");
+            div.setAttribute("aria-selected", selectedTemplateName === tmpl.name);
+            elements.searchOverlay.style.display = 'block';
+            elements.dropdownResults.style.display = 'block';
+            elements.dropdownResults.classList.add("show");
+  
           div.addEventListener("click", (event) => {
-            if (!event.target.classList.contains("favorite-toggle")) {
-              selectedTemplateName = tmpl.name;
-              elements.templateName.value = tmpl.name;
-              elements.templateTags.value = tmpl.tags;
-              elements.promptArea.value = tmpl.content;
-              elements.searchBox.value = "";
-              elements.dropdownResults.innerHTML = "";
-              elements.fetchBtn2.style.display = tmpl.content ? "none" : "block";
-              elements.clearPrompt.style.display = tmpl.content ? "block" : "none";
-              elements.searchOverlay.style.display = 'none';
-              elements.dropdownResults.style.display = 'none';
-              elements.dropdownResults.classList.remove("show");
-              saveState();
-              elements.promptArea.focus();
+              if (!event.target.classList.contains("favorite-toggle")) {
+                selectedTemplateName = tmpl.name;
+                elements.templateName.value = tmpl.name;
+  
+              // Get the tags as an array (or an empty one if they don't exist)
+              const tagsArray = Array.isArray(tmpl.tags) ? tmpl.tags : [];
+              // Set the input field's value for editing
+              elements.templateTags.value = tagsArray.join(", ");
+              // RENDER THE CLICKABLE TAGS! This is the new function call.
+              switchToTagsViewMode();
+
+                elements.promptArea.value = tmpl.content;
+                elements.searchBox.value = "";
+                elements.dropdownResults.innerHTML = "";
+                elements.fetchBtn2.style.display = tmpl.content ? "none" : "block";
+                elements.clearPrompt.style.display = tmpl.content ? "block" : "none";
+                elements.searchOverlay.style.display = 'none';
+                elements.dropdownResults.style.display = 'none';
+                elements.dropdownResults.classList.remove("show");
+                saveState();
+                elements.promptArea.focus();
+                updateExportSingleBtnState();
             }
+            });
+            div.innerHTML += `<button class="favorite-toggle ${tmpl.favorite ? 'favorited' : 'unfavorited'}" data-name="${tmpl.name}" aria-label="${tmpl.favorite ? 'Unfavorite' : 'Favorite'} template">${tmpl.favorite ? '★' : '☆'}</button>`;
+            elements.dropdownResults.appendChild(div);
           });
-          div.innerHTML += `<button class="favorite-toggle ${tmpl.favorite ? 'favorited' : 'unfavorited'}" data-name="${tmpl.name}" aria-label="${tmpl.favorite ? 'Unfavorite' : 'Favorite'} template">${tmpl.favorite ? '★' : '☆'}</button>`;
-          elements.dropdownResults.appendChild(div);
-        });
+        }
+
       }
 
       const favorites = templates.filter(tmpl => tmpl.favorite);
@@ -743,7 +1119,12 @@ document.addEventListener("DOMContentLoaded", () => {
           span.addEventListener("click", () => {
             selectedTemplateName = tmpl.name;
             elements.templateName.value = tmpl.name;
-            elements.templateTags.value = tmpl.tags;
+            // Get the tags as an array
+            const tagsArray = Array.isArray(tmpl.tags) ? tmpl.tags : [];
+            // Set the input field's value
+            elements.templateTags.value = tagsArray.join(", ");
+            // Render the clickable tags
+            switchToTagsViewMode();
             elements.promptArea.value = tmpl.content;
             elements.searchBox.value = "";
             elements.fetchBtn2.style.display = tmpl.content ? "none" : "block";
@@ -761,6 +1142,8 @@ document.addEventListener("DOMContentLoaded", () => {
       } else {
         elements.favoriteSuggestions.classList.add("d-none");
       }
+      // Always update the export single button state after loading templates
+      updateExportSingleBtnState();
     });
   }
 
@@ -852,9 +1235,16 @@ document.addEventListener("DOMContentLoaded", () => {
           showToast("Selected template not found.", 3000, "red", [], "save");
           return;
         }
+        
+        // --- THIS IS THE FIX ---
+        // We must convert the tag arrays to strings to compare them correctly.
+        const currentTagsString = (sanitizeTags(elements.templateTags.value) || []).join(',');
+        const savedTagsString = (template.tags || []).join(',');
+      
         const isEdited = elements.templateName.value !== template.name ||
-                        sanitizeTags(elements.templateTags.value) !== template.tags ||
+                        currentTagsString !== savedTagsString || // <-- THE CORRECTED COMPARISON
                         elements.promptArea.value !== template.content;
+      
         if (!isEdited) {
           showToast("No changes to save.", 3000, "red", [], "save");
           return;
@@ -882,6 +1272,8 @@ document.addEventListener("DOMContentLoaded", () => {
             loadTemplates();
             saveState();
             saveNextIndex();
+            switchToTagsViewMode();
+            updateExportSingleBtnState(); // Export single template
           }, true, elements.saveBtn);
         } else {
           const template = templates.find(t => t.name === selectedTemplateName);
@@ -906,6 +1298,8 @@ document.addEventListener("DOMContentLoaded", () => {
             selectedTemplateName = name;
             loadTemplates();
             saveState();
+            switchToTagsViewMode();
+            updateExportSingleBtnState(); // Export single template
           }, false, elements.saveBtn);
         }
       };
@@ -923,19 +1317,21 @@ document.addEventListener("DOMContentLoaded", () => {
       const hasContentChanges = isEditing && elements.promptArea.value !== templates.find(t => t.name === selectedTemplateName)?.content;
       const hasTagChanges = isEditing && sanitizeTags(elements.templateTags.value) !== templates.find(t => t.name === selectedTemplateName)?.tags;
 
-      let messages = [];
-      if (noTags) {
-        messages.push("No tags added");
-      }
-      if (isRenamed) {
-        messages.push(`Name changed from ‘${selectedTemplateName}’ to ‘${name}’`);
-      }
-      if (hasContentChanges || hasTagChanges) {
-        messages.push("Changes made to content or tags");
-      }
-      messages.push(isEditing ? "Overwrite template?" : "Save template?");
+      const getTemplateMessageWithIcons = () => {
+        const action = isEditing ? "Overwrite" : "Save";
+        
+        if (noTags) {
+          return `⚠️ No tags added ${action} template?`;
+        }
+        
+        if (isRenamed || hasContentChanges || hasTagChanges) {
+          return `✏️ Template modified ${action} changes?`;
+        }
+        
+        return `💾 ${action} template?`;
+      };
 
-      const message = messages.join("\n");
+      const message = getTemplateMessageWithIcons()
 
       // Show confirmation toast
       showToast(
@@ -1041,6 +1437,8 @@ document.addEventListener("DOMContentLoaded", () => {
         loadTemplates();
         saveState();
         saveNextIndex();
+        switchToTagsViewMode();
+        updateExportSingleBtnState(); // Export single template
       }, true, button);
     });
   }
@@ -1191,8 +1589,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 } else {
                   showToast("Template deleted successfully. Press Ctrl+Z to undo.", 3000, "green", [], "delete");
                   selectedTemplateName = null;
-                  elements.templateName.value = "";
+                  originalTagsBeforeEdit = null; 
+                  elements.templateName.value = getDefaultTemplateName(); // (0008732)
                   elements.templateTags.value = "";
+                  switchToTagsEditMode();
                   elements.promptArea.value = `# Your Role
 * 
 
@@ -1205,7 +1605,7 @@ document.addEventListener("DOMContentLoaded", () => {
                   elements.fetchBtn2.style.display = "block";
                   elements.clearPrompt.style.display = "none";
                   loadTemplates();
-                  saveState();
+                  updateExportSingleBtnState(); // Export single template
                 }
               });
             }
@@ -1228,6 +1628,11 @@ document.addEventListener("DOMContentLoaded", () => {
       elements.templateTags.value = lastState.tags || "";
       elements.promptArea.value = lastState.content || "";
       selectedTemplateName = lastState.selectedName || null;
+      
+      // Restore the tag UI state from the last state
+      originalTagsBeforeEdit = lastState.originalTags || null;
+
+      // Restore the full template list if it was part of the action
       if (lastState.templates) {
         chrome.storage.local.set({ templates: lastState.templates }, () => {
           loadTemplates();
@@ -1236,8 +1641,16 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       elements.fetchBtn2.style.display = elements.promptArea.value ? "none" : "block";
       elements.clearPrompt.style.display = elements.promptArea.value ? "block" : "none";
+
+      // Set the correct tag UI mode based on the restored state
+      if (lastState.isTagsInEditMode) {
+        switchToTagsEditMode();
+      } else {
+        switchToTagsViewMode();
+      }
+      
+      // Clear the last state so it can't be used again
       lastState = null;
-      saveState();
     }
   });
 
