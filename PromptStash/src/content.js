@@ -10,10 +10,25 @@ setInterval(() => {
 // Supported platforms with selectors for primary input and editable previous prompts
 const SUPPORTED_HOSTS = {
   "grok.com": {
-    primarySelector: "div.query-bar textarea",
+    primarySelector: "div.query-bar textarea, textarea[placeholder*='instruction' i], textarea[placeholder*='prompt' i]",
     previousPromptSelector: "div.message-bubble textarea[placeholder='Enter prompt here']",
+    // Add a function to determine if we should show widget
+    shouldShowWidget: (element) => {
+      // Always show on query-bar
+      if (element.closest('div.query-bar')) return true;
+      
+      // Show on instruction/project pages for larger textareas
+      const path = window.location.pathname.toLowerCase();
+      if (path.includes('project') || path.includes('instruction')) {
+        return element.tagName === 'TEXTAREA' && element.offsetHeight > 40;
+      }
+      
+      // Default to standard logic
+      return true;
+    },
     name: "Grok"
   },
+  // ... other platforms remain the same
   "perplexity.ai": {
     primarySelector: "div#ask-input, textarea[aria-placeholder='Ask anything…'], textarea#ask-input",
     previousPromptSelector: "textarea:not(#ask-input)",
@@ -72,21 +87,132 @@ function isElementVisible(element) {
 }
 
 
-/**
- * Finds all relevant editable elements and filters out known interfering elements.
- */
+// Updated function to better handle platform-specific prompt fields
+function isPromptRelatedField(element) {
+  const hostname = window.location.hostname;
+  const placeholder = (element.getAttribute('placeholder') || '').toLowerCase();
+  const ariaLabel = (element.getAttribute('aria-label') || '').toLowerCase();
+  const id = (element.id || '').toLowerCase();
+  const className = (element.className || '').toLowerCase();
+  const attributesText = `${placeholder} ${ariaLabel} ${id} ${className}`;
+  
+  // Special handling for Grok
+  if (hostname.includes('grok.com')) {
+    // Check if we're in the projects/instructions area
+    const currentPath = window.location.pathname.toLowerCase();
+    if (currentPath.includes('project') || currentPath.includes('instruction')) {
+      // In Grok projects, show widget on all textareas except tiny ones
+      if (element.tagName === 'TEXTAREA') {
+        const height = element.offsetHeight;
+        // Only exclude very small textareas (like single-line description fields)
+        return height > 40; // Show widget if textarea is reasonably sized
+      }
+    }
+    
+    // For other Grok pages, use the primary selector logic
+    // The query-bar textarea should always get a widget
+    if (element.closest('div.query-bar')) {
+      return true;
+    }
+  }
+  
+  // Keywords that indicate this is NOT a prompt field (for non-Grok sites)
+  const excludeKeywords = [
+    'description', 'note', 'comment', 'title', 'name', 
+    'email', 'password', 'search', 'filter', 'tag', 'summary'
+  ];
+  
+  // Keywords that indicate this IS a prompt field
+  const promptKeywords = [
+    'prompt', 'ask', 'query', 'message', 'chat', 'question',
+    'write', 'enter', 'type', 'input', 'compose', 'reply',
+    'instruction', 'command', 'tell', 'generate' // Added instruction for Grok
+  ];
+  
+  // For Grok, be more permissive
+  if (hostname.includes('grok.com')) {
+    // Don't apply exclude keywords as strictly for Grok
+    for (const keyword of promptKeywords) {
+      if (attributesText.includes(keyword)) {
+        return true;
+      }
+    }
+    // Even if no keywords match, show widget on reasonably sized textareas
+    if (element.tagName === 'TEXTAREA' && element.offsetHeight > 60) {
+      return true;
+    }
+  } else {
+    // For other platforms, apply stricter filtering
+    for (const keyword of excludeKeywords) {
+      if (attributesText.includes(keyword)) {
+        return false;
+      }
+    }
+    
+    for (const keyword of promptKeywords) {
+      if (attributesText.includes(keyword)) {
+        return true;
+      }
+    }
+  }
+  
+  // Additional check: Look for save/submit/send buttons near the textarea
+  const container = element.closest('form, div, section');
+  if (container) {
+    const buttons = container.querySelectorAll('button, [role="button"], [type="submit"]');
+    for (const button of buttons) {
+      const buttonText = (button.textContent || '').toLowerCase();
+      const buttonAriaLabel = (button.getAttribute('aria-label') || '').toLowerCase();
+      
+      // Include 'save' as a valid button for Grok
+      const validButtonKeywords = hostname.includes('grok.com') 
+        ? ['send', 'submit', 'save', 'generate', 'create', 'update']
+        : ['send', 'submit', 'generate', 'ask'];
+      
+      for (const keyword of validButtonKeywords) {
+        if (buttonText.includes(keyword) || buttonAriaLabel.includes(keyword)) {
+          return true;
+        }
+      }
+    }
+  }
+  
+  // Default behavior for generic textareas
+  if (element.tagName === 'TEXTAREA') {
+    const rows = parseInt(element.getAttribute('rows') || '1');
+    const height = element.offsetHeight;
+    
+    // Be more permissive for Grok
+    const minHeight = hostname.includes('grok.com') ? 40 : 60;
+    
+    if (rows <= 1 || height < minHeight) {
+      return false;
+    }
+  }
+  
+  return true; // Default to true for contenteditable divs
+}
+
+// Update findAllEditableElements to use platform-specific logic
 function findAllEditableElements() {
   const hostname = window.location.hostname;
   const platform = Object.keys(SUPPORTED_HOSTS).find(host => hostname.includes(host));
   if (!platform) return [];
 
-  const { primarySelector, previousPromptSelector } = SUPPORTED_HOSTS[platform];
+  const config = SUPPORTED_HOSTS[platform];
+  const { primarySelector, previousPromptSelector, shouldShowWidget } = config;
   const allSelectors = [primarySelector, previousPromptSelector, 'textarea:not([disabled]):not([readonly])', 'div[contenteditable="true"]'].filter(Boolean).join(', ');
 
   return Array.from(document.querySelectorAll(allSelectors))
-    // THE FIX: Ignore elements injected by Grammarly
-    // .filter(el => !el.matches('[class*="grammarly"], [data-gramm="false"], [aria-label*="Grammarly" i]'))
-    .filter(el => isElementVisible(el) && isFieldEditable(el));
+    .filter(el => isElementVisible(el) && isFieldEditable(el))
+    .filter(el => {
+      // Use platform-specific logic if available
+      if (shouldShowWidget && typeof shouldShowWidget === 'function') {
+        return shouldShowWidget(el);
+      }
+      // Otherwise use generic logic
+      return isPromptRelatedField(el);
+    });
 }
 
 // Track the last focused editable field across supported platforms
@@ -271,7 +397,6 @@ function processMessage(message, targetField, sendResponse) {
           }
           // Handle textarea elements for follow-up queries and edit-mode
           else if (targetField.tagName === "TEXTAREA") {
-            // For textarea, simply replace the value
             targetField.focus();
             targetField.value = message.prompt;
             
@@ -455,7 +580,6 @@ function getWidgetStorageKey(inputField) {
   return `promptstash-widget-pos-${hostname}-${sanitizedPart}`;
 }
 
-// REPLACE your createWidget function with this version
 function createWidget(inputField, inputContainer) {
     const containerStyle = window.getComputedStyle(inputContainer);
     if (containerStyle.position === 'static') {
@@ -523,7 +647,6 @@ function createWidget(inputField, inputContainer) {
     return widget;
 }
 
-// REPLACE your makeDraggable function with this version
 function makeDraggable(widget, container, inputField, onPositionChange) {
     let isDragging = false;
     let dragStarted = false;
@@ -632,7 +755,6 @@ function cleanupWidget(widget) {
 
 // Manage widgets for all editable elements
 function manageWidgets() {
-  // <<<--- ADD THIS CHECK HERE ---<<<
   // If the popup is open, do nothing. This prevents the widget from being
   // destroyed and recreated, which would reset its position.
   if (document.getElementById('promptstash-popup')) {
@@ -657,7 +779,9 @@ function manageWidgets() {
   
   // Create widgets for new editable elements
   for (const element of editableElements) {
-    if (!widgetManager.widgets.has(element)) {
+    const widgetId = generateWidgetId(element);
+    const widgetExist = document.getElementById(widgetId)
+    if (!widgetManager.widgets.has(element)||widgetExist === null) {
       const container = findInputContainer(element);
       if (container) {
         const widget = createWidget(element, container);
