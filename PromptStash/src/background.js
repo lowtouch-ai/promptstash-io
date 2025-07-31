@@ -132,7 +132,7 @@ function togglePopup(LARGE_SCREEN_MIN, SMALL_SCREEN_MAX, defaultWidthRatio) {
     if (finalX < 0) finalX = 0;
     if (finalY < 0) finalY = 0;
 
-    chrome.storage.local.set({ popupPosition: { x: finalX, y: finalY } });
+    // chrome.storage.local.set({ popupPosition: { x: finalX, y: finalY } });
 
     document.removeEventListener('pointermove', onPointerMove);
     document.removeEventListener('pointerup', onPointerUp);
@@ -181,7 +181,7 @@ function togglePopup(LARGE_SCREEN_MIN, SMALL_SCREEN_MAX, defaultWidthRatio) {
     popup.style.userSelect = "none";
     const dragHandle = document.createElement("div");
     dragHandle.id = DRAG_HANDLE_ID;
-    dragHandle.style.cssText = `position: absolute; top: 0; left: 0; width: 100%; height: 20px; cursor: grab; z-index: 1;`;
+    dragHandle.style.cssText = `position: absolute; top: 0; left: 0; width: 88%; height: 30px; cursor: grab; z-index: 1;`;
     const iframe = document.createElement("iframe");
     iframe.src = chrome.runtime.getURL("popup.html");
     iframe.style.cssText = "width: 100%; height: 100%; border: none;";
