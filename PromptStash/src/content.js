@@ -772,7 +772,6 @@ function manageWidgets() {
       if (widget) {
         cleanupWidget(widget);
         widgetManager.widgets.delete(element);
-        console.log("Removed widget for element:", element);
       }
     }
   }
@@ -786,7 +785,6 @@ function manageWidgets() {
       if (container) {
         const widget = createWidget(element, container);
         widgetManager.widgets.set(element, widget);
-        console.log("Created widget for element:", element);
       }
     } else {
       // Update existing widget position if needed
