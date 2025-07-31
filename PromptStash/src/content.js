@@ -552,14 +552,7 @@ function generateWidgetId(element) {
   return `promptstash-widget`;
   // return `promptstash-widget-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
-// ADD THIS NEW HELPER FUNCTION to content.js
 
-/**
- * Generates a unique and stable storage key for a given input field.
- * It creates a "fingerprint" based on the element's attributes.
- * @param {HTMLElement} inputField The textarea or contenteditable div.
- * @returns {string} A unique key for chrome.storage, e.g., "promptstash-widget-pos-grok.com-instructions"
- */
 function getWidgetStorageKey(inputField) {
   const hostname = window.location.hostname;
   let uniquePart = 'default';
@@ -567,7 +560,6 @@ function getWidgetStorageKey(inputField) {
   const placeholder = inputField.getAttribute('placeholder');
   const ariaLabel = inputField.getAttribute('aria-label');
   
-  // NEW PRIORITY: id > placeholder > aria-label
   if (inputField.id) {
     uniquePart = inputField.id;
   } else if (placeholder) {
