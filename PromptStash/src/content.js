@@ -22,13 +22,10 @@ const SUPPORTED_HOSTS = {
       if (path.includes('project') || path.includes('instruction')) {
         return element.tagName === 'TEXTAREA' && element.offsetHeight > 40;
       }
-      
-      // Default to standard logic
       return true;
     },
     name: "Grok"
   },
-  // ... other platforms remain the same
   "perplexity.ai": {
     primarySelector: "div#ask-input, textarea[aria-placeholder='Ask anything…'], textarea#ask-input",
     previousPromptSelector: "textarea:not(#ask-input)",
@@ -87,7 +84,6 @@ function isElementVisible(element) {
 }
 
 
-// Updated function to better handle platform-specific prompt fields
 function isPromptRelatedField(element) {
   const hostname = window.location.hostname;
   const placeholder = (element.getAttribute('placeholder') || '').toLowerCase();
@@ -193,7 +189,6 @@ function isPromptRelatedField(element) {
   return true; // Default to true for contenteditable divs
 }
 
-// Update findAllEditableElements to use platform-specific logic
 function findAllEditableElements() {
   const hostname = window.location.hostname;
   const platform = Object.keys(SUPPORTED_HOSTS).find(host => hostname.includes(host));
@@ -590,7 +585,7 @@ function createWidget(inputField, inputContainer) {
     widget.style.width = '30px';
     widget.style.height = '30px';
 
-    // *** NEW: Generate the element-specific key ***
+    // *** Generate the element-specific key ***
     const storageKey = getWidgetStorageKey(inputField);
 
     // Load the saved top/right offset using the specific key
@@ -615,7 +610,7 @@ function createWidget(inputField, inputContainer) {
     inputContainer.appendChild(widget);
     widget.associatedField = inputField;
 
-    // *** NEW: Pass the inputField to makeDraggable so it can generate the same key ***
+    // *** Pass the inputField to makeDraggable so it can generate the same key ***
     makeDraggable(widget, inputContainer, inputField, () => {});
 
     // ... (rest of the function is the same)
@@ -644,7 +639,7 @@ function makeDraggable(widget, container, inputField, onPositionChange) {
     let dragStarted = false;
     let startX, startY, initialLeft, initialTop;
 
-    // *** NEW: Generate the element-specific key for saving ***
+    // *** Generate the element-specific key for saving ***
     const storageKey = getWidgetStorageKey(inputField);
 
     const onPointerDown = (e) => {
@@ -706,7 +701,7 @@ function makeDraggable(widget, container, inputField, onPositionChange) {
                 top: widget.style.top
             };
 
-            // *** NEW: Save using the specific key ***
+            // *** Save using the specific key ***
             chrome.storage.local.set({ [storageKey]: positionToSave }, () => {
                 console.log(`PromptStash: Position saved for key: ${storageKey}`);
             });
