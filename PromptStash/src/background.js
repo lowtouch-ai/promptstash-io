@@ -150,10 +150,8 @@ function togglePopup(LARGE_SCREEN_MIN, SMALL_SCREEN_MAX, defaultWidthRatio) {
       popup.querySelector('iframe').style.pointerEvents = 'none';
       document.body.style.userSelect = 'none';
 
-      // FIX #1: Disable transition *during* drag for smooth movement.
+      // Disable transition *during* drag for smooth movement.
       popup.style.transition = 'none'; 
-      // FIX #2: Ensure 'right' doesn't conflict with 'left'.
-      popup.style.right = 'auto';
 
       document.addEventListener('pointermove', onPointerMove);
       document.addEventListener('pointerup', onPointerUp);
