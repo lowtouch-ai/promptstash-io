@@ -90,7 +90,6 @@ function debounce(func, wait) {
 }
 
 // Function to toggle popup visibility
-// Optimized function to toggle popup visibility with improved resizing
 function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidthRatio = 0.5) {
   const POPUP_ID = "promptstash-popup";
   const DRAG_HANDLE_ID = "promptstash-drag-handle";
@@ -104,7 +103,6 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
   let startRect, startPointer;
   let isPointerOutOfBounds = false;
 
-  // Optimized responsive constraints with larger minimum sizes
   const getConstraints = () => {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
@@ -124,7 +122,6 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
            e.clientY < 0 || e.clientY > window.innerHeight;
   };
 
-  // Optimized pointer move handler with RAF throttling and boundary detection
   let rafId = null;
   const onPointerMove = (e) => {
     if (!isDragging && !isResizing) return;
@@ -195,7 +192,6 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
       height: startRect.height
     };
 
-    // Optimized resize transformations with proper constraint checking
     const resizeTransforms = {
       e: () => { 
         const newWidth = startRect.width + deltaX;
@@ -254,7 +250,6 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
       resizeTransforms[dir]?.();
     });
 
-    // Batch DOM updates for better performance - NO additional constraint application
     popup.style.cssText += `
       width: ${newRect.width}px;
       height: ${newRect.height}px;
@@ -282,8 +277,6 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
       if (iframe) iframe.style.pointerEvents = 'auto';
       document.body.style.userSelect = '';
       
-      // DON'T restore transitions immediately to prevent reverting/blinking
-      // The transitions will be restored naturally when needed
       
       // Re-enable outside click after a small delay to prevent immediate trigger
       setTimeout(() => {
@@ -493,7 +486,6 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
       display: block;
     `;
     
-    // Create optimized resize handles using document fragment
     const resizeHandles = createResizeHandles();
     
     popup.appendChild(dragHandle);
@@ -581,7 +573,6 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
       applyPopupStyles(result.isFullscreen || false, result.popupPosition, result.popupSize);
     });
 
-    // Optimized debounced resize handler
     let resizeTimeout;
     const debouncedUpdate = () => {
       clearTimeout(resizeTimeout);
