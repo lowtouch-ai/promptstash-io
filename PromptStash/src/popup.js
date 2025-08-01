@@ -156,7 +156,6 @@ document.addEventListener("DOMContentLoaded", () => {
     favoriteSuggestions: document.getElementById("favoriteSuggestions"),
     fullscreenToggle: document.getElementById("fullscreenToggle"),
     closeBtn: document.getElementById("closeBtn"),
-    minimizeBtn: document.getElementById("minimizeBtn"),
     newBtn: document.getElementById("newBtn"),
     searchOverlay: document.getElementById("searchOverlay"),
     toastOverlay: document.getElementById("toastOverlay"),
@@ -806,11 +805,6 @@ elements.templateTags.addEventListener("input", debounce(() => {
     chrome.runtime.sendMessage({ action: "toggleFullscreen" });
   });
 
-  // Minimize popup
-  elements.minimizeBtn.addEventListener("click", () => {
-    chrome.runtime.sendMessage({ action: "closePopup" });
-  });
-
   // Close popup and clear fields
   elements.closeBtn.addEventListener("click", () => {
     elements.templateName.value = "";
@@ -1162,7 +1156,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
   document.addEventListener("click", (event) => {
     if (!elements.searchBox.contains(event.target) && !elements.dropdownResults.contains(event.target) 
         && !elements.themeToggle.contains(event.target) && !elements.fullscreenToggle.contains(event.target) 
-        && !elements.minimizeBtn.contains(event.target) && !elements.closeBtn.contains(event.target)) {
+        && !elements.closeBtn.contains(event.target)) {
       elements.dropdownResults.innerHTML = "";
       elements.searchOverlay.style.display = 'none';
       elements.dropdownResults.style.display = 'none';
