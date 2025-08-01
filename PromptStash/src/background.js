@@ -344,7 +344,11 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
     const isSmallScreen = window.innerWidth < SMALL_SCREEN_MAX;
     
     chrome.storage.local.get(["isFullscreen"], (result) => {
-      if (result.isFullscreen || isSmallScreen) return;
+      // Block resize in fullscreen mode or small screens
+    if (result.isFullscreen || isSmallScreen) {
+      e.preventDefault();
+      return;
+    }
       
       isResizing = true;
       isPointerOutOfBounds = false;
@@ -504,6 +508,8 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
       const handles = popup.querySelectorAll(`.${RESIZE_HANDLE_CLASS}`);
       handles.forEach(handle => {
         handle.style.display = needFullscreen ? "none" : "block";
+        // Also disable pointer events to be extra safe
+        handle.style.pointerEvents = needFullscreen ? "none" : "auto";
       });
 
       // Calculate dimensions with original behavior but enforce minimums
@@ -685,13 +691,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (!tabs[0]) return;
         chrome.scripting.executeScript({
           target: { tabId: tabs[0].id },
-          function: (isFullscreen) => {
+          function: (isFullscreen, LARGE_SCREEN_MIN, SMALL_SCREEN_MAX, defaultWidthRatio) => {
             const popup = document.getElementById("promptstash-popup");
             if (popup) {
               const isLargeScreen = window.innerWidth > LARGE_SCREEN_MIN;
               const isSmallScreen = window.innerWidth < SMALL_SCREEN_MAX;
               const needFullscreen = isFullscreen || isSmallScreen;
-
+  
+              // Update drag handle
+              const dragHandle = document.getElementById("promptstash-drag-handle");
+              if (dragHandle) {
+                dragHandle.style.display = needFullscreen ? "none" : "block";
+              }
+  
+              // Update resize handles
+              const handles = popup.querySelectorAll(".promptstash-resize-handle");
+              handles.forEach(handle => {
+                handle.style.display = needFullscreen ? "none" : "block";
+                handle.style.pointerEvents = needFullscreen ? "none" : "auto";
+              });
+  
+              // Update popup styles
               Object.assign(popup.style, {
                 width: needFullscreen ? "100vw" : isLargeScreen ? `${defaultWidthRatio * 100}vw` : `${defaultWidthRatio * LARGE_SCREEN_MIN}px`,
                 height: needFullscreen ? "100vh" : "96vh",
@@ -704,7 +724,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               });
             }
           },
-          args: [isFullscreen]
+          args: [isFullscreen, LARGE_SCREEN_MIN, SMALL_SCREEN_MAX, defaultWidthRatio]
         }, () => {
           if (chrome.runtime.lastError) {
             console.error("Fullscreen toggle error:", chrome.runtime.lastError.message);
