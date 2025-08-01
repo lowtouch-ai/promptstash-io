@@ -22,7 +22,9 @@ const SUPPORTED_HOSTS = {
       if (path.includes('project') || path.includes('instruction')) {
         return element.tagName === 'TEXTAREA' && element.offsetHeight > 40;
       }
-      return true;
+      
+      //For all other elements on grok.com (like edit chat fields), do not show the widget.
+      return false; 
     },
     name: "Grok"
   },
@@ -799,14 +801,23 @@ function manageWidgets() {
   const currentWidgets = new Set(widgetManager.widgets.keys());
   
 
-  // Remove widgets for elements that are no longer visible or valid
+  const unstableElementCache = new Map(); // element -> frameCount missed
+
   for (const element of currentWidgets) {
-    if (!editableElements.includes(element) || !isFieldValid(element)) {
-      const widget = widgetManager.widgets.get(element);
-      if (widget) {
-        cleanupWidget(widget);
-        widgetManager.widgets.delete(element);
+    if (!editableElements.includes(element)) {
+      const count = unstableElementCache.get(element) || 0;
+      if (count >= 3 || !isFieldValid(element)) {
+        const widget = widgetManager.widgets.get(element);
+        if (widget) {
+          cleanupWidget(widget);
+          widgetManager.widgets.delete(element);
+        }
+        unstableElementCache.delete(element);
+      } else {
+        unstableElementCache.set(element, count + 1);
       }
+    } else {
+      unstableElementCache.delete(element); // Reset on presence
     }
   }
   
