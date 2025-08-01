@@ -508,36 +508,36 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
       const handles = popup.querySelectorAll(`.${RESIZE_HANDLE_CLASS}`);
       handles.forEach(handle => {
         handle.style.display = needFullscreen ? "none" : "block";
-        // Also disable pointer events to be extra safe
         handle.style.pointerEvents = needFullscreen ? "none" : "auto";
       });
-
-      // Calculate dimensions with original behavior but enforce minimums
+    
+      // Calculate dimensions
       let popupWidth, popupHeight;
       
       if (needFullscreen) {
         popupWidth = window.innerWidth;
         popupHeight = window.innerHeight;
       } else {
-        // Use saved size or calculate defaults like original
-        popupWidth = isLargeScreen ? 
-        defaultWidthRatio * window.innerWidth : 
-        defaultWidthRatio * LARGE_SCREEN_MIN;
-        popupHeight = window.innerHeight * 0.96;
-        
-        // Only enforce minimums if the calculated size is smaller
-        if (popupWidth < constraints.minWidth) {
-          popupWidth = constraints.minWidth;
+        // Prioritize saved size over default calculations
+        if (savedSize) {
+          popupWidth = Math.max(constraints.minWidth, 
+                       Math.min(constraints.maxWidth, savedSize.width));
+          popupHeight = Math.max(constraints.minHeight, 
+                        Math.min(constraints.maxHeight, savedSize.height));
+        } else {
+          // Use original default calculation only if no saved size
+          popupWidth = isLargeScreen ? 
+                      defaultWidthRatio * window.innerWidth : 
+                      defaultWidthRatio * LARGE_SCREEN_MIN;
+          popupHeight = window.innerHeight * 0.96;
+          
+          // Enforce minimum constraints on defaults
+          popupWidth = Math.max(constraints.minWidth, Math.min(constraints.maxWidth, popupWidth));
+          popupHeight = Math.max(constraints.minHeight, Math.min(constraints.maxHeight, popupHeight));
         }
-        if (popupHeight < constraints.minHeight) {
-          popupHeight = constraints.minHeight;
-        }
-        
-        // Apply maximum constraints
-        popupWidth = Math.min(constraints.maxWidth, popupWidth);
-        popupHeight = Math.min(constraints.maxHeight, popupHeight);
       }
-      // Calculate position - use original right-side positioning
+      
+      // Calculate position
       let finalPos = { x: 'auto', y: '8px', right: '8px' };
       
       if (position && !needFullscreen) {
@@ -547,16 +547,16 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
         const constrainedTop = Math.max(constraints.boundaryPadding, 
           Math.min(window.innerHeight - popupHeight - constraints.boundaryPadding, position.y));
         
-        // finalPos = { 
-        //   x: `${constrainedLeft}px`, 
-        //   y: `${constrainedTop}px`, 
-        //   right: '0' 
-        // };
+        finalPos = { 
+          x: `${constrainedLeft}px`, 
+          y: `${constrainedTop}px`, 
+          right: 'auto' 
+        };
       } else if (needFullscreen) {
         finalPos = { x: '0px', y: '0px', right: '0' };
       }
       // If no saved position, keep default right-side positioning
-
+    
       // Apply styles with optimized CSS
       popup.style.cssText += `
         width: ${popupWidth}px;
@@ -711,17 +711,88 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 handle.style.pointerEvents = needFullscreen ? "none" : "auto";
               });
   
-              // Update popup styles
-              Object.assign(popup.style, {
-                width: needFullscreen ? "100vw" : isLargeScreen ? `${defaultWidthRatio * 100}vw` : `${defaultWidthRatio * LARGE_SCREEN_MIN}px`,
-                height: needFullscreen ? "100vh" : "96vh",
-                right: needFullscreen ? "0" : "8px",
-                left: needFullscreen?"0":"unset",
-                top: needFullscreen ? "0" : "8px",
-                borderRadius: needFullscreen ? "0" : "10px",
-                boxShadow: needFullscreen ? "none" : "0 4px 15px rgba(0, 0, 0, 0.2)",
-                transition: "width 0.3s ease, height 0.3s ease, top 0.3s ease, left 0.3s ease"
-              });
+              if (needFullscreen) {
+                // Going to fullscreen - save current dimensions first
+                const rect = popup.getBoundingClientRect();
+                chrome.storage.local.set({
+                  popupPosition: { x: rect.left, y: rect.top },
+                  popupSize: { width: rect.width, height: rect.height }
+                });
+                
+                // Apply fullscreen styles
+                Object.assign(popup.style, {
+                  width: "100vw",
+                  height: "100vh",
+                  right: "0",
+                  left: "0",
+                  top: "0",
+                  borderRadius: "0",
+                  boxShadow: "none",
+                  transition: "width 0.3s ease, height 0.3s ease, top 0.3s ease, left 0.3s ease"
+                });
+              } else {
+                // Exiting fullscreen - restore saved dimensions
+                chrome.storage.local.get(["popupPosition", "popupSize"], (stored) => {
+                  const constraints = {
+                    minWidth: Math.max(400, window.innerWidth * 0.25),
+                    minHeight: Math.max(500, window.innerHeight * 0.35),
+                    maxWidth: window.innerWidth * 0.95,
+                    maxHeight: window.innerHeight * 0.95,
+                    boundaryPadding: 5
+                  };
+                  
+                  let width, height, left, top;
+                  
+                  if (stored.popupSize) {
+                    // Use saved dimensions, but ensure they fit current viewport
+                    width = Math.max(constraints.minWidth, 
+                            Math.min(constraints.maxWidth, stored.popupSize.width));
+                    height = Math.max(constraints.minHeight, 
+                             Math.min(constraints.maxHeight, stored.popupSize.height));
+                  } else {
+                    // Fallback to default dimensions
+                    width = isLargeScreen ? 
+                           defaultWidthRatio * window.innerWidth : 
+                           defaultWidthRatio * LARGE_SCREEN_MIN;
+                    height = window.innerHeight * 0.96;
+                  }
+                  
+                  if (stored.popupPosition) {
+                    // Use saved position, but ensure it's within viewport bounds
+                    left = Math.max(constraints.boundaryPadding, 
+                           Math.min(window.innerWidth - width - constraints.boundaryPadding, 
+                                   stored.popupPosition.x));
+                    top = Math.max(constraints.boundaryPadding, 
+                          Math.min(window.innerHeight - height - constraints.boundaryPadding, 
+                                  stored.popupPosition.y));
+                  } else {
+                    // Fallback to default position (right side)
+                    left = "unset";
+                    top = "8px";
+                  }
+                  
+                  // Apply windowed styles
+                  const styles = {
+                    width: `${width}px`,
+                    height: `${height}px`,
+                    borderRadius: "12px",
+                    boxShadow: "0 12px 40px rgba(0, 0, 0, 0.15), 0 4px 12px rgba(0, 0, 0, 0.1)",
+                    transition: "width 0.3s ease, height 0.3s ease, top 0.3s ease, left 0.3s ease"
+                  };
+                  
+                  if (stored.popupPosition) {
+                    styles.left = `${left}px`;
+                    styles.top = `${top}px`;
+                    styles.right = "auto";
+                  } else {
+                    styles.left = "unset";
+                    styles.top = "8px";
+                    styles.right = "8px";
+                  }
+                  
+                  Object.assign(popup.style, styles);
+                });
+              }
             }
           },
           args: [isFullscreen, LARGE_SCREEN_MIN, SMALL_SCREEN_MAX, defaultWidthRatio]
