@@ -22,7 +22,9 @@ const SUPPORTED_HOSTS = {
       if (path.includes('project') || path.includes('instruction')) {
         return element.tagName === 'TEXTAREA' && element.offsetHeight > 40;
       }
-      return true;
+      
+      //For all other elements on grok.com (like edit chat fields), do not show the widget.
+      return false; 
     },
     name: "Grok"
   },
@@ -37,8 +39,30 @@ const SUPPORTED_HOSTS = {
     name: "ChatGPT"
   },
   "gemini.google.com": {
-    primarySelector: "div.ql-editor, div.textarea[data-placeholder='Ask Gemini'], rich-textarea[aria-label='Enter a prompt here'] div.ql-editor",
+    // Updated to include more Gemini input variations
+    primarySelector: "div.ql-editor, div.textarea[data-placeholder='Ask Gemini'], rich-textarea[aria-label='Enter a prompt here'] div.ql-editor, textarea[placeholder*='instruction' i], textarea[placeholder*='prompt' i], div[contenteditable='true'][role='textbox'], textarea[aria-label*='message' i], div.input-area div[contenteditable='true']",
     previousPromptSelector: "textarea[aria-label='Edit prompt']",
+    // Add custom logic for Gemini
+    shouldShowWidget: (element) => {
+      // Always show on main chat inputs
+      if (element.classList.contains('ql-editor')) return true;
+      
+      // On Gems pages, show on instruction textareas
+      const path = window.location.pathname.toLowerCase();
+      if (path.includes('gems') || path.includes('gem')) {
+        // Show on instruction textareas
+        if (element.tagName === 'TEXTAREA' && element.offsetHeight > 40) {
+          return true;
+        }
+        // Show on contenteditable divs in preview/chat areas
+        if (element.tagName === 'DIV' && element.contentEditable === 'true') {
+          return true;
+        }
+      }
+      
+      // Default check for other elements
+      return element.offsetHeight > 40;
+    },
     name: "Gemini"
   },
   "claude.ai": {
@@ -88,11 +112,40 @@ function isPromptRelatedField(element) {
   const hostname = window.location.hostname;
   const placeholder = (element.getAttribute('placeholder') || '').toLowerCase();
   const ariaLabel = (element.getAttribute('aria-label') || '').toLowerCase();
+  const role = (element.getAttribute('role') || '').toLowerCase();
   const id = (element.id || '').toLowerCase();
   const className = (element.className || '').toLowerCase();
-  const attributesText = `${placeholder} ${ariaLabel} ${id} ${className}`;
+  const attributesText = `${placeholder} ${ariaLabel} ${id} ${className} ${role}`;
   
-  // Special handling for Grok
+  // Special handling for Gemini
+  if (hostname.includes('gemini.google.com')) {
+    // On Gems pages, be very permissive
+    const currentPath = window.location.pathname.toLowerCase();
+    if (currentPath.includes('gem')) {
+      // Show widget on all reasonably sized text inputs
+      if (element.tagName === 'TEXTAREA' && element.offsetHeight > 40) {
+        return true;
+      }
+      // Show on all contenteditable divs that look like input areas
+      if (element.tagName === 'DIV' && element.contentEditable === 'true') {
+        // Check if it has role="textbox" or similar input indicators
+        if (role === 'textbox' || attributesText.includes('input') || attributesText.includes('message')) {
+          return true;
+        }
+        // If it's reasonably sized, show widget
+        if (element.offsetHeight > 40) {
+          return true;
+        }
+      }
+    }
+    
+    // For main Gemini chat, always show on ql-editor
+    if (element.classList.contains('ql-editor')) {
+      return true;
+    }
+  }
+  
+  // Special handling for Grok (keeping existing logic)
   if (hostname.includes('grok.com')) {
     // Check if we're in the projects/instructions area
     const currentPath = window.location.pathname.toLowerCase();
@@ -125,9 +178,8 @@ function isPromptRelatedField(element) {
     'instruction', 'command', 'tell', 'generate' // Added instruction for Grok
   ];
   
-  // For Grok, be more permissive
-  if (hostname.includes('grok.com')) {
-    // Don't apply exclude keywords as strictly for Grok
+  // Platform-specific permissiveness
+  if (hostname.includes('grok.com') || hostname.includes('gemini.google.com')) {
     for (const keyword of promptKeywords) {
       if (attributesText.includes(keyword)) {
         return true;
@@ -160,9 +212,8 @@ function isPromptRelatedField(element) {
       const buttonText = (button.textContent || '').toLowerCase();
       const buttonAriaLabel = (button.getAttribute('aria-label') || '').toLowerCase();
       
-      // Include 'save' as a valid button for Grok
-      const validButtonKeywords = hostname.includes('grok.com') 
-        ? ['send', 'submit', 'save', 'generate', 'create', 'update']
+      const validButtonKeywords = (hostname.includes('grok.com') || hostname.includes('gemini.google.com'))
+        ? ['send', 'submit', 'save', 'generate', 'create', 'update', 'run', 'test']
         : ['send', 'submit', 'generate', 'ask'];
       
       for (const keyword of validButtonKeywords) {
@@ -177,9 +228,7 @@ function isPromptRelatedField(element) {
   if (element.tagName === 'TEXTAREA') {
     const rows = parseInt(element.getAttribute('rows') || '1');
     const height = element.offsetHeight;
-    
-    // Be more permissive for Grok
-    const minHeight = hostname.includes('grok.com') ? 40 : 60;
+    const minHeight = (hostname.includes('grok.com') || hostname.includes('gemini.google.com')) ? 40 : 60;
     
     if (rows <= 1 || height < minHeight) {
       return false;
@@ -752,14 +801,23 @@ function manageWidgets() {
   const currentWidgets = new Set(widgetManager.widgets.keys());
   
 
-  // Remove widgets for elements that are no longer visible or valid
+  const unstableElementCache = new Map(); // element -> frameCount missed
+
   for (const element of currentWidgets) {
-    if (!editableElements.includes(element) || !isFieldValid(element)) {
-      const widget = widgetManager.widgets.get(element);
-      if (widget) {
-        cleanupWidget(widget);
-        widgetManager.widgets.delete(element);
+    if (!editableElements.includes(element)) {
+      const count = unstableElementCache.get(element) || 0;
+      if (count >= 3 || !isFieldValid(element)) {
+        const widget = widgetManager.widgets.get(element);
+        if (widget) {
+          cleanupWidget(widget);
+          widgetManager.widgets.delete(element);
+        }
+        unstableElementCache.delete(element);
+      } else {
+        unstableElementCache.set(element, count + 1);
       }
+    } else {
+      unstableElementCache.delete(element); // Reset on presence
     }
   }
   
