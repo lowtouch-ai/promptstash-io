@@ -382,6 +382,16 @@ document.addEventListener("DOMContentLoaded", () => {
       // console.log(`Version updated from ${storedVersion} to ${EXTENSION_VERSION}. No schema migration needed.`);
       chrome.storage.local.set({ extensionVersion: EXTENSION_VERSION });
     }
+  // LOAD THEME FIRST - before anything that might call saveState()
+  currentTheme = result.theme || "light";
+  document.body.className = currentTheme;
+  
+  // Load other global state
+  nextIndex = result.nextIndex || defaultTemplates.length;
+  recentIndices = result.recentIndices || [];
+  isFullscreen = result.isFullscreen || false;
+  let svg = elements.fullscreenToggle.querySelector("svg use");
+  svg.setAttribute("href", isFullscreen ? "sprite.svg#compress" : "sprite.svg#fullscreen");
 
     // Initialize state, falling back to defaults if not present
     const state = result.popupState || {};
@@ -404,13 +414,6 @@ document.addEventListener("DOMContentLoaded", () => {
         switchToTagsViewMode();
     }
 
-    currentTheme = result.theme || "light";
-    nextIndex = result.nextIndex || defaultTemplates.length;
-    recentIndices = result.recentIndices || [];
-    isFullscreen = result.isFullscreen || false;
-    let svg = elements.fullscreenToggle.querySelector("svg use");
-    svg.setAttribute("href", isFullscreen ? "sprite.svg#compress" : "sprite.svg#fullscreen");
-    
 
 // Ensure templates are initialized and tags are in the correct format
 let templates = result.templates;
