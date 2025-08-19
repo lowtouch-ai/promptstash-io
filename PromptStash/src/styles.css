@@ -520,12 +520,20 @@ body.dark #buttons .btn svg {
   color: #e8eaed;
 }
 
-body.dark #templateName, body.dark #templateTags,body.dark #tagsDisplay, body.dark #promptArea {
+body.dark #templateName, body.dark #templateTags,body.dark #tagsDisplay,body.dark .top-controls,body.dark #promptArea {
   border-color: #333;
   background: #151515;
   color: #edede8;
 }
 
+/* top-controlls */
+.top-controls {
+  width: 100%;
+  display: flex;
+  justify-content: end;
+  background: rgba(200, 200, 200, 0.2); /* Subtle gray hint */
+  border-bottom: 1px solid #dadce0;
+}
 
 :root {
   --base-font-size: 16px; /* Default */

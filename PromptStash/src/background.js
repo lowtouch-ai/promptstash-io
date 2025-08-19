@@ -269,6 +269,8 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
       }
 
       isDragging = false;
+      const dragHandle = document.getElementById(DRAG_HANDLE_ID);
+      if (dragHandle) dragHandle.style.cursor = 'grab';
       isResizing = false;
       isPointerOutOfBounds = false;
       
@@ -449,7 +451,7 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
     document.removeEventListener('pointerleave', onPointerUp);
     
     const dragHandle = document.getElementById(DRAG_HANDLE_ID);
-    if (dragHandle) dragHandle.removeEventListener('pointerdown', onDragStart);
+    if (dragHandle) dragHandle.style.cursor = 'grabbing';
     
     popup.remove();
   };
@@ -469,14 +471,15 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
     const dragHandle = document.createElement("div");
     dragHandle.id = DRAG_HANDLE_ID;
     dragHandle.style.cssText = `
-      position: absolute; 
-      top: 0; 
-      left: 0; 
-      width: 100%; 
-      height: 100%; 
-      cursor: move; 
-      z-index: 1;
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 90px; /* Leave space on the right for the popup's own controls */
+      height: 32px;
+      cursor: grab;
+      z-index: 3; /* Above iframe (iframe is z-index: 2) */
       touch-action: none;
+      background: transparent;
     `;
     
     const iframe = document.createElement("iframe");
