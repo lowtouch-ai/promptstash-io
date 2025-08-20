@@ -10,8 +10,22 @@ setInterval(() => {
 // Supported platforms with selectors for primary input and editable previous prompts
 const SUPPORTED_HOSTS = {
   "grok.com": {
-    primarySelector: "div.query-bar textarea",
+    primarySelector: "div.query-bar textarea, textarea[placeholder*='instruction' i], textarea[placeholder*='prompt' i]",
     previousPromptSelector: "div.message-bubble textarea[placeholder='Enter prompt here']",
+    // Add a function to determine if we should show widget
+    shouldShowWidget: (element) => {
+      // Always show on query-bar
+      if (element.closest('div.query-bar')) return true;
+      
+      // Show on instruction/project pages for larger textareas
+      const path = window.location.pathname.toLowerCase();
+      if (path.includes('project') || path.includes('instruction')) {
+        return element.tagName === 'TEXTAREA' && element.offsetHeight > 40;
+      }
+      
+      //For all other elements on grok.com (like edit chat fields), do not show the widget.
+      return false; 
+    },
     name: "Grok"
   },
   "perplexity.ai": {
@@ -25,8 +39,30 @@ const SUPPORTED_HOSTS = {
     name: "ChatGPT"
   },
   "gemini.google.com": {
-    primarySelector: "div.ql-editor, div.textarea[data-placeholder='Ask Gemini'], rich-textarea[aria-label='Enter a prompt here'] div.ql-editor",
+    // Updated to include more Gemini input variations
+    primarySelector: "div.ql-editor, div.textarea[data-placeholder='Ask Gemini'], rich-textarea[aria-label='Enter a prompt here'] div.ql-editor, textarea[placeholder*='instruction' i], textarea[placeholder*='prompt' i], div[contenteditable='true'][role='textbox'], textarea[aria-label*='message' i], div.input-area div[contenteditable='true']",
     previousPromptSelector: "textarea[aria-label='Edit prompt']",
+    // Add custom logic for Gemini
+    shouldShowWidget: (element) => {
+      // Always show on main chat inputs
+      if (element.classList.contains('ql-editor')) return true;
+      
+      // On Gems pages, show on instruction textareas
+      const path = window.location.pathname.toLowerCase();
+      if (path.includes('gems') || path.includes('gem')) {
+        // Show on instruction textareas
+        if (element.tagName === 'TEXTAREA' && element.offsetHeight > 40) {
+          return true;
+        }
+        // Show on contenteditable divs in preview/chat areas
+        if (element.tagName === 'DIV' && element.contentEditable === 'true') {
+          return true;
+        }
+      }
+      
+      // Default check for other elements
+      return element.offsetHeight > 40;
+    },
     name: "Gemini"
   },
   "claude.ai": {
@@ -40,6 +76,188 @@ const SUPPORTED_HOSTS = {
 let cachedInputField = null;
 let cachedInputContainer = null;
 let lastFocusedField = null;
+
+// Track widgets for all editable fields
+let widgetManager = {
+  widgets: new Map(), // Map of element -> widget
+  widgetCreated: false,
+  currentInputField: null,
+  currentInputContainer: null
+};
+
+// Enhanced visibility check function
+function isElementVisible(element) {
+  const rect = element.getBoundingClientRect();
+  const style = window.getComputedStyle(element);
+  
+  // Basic visibility checks
+  if (rect.width <= 0 || rect.height <= 0 || 
+      style.display === 'none' || 
+      style.visibility === 'hidden' || 
+      style.opacity === '0') {
+    return false;
+  }
+  
+  // Check if element is behind another element (like a modal)
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  const elementAtPoint = document.elementFromPoint(centerX, centerY);
+  
+  // Check if the element or one of its children is at the top
+  return element.contains(elementAtPoint) || elementAtPoint === element;
+}
+
+
+function isPromptRelatedField(element) {
+  const hostname = window.location.hostname;
+  const placeholder = (element.getAttribute('placeholder') || '').toLowerCase();
+  const ariaLabel = (element.getAttribute('aria-label') || '').toLowerCase();
+  const role = (element.getAttribute('role') || '').toLowerCase();
+  const id = (element.id || '').toLowerCase();
+  const className = (element.className || '').toLowerCase();
+  const attributesText = `${placeholder} ${ariaLabel} ${id} ${className} ${role}`;
+  
+  // Special handling for Gemini
+  if (hostname.includes('gemini.google.com')) {
+    // On Gems pages, be very permissive
+    const currentPath = window.location.pathname.toLowerCase();
+    if (currentPath.includes('gem')) {
+      // Show widget on all reasonably sized text inputs
+      if (element.tagName === 'TEXTAREA' && element.offsetHeight > 40) {
+        return true;
+      }
+      // Show on all contenteditable divs that look like input areas
+      if (element.tagName === 'DIV' && element.contentEditable === 'true') {
+        // Check if it has role="textbox" or similar input indicators
+        if (role === 'textbox' || attributesText.includes('input') || attributesText.includes('message')) {
+          return true;
+        }
+        // If it's reasonably sized, show widget
+        if (element.offsetHeight > 40) {
+          return true;
+        }
+      }
+    }
+    
+    // For main Gemini chat, always show on ql-editor
+    if (element.classList.contains('ql-editor')) {
+      return true;
+    }
+  }
+  
+  // Special handling for Grok (keeping existing logic)
+  if (hostname.includes('grok.com')) {
+    // Check if we're in the projects/instructions area
+    const currentPath = window.location.pathname.toLowerCase();
+    if (currentPath.includes('project') || currentPath.includes('instruction')) {
+      // In Grok projects, show widget on all textareas except tiny ones
+      if (element.tagName === 'TEXTAREA') {
+        const height = element.offsetHeight;
+        // Only exclude very small textareas (like single-line description fields)
+        return height > 40; // Show widget if textarea is reasonably sized
+      }
+    }
+    
+    // For other Grok pages, use the primary selector logic
+    // The query-bar textarea should always get a widget
+    if (element.closest('div.query-bar')) {
+      return true;
+    }
+  }
+  
+  // Keywords that indicate this is NOT a prompt field (for non-Grok sites)
+  const excludeKeywords = [
+    'description', 'note', 'comment', 'title', 'name', 
+    'email', 'password', 'search', 'filter', 'tag', 'summary'
+  ];
+  
+  // Keywords that indicate this IS a prompt field
+  const promptKeywords = [
+    'prompt', 'ask', 'query', 'message', 'chat', 'question',
+    'write', 'enter', 'type', 'input', 'compose', 'reply',
+    'instruction', 'command', 'tell', 'generate' // Added instruction for Grok
+  ];
+  
+  // Platform-specific permissiveness
+  if (hostname.includes('grok.com') || hostname.includes('gemini.google.com')) {
+    for (const keyword of promptKeywords) {
+      if (attributesText.includes(keyword)) {
+        return true;
+      }
+    }
+    // Even if no keywords match, show widget on reasonably sized textareas
+    if (element.tagName === 'TEXTAREA' && element.offsetHeight > 60) {
+      return true;
+    }
+  } else {
+    // For other platforms, apply stricter filtering
+    for (const keyword of excludeKeywords) {
+      if (attributesText.includes(keyword)) {
+        return false;
+      }
+    }
+    
+    for (const keyword of promptKeywords) {
+      if (attributesText.includes(keyword)) {
+        return true;
+      }
+    }
+  }
+  
+  // Additional check: Look for save/submit/send buttons near the textarea
+  const container = element.closest('form, div, section');
+  if (container) {
+    const buttons = container.querySelectorAll('button, [role="button"], [type="submit"]');
+    for (const button of buttons) {
+      const buttonText = (button.textContent || '').toLowerCase();
+      const buttonAriaLabel = (button.getAttribute('aria-label') || '').toLowerCase();
+      
+      const validButtonKeywords = (hostname.includes('grok.com') || hostname.includes('gemini.google.com'))
+        ? ['send', 'submit', 'save', 'generate', 'create', 'update', 'run', 'test']
+        : ['send', 'submit', 'generate', 'ask'];
+      
+      for (const keyword of validButtonKeywords) {
+        if (buttonText.includes(keyword) || buttonAriaLabel.includes(keyword)) {
+          return true;
+        }
+      }
+    }
+  }
+  
+  // Default behavior for generic textareas
+  if (element.tagName === 'TEXTAREA') {
+    const rows = parseInt(element.getAttribute('rows') || '1');
+    const height = element.offsetHeight;
+    const minHeight = (hostname.includes('grok.com') || hostname.includes('gemini.google.com')) ? 40 : 60;
+    
+    if (rows <= 1 || height < minHeight) {
+      return false;
+    }
+  }
+  
+  return true; // Default to true for contenteditable divs
+}
+
+function findAllEditableElements() {
+  const hostname = window.location.hostname;
+  const platform = Object.keys(SUPPORTED_HOSTS).find(host => hostname.includes(host));
+  if (!platform) return [];
+
+  const config = SUPPORTED_HOSTS[platform];
+  const { primarySelector, previousPromptSelector, shouldShowWidget } = config;
+  const allSelectors = [primarySelector, previousPromptSelector, 'textarea:not([disabled]):not([readonly])', 'div[contenteditable="true"]'].filter(Boolean).join(', ');
+
+  return Array.from(document.querySelectorAll(allSelectors))
+    .filter(el => isElementVisible(el) && isFieldEditable(el))
+    .filter(el => {
+      // Use platform-specific logic if available
+      if (shouldShowWidget && typeof shouldShowWidget === 'function') {
+        return shouldShowWidget(el);
+      }
+      // Otherwise use generic logic
+      return isPromptRelatedField(el);
+    });
+}
 
 // Track the last focused editable field across supported platforms
 function setupFocusTracking() {
@@ -223,7 +441,6 @@ function processMessage(message, targetField, sendResponse) {
           }
           // Handle textarea elements for follow-up queries and edit-mode
           else if (targetField.tagName === "TEXTAREA") {
-            // For textarea, simply replace the value
             targetField.focus();
             targetField.value = message.prompt;
             
@@ -374,276 +591,272 @@ function rectsAreEqual(rect1, rect2) {
          rect1.width === rect2.width && rect1.height === rect2.height;
 }
 
-// Create the movable widget with only the extension button
+// Generate unique ID for widget
+function generateWidgetId(element) {
+  return `promptstash-widget`;
+  // return `promptstash-widget-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+function getWidgetStorageKey(inputField) {
+  const hostname = window.location.hostname;
+  let uniquePart = 'default';
+
+  const placeholder = inputField.getAttribute('placeholder');
+  const ariaLabel = inputField.getAttribute('aria-label');
+  
+  if (inputField.id) {
+    uniquePart = inputField.id;
+  } else if (placeholder) {
+    uniquePart = placeholder;
+  } else if (ariaLabel) {
+    uniquePart = ariaLabel;
+  }
+
+  const sanitizedPart = uniquePart.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  return `promptstash-widget-pos-${hostname}-${sanitizedPart}`;
+}
+
 function createWidget(inputField, inputContainer) {
-  const widget = document.createElement('div');
-  widget.id = 'promptstash-widget';
-  widget.setAttribute('aria-live', 'polite'); // Accessibility: announce changes
-  widget.innerHTML = `
-    <button class="extension-button" style="background: none; border: none; border-radius: 100%;" aria-label="Open PromptStash" title="Open PromptStash">
-      <img src="${chrome.runtime.getURL('icon48.png')}" alt="PromptStash" aria-hidden="true" draggable="false" style="width: 30px; height: 30px;">
-    </button>
-  `;
-
-  // Initialize widget with hidden visibility to prevent flashing
-  widget.style.position = 'absolute';
-  widget.style.zIndex = '9999';
-  widget.style.visibility = 'hidden'; // Hide until positioned
-  widget.style.borderRadius = '100%';
-
-  // Initialize widget position with default offset
-  let widgetOffset = { x: 30, y: -30 }; // Default offset from bottom-right corner
-
-  // Create an offscreen container to measure widget size
-  // const offscreenContainer = document.createElement('div');
-  // offscreenContainer.style.position = 'absolute';
-  // offscreenContainer.style.top = '-9999px';
-  // offscreenContainer.style.left = '-9999px';
-  // offscreenContainer.appendChild(widget);
-  // document.body.appendChild(offscreenContainer);
-
-  // Calculate initial position using input container and widget size
-  if (inputContainer && inputContainer.offsetParent) {
-    const containerRect = inputContainer.getBoundingClientRect();
-    const parentRect = inputContainer.parentElement.getBoundingClientRect();
-    const widgetRect = widget.getBoundingClientRect();
-    let newLeft = containerRect.right + window.scrollX + widgetOffset.x;
-    let newTop = containerRect.top + window.scrollY + widgetOffset.y;
-    let maxMinOffset = 0.3 * widgetRect.width;
-    // Enforce boundaries within parent element
-    newLeft = Math.max(parentRect.left + window.scrollX - maxMinOffset, Math.min(newLeft, parentRect.right + window.scrollX - widgetRect.width + maxMinOffset));
-    newTop = Math.max(parentRect.top + window.scrollY - maxMinOffset, Math.min(newTop, parentRect.bottom + window.scrollY - widgetRect.height + maxMinOffset));
-    widget.style.left = `${newLeft}px`;
-    widget.style.top = `${newTop}px`;
-  }
-
-  // Remove from offscreen container and append to body, then make visible
-  // offscreenContainer.remove();
-  document.body.appendChild(widget);
-  setTimeout(() => {
-    widget.style.visibility = 'visible'; // Show widget after positioning
-  }, 50); // Small delay to ensure visibility after positioning
-
-  // Store initial container rectangle to detect position changes later
-  widget.previousContainerRect = inputContainer.getBoundingClientRect();
-
-  // Update position with saved offset if available
-  chrome.storage.local.get(['widgetOffset'], (result) => {
-    if (result.widgetOffset) {
-      widgetOffset = result.widgetOffset;
-      updateWidgetPosition();
-    }
-  });
-
-  // Enforce widget position within container boundaries
-  function enforceBoundaries(containerRect, parentRect, widgetRect) {
-    let newLeft = containerRect.right + window.scrollX + widgetOffset.x;
-    let newTop = containerRect.top + window.scrollY + widgetOffset.y;
-    let maxMinOffset = 0.3 * widgetRect.width;
-    // For grok.com, constrain strictly to query-bar bounds
-    if (window.location.hostname.includes("grok.com")) {
-      newLeft = Math.max(containerRect.left + window.scrollX - maxMinOffset, Math.min(newLeft, containerRect.right + window.scrollX - widgetRect.width + maxMinOffset));
-      newTop = Math.max(containerRect.top + window.scrollY - maxMinOffset, Math.min(newTop, containerRect.bottom + window.scrollY - widgetRect.height + maxMinOffset));
-    } else {
-      // Generic bounds for other platforms
-      newLeft = Math.max(parentRect.left + window.scrollX - maxMinOffset, Math.min(newLeft, parentRect.right + window.scrollX - widgetRect.width + maxMinOffset));
-      newTop = Math.max(parentRect.top + window.scrollY - maxMinOffset, Math.min(newTop, parentRect.bottom + window.scrollY - widgetRect.height + maxMinOffset));
+    const containerStyle = window.getComputedStyle(inputContainer);
+    if (containerStyle.position === 'static') {
+        inputContainer.style.position = 'relative';
     }
 
-    return { newLeft, newTop };
-  }
+    const widget = document.createElement('div');
+    const widgetId = generateWidgetId(inputField);
+    widget.id = widgetId;
+    widget.className = 'promptstash-widget';
 
-  // Position widget relative to the bottom-right corner of the input container
-  function updateWidgetPosition() {
-    if (!inputContainer || !inputContainer.offsetParent) return; // Skip if container is not visible
-    const containerRect = inputContainer.getBoundingClientRect();
-    const widgetRect = widget.getBoundingClientRect();
-    const parentRect = inputContainer.parentElement.getBoundingClientRect();
+    // Set base styles
+    widget.style.position = 'absolute';
+    widget.style.zIndex = '9999';
+    widget.style.cursor = 'pointer';
+    widget.style.width = '30px';
+    widget.style.height = '30px';
 
-    // Enforce boundaries within parent element
-    const { newLeft, newTop } = enforceBoundaries(containerRect, parentRect, widgetRect);
+    // *** Generate the element-specific key ***
+    const storageKey = getWidgetStorageKey(inputField);
 
-    widget.style.top = `${newTop}px`;
-    widget.style.left = `${newLeft}px`;
-  }
+    // Load the saved top/right offset using the specific key
+    chrome.storage.local.get(storageKey, (result) => {
+        const savedPosition = result[storageKey];
+        if (savedPosition && savedPosition.right && savedPosition.top) {
+            widget.style.right = savedPosition.right;
+            widget.style.top = savedPosition.top;
+            widget.style.left = 'auto';
+            console.log(`PromptStash: Loaded position for key: ${storageKey}`);
+        } else {
+            widget.style.right = '10px';
+            widget.style.top = '10px';
+            console.log(`PromptStash: Using default position for key: ${storageKey}`);
+        }
+    });
 
-  // Expose updateWidgetPosition for dynamic updates
-  widget.updatePosition = updateWidgetPosition;
+    widget.innerHTML = `
+        <img src="${chrome.runtime.getURL('icon48.png')}" alt="Open PromptStash" title="Open PromptStash" style="width: 100%; height: 100%; display: block; user-select: none; -webkit-user-drag: none;" draggable="false">
+    `;
 
-  const extensionButton = widget.querySelector('.extension-button');
+    inputContainer.appendChild(widget);
+    widget.associatedField = inputField;
 
-  // Add hover effect for visual feedback
-  extensionButton.addEventListener('pointerenter', () => {
-    extensionButton.style.transform = 'scale(1.02)';
-  });
-  extensionButton.addEventListener('pointerleave', () => {
-    extensionButton.style.transform = 'scale(1)';
-  });
+    // *** Pass the inputField to makeDraggable so it can generate the same key ***
+    makeDraggable(widget, inputContainer, inputField, () => {});
 
-  // Observe input container resizing (e.g., while typing)
-  const resizeObserver = new ResizeObserver(debounce(() => {
-    updateWidgetPosition();
-  }, 100));
-  resizeObserver.observe(inputContainer);
-  widget.resizeObserver = resizeObserver;
-
-  // Update position on window resize
-  const updatePositionDebounced = debounce(() => updateWidgetPosition(), 100);
-  const resizeListener = () => updatePositionDebounced();
-  window.addEventListener('resize', resizeListener);
-  widget.resizeListener = resizeListener;
-
-  // Make widget draggable and handle popup interaction
-  makeDraggable(widget, inputContainer, (newOffset) => {
-    widgetOffset = newOffset;
-    // console.log("Widget position updated:", widgetOffset);
-    chrome.storage.local.set({ widgetOffset }, () => {});
-  });
-
-  // Handle pointer events for button interaction
-  let isDragging = false;
-  let startX, startY;
-  let holdTimeout;
-  let pointerStartTime;
-
-  // Trottle togglePopup to prevent rapid clicks
-  const throttledTogglePopup = throttle(() => {
-      chrome.runtime.sendMessage({ action: "togglePopup" })
-  }, 500);
-
-  widget.addEventListener('pointerdown', (e) => {
-    e.preventDefault(); // Prevent default behaviors like text selection or scrolling
-    if (document.getElementById('promptstash-popup')) return; // Prevent interaction if popup is open
-    startX = e.clientX;
-    startY = e.clientY;
-    pointerStartTime = Date.now();
-    isDragging = false;
-    holdTimeout = setTimeout(() => {
-      isDragging = true;
-      widget.style.cursor = 'grabbing'; // Visual feedback for drag mode
-    }, 300);
-
-  const onPointerMove = (e) => {
-    if (!isDragging && (Math.abs(e.clientX - startX) > 1 || Math.abs(e.clientY - startY) > 1)) {
-      isDragging = true;
-      widget.style.cursor = 'grabbing';
-    }
-  };
-
-  const onPointerUp = () => {
-    // Handle popup opening on quick tap/click
-    clearTimeout(holdTimeout);
-    const duration = Date.now() - pointerStartTime;
-    if (!isDragging && duration < 300 && !document.getElementById('promptstash-popup')) {
-      throttledTogglePopup();
-    }
-    isDragging = false;
-    widget.style.cursor = '';
-    document.removeEventListener('pointermove', onPointerMove);
-    document.removeEventListener('pointerup', onPointerUp);
-  };
-
-  document.addEventListener('pointermove', onPointerMove);
-  document.addEventListener('pointerup', onPointerUp);
-  });
-
-  widget.addEventListener('pointercancel', () => {
-    // Handle interrupted interactions
-    clearTimeout(holdTimeout);
-    isDragging = false;
-    widget.style.cursor = ''; // Reset cursor
-  });
-
-  widget.addEventListener('pointerleave', () => {
-    clearTimeout(holdTimeout);
-    isDragging = false;
-    widget.style.cursor = ''; // Reset cursor
-  });
-
-  // Ensure keyboard accessibility
-  extensionButton.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') { // Space key support per accessibility standards
-      e.preventDefault();
-      if (!document.getElementById('promptstash-popup')) {
-        throttledTogglePopup();
-      }
-      isDragging = false;
-      widget.style.cursor = ''; // Reset cursor
-    }
-  });
-
-  // Add ARIA attributes for accessibility
-  extensionButton.setAttribute('role', 'button');
-  extensionButton.setAttribute('tabindex', '0'); // Make button focusable
-
-  return widget;
+    // ... (rest of the function is the same)
+    widget.setAttribute('role', 'button');
+    widget.setAttribute('tabindex', '0');
+    widget.setAttribute('aria-label', 'Open PromptStash');
+    
+    widget.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            if (!document.getElementById('promptstash-popup')) {
+                if (widget.associatedField && isFieldValid(widget.associatedField)) {
+                    widget.associatedField.focus();
+                    lastFocusedField = widget.associatedField;
+                }
+                chrome.runtime.sendMessage({ action: "togglePopup" });
+            }
+        }
+    });
+    
+    return widget;
 }
 
-// Make the widget draggable within input container bounds
-function makeDraggable(element, inputContainer, onPositionChange) {
-  let isDragging = false;
-  let offsetX, offsetY;
+function makeDraggable(widget, container, inputField, onPositionChange) {
+    let isDragging = false;
+    let dragStarted = false;
+    let startX, startY, initialLeft, initialTop;
 
-  element.addEventListener('pointerdown', (e) => {
-    e.preventDefault(); // Prevent default behaviors
-    if (document.getElementById('promptstash-popup')) return; // Prevent dragging if popup is open
-    isDragging = true;
-    offsetX = e.clientX - element.getBoundingClientRect().left;
-    offsetY = e.clientY - element.getBoundingClientRect().top;
-    element.style.cursor = 'grabbing'; // Visual feedback
-  });
+    // *** Generate the element-specific key for saving ***
+    const storageKey = getWidgetStorageKey(inputField);
 
-  window.addEventListener('pointermove', (e) => {
-    // Handle drag movement
-    if (!isDragging) return;
-    const containerRect = inputContainer.getBoundingClientRect();
-    const widgetRect = element.getBoundingClientRect();
-    const boundaryRect = window.location.hostname.includes("grok.com") 
-      ? containerRect 
-      : inputContainer.parentElement.getBoundingClientRect();
+    const onPointerDown = (e) => {
+        if (e.button !== 0) return;
+        if (document.getElementById('promptstash-popup')) return;
 
-    let newLeft = e.clientX - offsetX;
-    let newTop = e.clientY - offsetY;
-    let maxMinOffset = 0.3 * widgetRect.width;
+        e.preventDefault();
+        isDragging = true;
+        dragStarted = false;
+        startX = e.clientX;
+        startY = e.clientY;
 
-    newLeft = Math.max(boundaryRect.left + window.scrollX - maxMinOffset, Math.min(newLeft, boundaryRect.right + window.scrollX - widgetRect.width + maxMinOffset));
-    newTop = Math.max(boundaryRect.top + window.scrollY - maxMinOffset, Math.min(newTop, boundaryRect.bottom + window.scrollY - widgetRect.height + maxMinOffset));
+        const rect = widget.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
 
-    element.style.left = `${newLeft}px`;
-    element.style.top = `${newTop}px`;
+        initialLeft = rect.left - containerRect.left;
+        initialTop = rect.top - containerRect.top;
 
-    // Calculate offset from bottom-right corner
-    const newOffsetX = newLeft - (containerRect.right + window.scrollX);
-    const newOffsetY = newTop - (containerRect.top + window.scrollY);
-    onPositionChange({ x: newOffsetX, y: newOffsetY });
-  }, { capture: true }); // Capture phase for iframe compatibility
+        widget.style.left = `${initialLeft}px`;
+        widget.style.top = `${initialTop}px`;
+        widget.style.right = 'auto';
 
-  window.addEventListener('pointerup', () => {
-    isDragging = false;
-    element.style.cursor = ''; // Reset cursor
-  }, { capture: true });
+        window.addEventListener('pointermove', onPointerMove);
+        window.addEventListener('pointerup', onPointerUp);
+    };
 
-  window.addEventListener('pointercancel', () => {
-    // Handle interrupted drags
-    isDragging = false;
-    element.style.cursor = ''; // Reset cursor
-  }, { capture: true });
+    const onPointerMove = (e) => {
+        if (!isDragging) return;
+        if (!dragStarted && (Math.abs(e.clientX - startX) > 5 || Math.abs(e.clientY - startY) > 5)) {
+            dragStarted = true;
+            widget.style.cursor = 'grabbing';
+        }
 
-  // Observe popup creation dynamically
-  const observer = new MutationObserver(() => {
-    const popup = document.getElementById('promptstash-popup');
-    if (popup && !popup.dataset.pointerenterAttached) {
-      popup.addEventListener('pointerenter', () => {
+        if (dragStarted) {
+            e.preventDefault();
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+
+            let newLeft = initialLeft + dx;
+            let newTop = initialTop + dy;
+
+            newLeft = Math.max(0, Math.min(newLeft, container.offsetWidth - widget.offsetWidth));
+            newTop = Math.max(0, Math.min(newTop, container.offsetHeight - widget.offsetHeight));
+
+            widget.style.left = `${newLeft}px`;
+            widget.style.top = `${newTop}px`;
+        }
+    };
+
+    const onPointerUp = (e) => {
+        if (!isDragging) return;
+
+        if (dragStarted) {
+            const finalLeft = parseFloat(widget.style.left);
+            const newRight = container.offsetWidth - finalLeft - widget.offsetWidth;
+            
+            const positionToSave = {
+                right: `${newRight}px`,
+                top: widget.style.top
+            };
+
+            // *** Save using the specific key ***
+            chrome.storage.local.set({ [storageKey]: positionToSave }, () => {
+                console.log(`PromptStash: Position saved for key: ${storageKey}`);
+            });
+
+            widget.style.right = positionToSave.right;
+            widget.style.left = 'auto';
+        } else {
+            // Click logic
+            if (widget.associatedField && isFieldValid(widget.associatedField)) {
+                widget.associatedField.focus();
+                lastFocusedField = widget.associatedField;
+            }
+            chrome.runtime.sendMessage({ action: "togglePopup" });
+        }
+
         isDragging = false;
-        element.style.cursor = ''; // Reset cursor
-      });
-      popup.dataset.pointerenterAttached = 'true'; // Prevent multiple listeners
-    }
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
+        widget.style.cursor = 'pointer';
+
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+    };
+
+    widget.addEventListener('pointerdown', onPointerDown);
 }
 
-// Track widget creation and current input field/container
+// Clean up widget resources
+function cleanupWidget(widget) {
+  if (widget.resizeObserver) {
+    widget.resizeObserver.disconnect();
+  }
+  if (widget.resizeListener) {
+    window.removeEventListener('resize', widget.resizeListener);
+  }
+  if (widget.parentNode) {
+    widget.remove();
+  }
+}
+
+// Manage widgets for all editable elements
+function manageWidgets() {
+  // If the popup is open, do nothing. This prevents the widget from being
+  // destroyed and recreated, which would reset its position.
+  if (document.getElementById('promptstash-popup')) {
+    return;
+  }
+  // --- END OF ADDITION --- >>>
+  const editableElements = findAllEditableElements();
+  const currentWidgets = new Set(widgetManager.widgets.keys());
+  
+
+  const unstableElementCache = new Map(); // element -> frameCount missed
+
+  for (const element of currentWidgets) {
+    if (!editableElements.includes(element)) {
+      const count = unstableElementCache.get(element) || 0;
+      if (count >= 3 || !isFieldValid(element)) {
+        const widget = widgetManager.widgets.get(element);
+        if (widget) {
+          cleanupWidget(widget);
+          widgetManager.widgets.delete(element);
+        }
+        unstableElementCache.delete(element);
+      } else {
+        unstableElementCache.set(element, count + 1);
+      }
+    } else {
+      unstableElementCache.delete(element); // Reset on presence
+    }
+  }
+  
+  // Create widgets for new editable elements
+  for (const element of editableElements) {
+    const widgetId = generateWidgetId(element);
+    const widgetExist = document.getElementById(widgetId)
+    if (!widgetManager.widgets.has(element)||widgetExist === null) {
+      const container = findInputContainer(element);
+      if (container) {
+        const widget = createWidget(element, container);
+        widgetManager.widgets.set(element, widget);
+      }
+    } else {
+      // Update existing widget position if needed
+      const widget = widgetManager.widgets.get(element);
+      const container = findInputContainer(element);
+      if (widget && container && widget.updatePosition) {
+        const currentRect = container.getBoundingClientRect();
+        if (!widget.previousContainerRect || !rectsAreEqual(widget.previousContainerRect, currentRect)) {
+          widget.updatePosition();
+          widget.previousContainerRect = currentRect;
+        }
+      }
+    }
+  }
+  
+  // Update primary field tracking for backward compatibility
+  const primaryField = findPrimaryInputField();
+  if (primaryField) {
+    widgetManager.currentInputField = primaryField;
+    widgetManager.currentInputContainer = findInputContainer(primaryField);
+    cachedInputField = primaryField;
+    cachedInputContainer = widgetManager.currentInputContainer;
+    widgetManager.widgetCreated = widgetManager.widgets.size > 0;
+  }
+}
+
+// Track widget creation and current input field/container (kept for compatibility)
 let currentInputField = null;
 let currentInputContainer = null;
 let widget = null;
@@ -672,9 +885,12 @@ function throttle(func, wait) {
   };
 }
 
-// Attempt to create or update widget for the primary input field
+// Enhanced widget creation and management
 const tryCreateWidget = debounce(function () {
-  // Find the primary input field and its container
+  // Use new widget management system
+  manageWidgets();
+  
+  // Maintain backward compatibility with original logic
   let newInputField = findPrimaryInputField();
   let newInputContainer = findInputContainer(newInputField);
   
@@ -692,41 +908,25 @@ const tryCreateWidget = debounce(function () {
   // If a new valid primary input field and container are found
   if (newInputField && newInputContainer) {
     if (!widgetCreated) {
-      // Create widget for the first time
-      widget = createWidget(newInputField, newInputContainer);
+      // Create widget for the first time (this is now handled by manageWidgets)
       currentInputField = newInputField;
       currentInputContainer = newInputContainer;
       cachedInputField = newInputField;
       cachedInputContainer = newInputContainer;
       widgetCreated = true;
+      // Get the widget from the new system
+      widget = widgetManager.widgets.get(newInputField);
       // console.log("Widget created for primary input field and container:", newInputField, newInputContainer);
     } else if (newInputField !== currentInputField || newInputContainer !== currentInputContainer) {
-      // Input field or container changed, update widget
-      if (widget) {
-        // Clean up existing widget resources
-        if (widget.resizeObserver) {
-          widget.resizeObserver.disconnect();
-        }
-        if (widget.resizeListener) {
-          window.removeEventListener('resize', widget.resizeListener);
-        }
-        widget.remove();
-      }
-      // Create new widget for the updated primary input field and container
-      widget = createWidget(newInputField, newInputContainer);
+      // Input field or container changed, this is now handled by manageWidgets
       currentInputField = newInputField;
       currentInputContainer = newInputContainer;
       cachedInputField = newInputField;
       widgetCreated = true;
+      widget = widgetManager.widgets.get(newInputField);
     } else {
-      // Check for position changes in the same input container (e.g., ChatGPT input field moving)
-      if (widgetCreated && widget && newInputContainer) {
-        const currentRect = newInputContainer.getBoundingClientRect();
-        if (!widget.previousContainerRect || !rectsAreEqual(widget.previousContainerRect, currentRect)) {
-          widget.updatePosition(); // Reposition widget if container's bounding rect changes
-          widget.previousContainerRect = currentRect; // Update stored rect for next comparison
-        }
-      }
+      // Check for position changes in the same input container (handled by manageWidgets)
+      widget = widgetManager.widgets.get(newInputField);
     }
   }
 }, 150); // Debounce delay for dynamic DOM updates
