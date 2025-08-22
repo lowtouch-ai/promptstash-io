@@ -129,11 +129,26 @@
       </button>
     </div>
     <div class="position-relative">
-      <textarea id="promptArea" class="form-control rounded-2 px-3 py-2" placeholder="Edit your prompt here..." style="resize: none;" aria-label="Prompt text"></textarea>
-      <button id="clearPrompt" class="clrbtn position-absolute top-0 end-0" style="display: none;" aria-label="Clear prompt text" data-bs-toggle="tooltip" data-bs-placement="top" title="Clear prompt text">
-        <svg width="15" height="15"><use href="sprite.svg#clear"></use></svg>
-      </button>
-      <button id="fetchBtn2" class="btn btn-sm rounded-3 position-absolute top-50 start-50 translate-middle" aria-label="Fetch from website">Fetch prompt from chat</button>
+      <!-- Tabs Navigation -->
+      <ul class="nav nav-tabs" id="editorTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active" id="template-tab" data-bs-toggle="tab" data-bs-target="#template-panel" type="button" role="tab" aria-controls="template-panel" aria-selected="true">Template</button>
+        </li>
+      </ul>
+      
+      <!-- Tab Panels -->
+      <div class="tab-content" id="tabPanels">
+        <!-- Template Panel -->
+        <div class="tab-pane fade show active" id="template-panel" role="tabpanel" aria-labelledby="template-tab">
+          <div class="position-relative">
+            <div id="promptArea" class="form-control rounded-0 rounded-bottom px-3 py-2" contenteditable="true" data-placeholder="Edit your prompt here..." style="resize: none; min-height: calc(100vh - 360px); white-space: pre-wrap; overflow-y: auto;" aria-label="Prompt text"></div>
+            <button id="clearPrompt" class="clrbtn position-absolute top-0 end-0" style="display: none;" aria-label="Clear prompt text" data-bs-toggle="tooltip" data-bs-placement="top" title="Clear prompt text">
+              <svg width="15" height="15"><use href="sprite.svg#clear"></use></svg>
+            </button>
+            <button id="fetchBtn2" class="btn btn-sm rounded-3 position-absolute top-50 start-50 translate-middle" aria-label="Fetch from website">Fetch prompt from chat</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 

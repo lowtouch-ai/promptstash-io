@@ -370,12 +370,262 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentTheme = "light";
   let lastState = null;
   let nextIndex = 0;
+
+  // Function to update save button state based on template type
+  function updateSaveButtonState() {
+    const saveButtonWrapper = elements.saveBtn.parentElement;
+    
+    if (!selectedTemplateName) {
+      // New template - enable save button
+      elements.saveBtn.disabled = false;
+      elements.saveBtn.classList.remove('disabled');
+      elements.saveBtn.setAttribute('title', 'Save template');
+      saveButtonWrapper.setAttribute('title', 'Save template');
+      saveButtonWrapper.classList.remove('disabled-wrapper');
+      return;
+    }
+
+    chrome.storage.local.get(["templates"], (result) => {
+      const templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
+      const currentTemplate = templates.find(t => t.name === selectedTemplateName);
+      
+      if (currentTemplate && currentTemplate.type === "pre-built") {
+        // Default template - disable save button
+        elements.saveBtn.disabled = true;
+        elements.saveBtn.classList.add('disabled');
+        elements.saveBtn.removeAttribute('title'); // Remove from button
+        const tooltipText = 'Cannot save default templates. Use "Save As" to create a copy.';
+        saveButtonWrapper.setAttribute('title', tooltipText);
+        saveButtonWrapper.setAttribute('data-bs-toggle', 'tooltip');
+        saveButtonWrapper.setAttribute('data-bs-placement', 'top');
+        saveButtonWrapper.classList.add('disabled-wrapper');
+      } else {
+        // Custom template - enable save button
+        elements.saveBtn.disabled = false;
+        elements.saveBtn.classList.remove('disabled');
+        elements.saveBtn.setAttribute('title', 'Save changes to template');
+        saveButtonWrapper.setAttribute('title', 'Save changes to template');
+        saveButtonWrapper.classList.remove('disabled-wrapper');
+      }
+    });
+  }
   let isFullscreen = false;
   let recentIndices = [];
   let originalTagsBeforeEdit = null;
 
+  // State object for dynamic tabs
+  let tabsState = {
+    placeholders: [],
+    placeholderValues: {},
+    currentTemplate: ""
+  };
+
+  // Placeholder parser - finds {{placeholder}} patterns
+  function parsePlaceholders(templateContent) {
+    const placeholderRegex = /\{\{([^}]+)\}\}/g;
+    const placeholders = [];
+    let match;
+    
+    while ((match = placeholderRegex.exec(templateContent)) !== null) {
+      const placeholder = match[1].trim();
+      if (!placeholders.includes(placeholder)) {
+        placeholders.push(placeholder);
+      }
+    }
+    
+    return placeholders;
+  }
+
+  // Replace placeholders in template with actual values
+  function replacePlaceholders(templateContent, placeholderValues) {
+    let result = templateContent;
+    Object.keys(placeholderValues).forEach(placeholder => {
+      const value = placeholderValues[placeholder] || `{{${placeholder}}}`;
+      const regex = new RegExp(`\\{\\{\\s*${placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\}\\}`, 'g');
+      result = result.replace(regex, value);
+    });
+    return result;
+  }
+
+  // Update template preview with current placeholder values
+  function updateTemplatePreview() {
+    if (tabsState.currentTemplate && Object.keys(tabsState.placeholderValues).length > 0) {
+      const previewContent = replacePlaceholders(tabsState.currentTemplate, tabsState.placeholderValues);
+      
+      // Temporarily disable the input event listener to prevent tab rebuilding
+      const inputHandler = elements.promptArea.oninput;
+      elements.promptArea.oninput = null;
+      
+      elements.promptArea.textContent = previewContent;
+      saveState();
+      
+      // Re-enable the input event listener
+      elements.promptArea.oninput = inputHandler;
+    }
+  }
+
+  // Update tab title to show filled status
+  function updateTabTitle(placeholder, hasValue) {
+    const tabId = `placeholder-${placeholder.replace(/\s+/g, '-').toLowerCase()}`;
+    const tabButton = document.getElementById(tabId);
+    if (tabButton) {
+      if (hasValue) {
+        tabButton.classList.add('filled');
+        tabButton.textContent = `${placeholder} ✓`;
+      } else {
+        tabButton.classList.remove('filled');
+        tabButton.textContent = placeholder;
+      }
+    }
+  }
+
+  // Build tabs dynamically from placeholders
+  function buildTabsFromTemplate(templateContent) {
+    const placeholders = parsePlaceholders(templateContent);
+    
+    // Check if placeholders have actually changed to avoid unnecessary rebuilding
+    const placeholdersChanged = JSON.stringify(placeholders) !== JSON.stringify(tabsState.placeholders);
+    
+    if (!placeholdersChanged && tabsState.currentTemplate) {
+      // Placeholders haven't changed, just update the stored template content
+      tabsState.currentTemplate = templateContent;
+      return;
+    }
+    
+    tabsState.placeholders = placeholders;
+    tabsState.currentTemplate = templateContent;
+    
+    // Get tab containers
+    const tabsList = document.getElementById("editorTabs");
+    const tabPanels = document.getElementById("tabPanels");
+    
+    // Clear existing placeholder tabs (keep Template tab)
+    const existingTabs = tabsList.querySelectorAll('li:not(:first-child)');
+    existingTabs.forEach(tab => tab.remove());
+    
+    const existingPanels = tabPanels.querySelectorAll('.tab-pane:not(#template-panel)');
+    existingPanels.forEach(panel => panel.remove());
+    
+    // If no placeholders, hide only the tab navigation and adjust textarea height
+    if (placeholders.length === 0) {
+      tabsList.style.display = 'none';
+      // Revert textarea height to normal when tabs are hidden
+      const promptArea = document.getElementById('promptArea');
+      promptArea.style.height = 'calc(100vh - 320px)';
+      return;
+    } else {
+      tabsList.style.display = 'flex';
+      // Set textarea height for tab mode
+      const promptArea = document.getElementById('promptArea');
+      promptArea.style.height = 'calc(100vh - 360px)';
+    }
+    
+    // Create tabs for each placeholder
+    placeholders.forEach((placeholder, index) => {
+      const tabId = `placeholder-${placeholder.replace(/\s+/g, '-').toLowerCase()}`;
+      const panelId = `${tabId}-panel`;
+      
+      // Create tab
+      const tabItem = document.createElement('li');
+      tabItem.className = 'nav-item';
+      tabItem.setAttribute('role', 'presentation');
+      
+      const tabButton = document.createElement('button');
+      tabButton.className = 'nav-link';
+      tabButton.id = tabId;
+      tabButton.setAttribute('data-bs-toggle', 'tab');
+      tabButton.setAttribute('data-bs-target', `#${panelId}`);
+      tabButton.setAttribute('type', 'button');
+      tabButton.setAttribute('role', 'tab');
+      tabButton.setAttribute('aria-controls', panelId);
+      tabButton.setAttribute('aria-selected', 'false');
+      tabButton.textContent = placeholder;
+      
+      tabItem.appendChild(tabButton);
+      tabsList.appendChild(tabItem);
+      
+      // Create tab panel
+      const tabPanel = document.createElement('div');
+      tabPanel.className = 'tab-pane fade';
+      tabPanel.id = panelId;
+      tabPanel.setAttribute('role', 'tabpanel');
+      tabPanel.setAttribute('aria-labelledby', tabId);
+      
+      const panelContent = document.createElement('div');
+      panelContent.className = 'position-relative';
+      
+      const textarea = document.createElement('textarea');
+      textarea.className = 'form-control rounded-0 rounded-bottom px-3 py-2';
+      textarea.style.resize = 'none';
+      textarea.style.height = 'calc(100vh - 360px)';
+      textarea.style.minHeight = '100px';
+      textarea.placeholder = `Enter value for ${placeholder}...`;
+      textarea.setAttribute('aria-label', `Value for ${placeholder}`);
+      textarea.id = `${tabId}-textarea`;
+      
+      const clearButton = document.createElement('button');
+      clearButton.className = 'btn btn-sm btn-outline-secondary position-absolute top-0 end-0 m-2';
+      clearButton.textContent = 'Clear';
+      clearButton.setAttribute('aria-label', `Clear ${placeholder}`);
+      clearButton.style.zIndex = '10';
+      
+      // Add event listeners
+      textarea.addEventListener('input', () => {
+        tabsState.placeholderValues[placeholder] = textarea.value;
+        updateTabTitle(placeholder, textarea.value.trim() !== '');
+        updateTemplatePreview();
+        saveState();
+      });
+      
+      clearButton.addEventListener('click', () => {
+        textarea.value = '';
+        tabsState.placeholderValues[placeholder] = '';
+        updateTabTitle(placeholder, false);
+        updateTemplatePreview();
+        textarea.focus();
+        saveState();
+      });
+      
+      panelContent.appendChild(textarea);
+      panelContent.appendChild(clearButton);
+      tabPanel.appendChild(panelContent);
+      tabPanels.appendChild(tabPanel);
+      
+      // Initialize placeholder value
+      tabsState.placeholderValues[placeholder] = '';
+    });
+    
+    // Update Template tab to show original template
+    const templateTextarea = document.getElementById('promptArea');
+    templateTextarea.textContent = templateContent;
+    
+    // Load saved placeholder values if they exist
+    chrome.storage.local.get(['placeholderValues'], (result) => {
+      const savedValues = result.placeholderValues || {};
+      placeholders.forEach(placeholder => {
+        // Use existing value if already in memory, otherwise use saved value
+        const existingValue = tabsState.placeholderValues[placeholder];
+        const savedValue = savedValues[placeholder] || '';
+        const valueToUse = existingValue !== undefined ? existingValue : savedValue;
+        
+        tabsState.placeholderValues[placeholder] = valueToUse;
+        
+        // Update the textarea in the corresponding tab
+        const tabId = `placeholder-${placeholder.replace(/\s+/g, '-').toLowerCase()}`;
+        const textarea = document.getElementById(`${tabId}-textarea`);
+        if (textarea) {
+          textarea.value = valueToUse;
+          updateTabTitle(placeholder, valueToUse.trim() !== '');
+        }
+      });
+      
+      // Update template preview with loaded values
+      updateTemplatePreview();
+    });
+  }
+
   // Load popup state, recent indices, and initialize index with version check
-  chrome.storage.local.get(["popupState", "theme", "extensionVersion", "recentIndices", "templates", "nextIndex", "isFullscreen"], (result) => {
+  chrome.storage.local.get(["popupState", "theme", "extensionVersion", "recentIndices", "templates", "nextIndex", "isFullscreen", "placeholderValues"], (result) => {
     // Check if stored version matches current version
     const storedVersion = result.extensionVersion || "0.0.0";
     if (storedVersion !== EXTENSION_VERSION) {
@@ -403,9 +653,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const defaultText = `# Your Role*\n\n# Background Information\n*\n\n# Your Task\n*`;
     elements.templateName.value = state.name || getDefaultTemplateName(); // (0008732)
     elements.templateTags.value = state.tags || "";
-    elements.promptArea.value = state.content || defaultText;
+    elements.promptArea.textContent = state.content || defaultText;
     
     selectedTemplateName = state.selectedName || null;
+    
+    // Load saved placeholder values
+    tabsState.placeholderValues = result.placeholderValues || {};
     
     // NEW LOGIC: Use the saved flag to set the initial mode
     if (isTagsInEditMode || !selectedTemplateName) {
@@ -433,9 +686,16 @@ if (!templates) {
 }
 
     document.body.className = currentTheme;
-    elements.fetchBtn2.style.display = elements.promptArea.value ? "none" : "block";
-    elements.clearPrompt.style.display = elements.promptArea.value ? "block" : "none";
+    elements.fetchBtn2.style.display = elements.promptArea.textContent ? "none" : "block";
+    elements.clearPrompt.style.display = elements.promptArea.textContent ? "block" : "none";
+    
+    // Build tabs if there's content with placeholders
+    if (elements.promptArea.textContent) {
+      buildTabsFromTemplate(elements.promptArea.textContent);
+    }
+    
     loadTemplates();
+    updateSaveButtonState(); // Update save button state on initial load
   });
 
   // Save popup state
@@ -444,7 +704,7 @@ if (!templates) {
       popupState: {
         name: elements.templateName.value,
         tags: elements.templateTags.value,
-        content: elements.promptArea.value,
+        content: elements.promptArea.textContent,
         selectedName: selectedTemplateName,
         // NEW: Save the editing state of the tags field
         isTagsInEditMode: !elements.templateTags.classList.contains('hidden'),
@@ -452,7 +712,8 @@ if (!templates) {
       },
       theme: currentTheme,
       isFullscreen,
-      extensionVersion: EXTENSION_VERSION
+      extensionVersion: EXTENSION_VERSION,
+      placeholderValues: tabsState.placeholderValues
     };
     chrome.storage.local.set(state);
   }
@@ -467,7 +728,7 @@ if (!templates) {
     lastState = {
       name: elements.templateName.value,
       tags: elements.templateTags.value,
-      content: elements.promptArea.value,
+      content: elements.promptArea.textContent,
       selectedName: selectedTemplateName,
       isTagsInEditMode: !elements.templateTags.classList.contains('hidden'),
       originalTags: originalTagsBeforeEdit,
@@ -812,7 +1073,7 @@ elements.templateTags.addEventListener("input", debounce(() => {
   elements.closeBtn.addEventListener("click", () => {
     elements.templateName.value = "";
     elements.templateTags.value = "";
-    elements.promptArea.value = `# Your Role
+    elements.promptArea.textContent = `# Your Role
 * 
 
 # Background Information
@@ -823,7 +1084,9 @@ elements.templateTags.addEventListener("input", debounce(() => {
     selectedTemplateName = null;
     originalTagsBeforeEdit = null; 
     elements.fetchBtn2.style.display = "block";
+    elements.clearPrompt.style.display = "none";
     elements.searchBox.value = "";
+    updateSaveButtonState(); // Update save button state on close
     loadTemplates();
     saveState();
     chrome.runtime.sendMessage({ action: "closePopup" });
@@ -838,10 +1101,13 @@ elements.templateTags.addEventListener("input", debounce(() => {
     originalTagsBeforeEdit = null; // Ensure no revert state on a new template
     elements.templateName.value = getDefaultTemplateName(); // (0008732)
     elements.templateTags.value = "";
-    elements.promptArea.value = `# Your Role\n*\n\n# Background Information\n*\n\n# Your Task\n*`;
+    elements.promptArea.textContent = `# Your Role\n*\n\n# Background Information\n*\n\n# Your Task\n*`;
     
     // 2. Go to edit mode for tags
     switchToTagsEditMode();
+    
+    // 3. Update save button state for new template
+    updateSaveButtonState();
 
     // 3. Update button visibility
     elements.fetchBtn2.style.display = "none";
@@ -853,7 +1119,7 @@ elements.templateTags.addEventListener("input", debounce(() => {
       popupState: {
         name: "",
         tags: "",
-        content: elements.promptArea.value,
+        content: elements.promptArea.textContent,
         selectedName: null,
         isTagsInEditMode: true,
         originalTags: null
@@ -877,11 +1143,16 @@ elements.templateTags.addEventListener("input", debounce(() => {
   // Clear prompt area
   elements.clearPrompt.addEventListener("click", () => {
     storeLastState();
-    elements.promptArea.value = "";
+    elements.promptArea.textContent = "";
     elements.fetchBtn2.style.display = "block";
     elements.clearPrompt.style.display = "none";
-    elements.promptArea.focus();
+    // Hide tabs when prompt is cleared
+    const tabsList = document.getElementById("editorTabs");
+    tabsList.style.display = 'none';
+    const promptArea = document.getElementById('promptArea');
+    promptArea.style.height = 'calc(100vh - 320px)';
     saveState();
+    showToast("Prompt cleared.", 2000, "green", [], "clearPrompt");
   });
 
   // Clear all
@@ -889,14 +1160,20 @@ elements.templateTags.addEventListener("input", debounce(() => {
     storeLastState();
     elements.templateName.value = "";
     elements.templateTags.value = "";
-    elements.promptArea.value = "";
+    elements.promptArea.textContent = "";
     selectedTemplateName = null;
     originalTagsBeforeEdit = null; 
     switchToTagsEditMode(); 
     elements.fetchBtn2.style.display = "block";
     elements.clearPrompt.style.display = "none";
     elements.searchBox.value = "";
-    loadTemplates();
+    // Hide tabs when clearing all
+    const tabsList = document.getElementById("editorTabs");
+    tabsList.style.display = 'none';
+    const promptArea = document.getElementById('promptArea');
+    promptArea.style.height = 'calc(100vh - 320px)';
+    updateSaveButtonState(); // Update save button state on clear all
+    saveState();
     showToast("All fields cleared.", 2000, "green", [], "clearAll");
   });
 
@@ -937,13 +1214,53 @@ elements.promptArea.addEventListener("keydown", function (event) {
 });
 // --- PromptStash: Indentation with TAB/Shift+TAB (0008899) END ---
 
-  // Control fetchBtn2 visibility on input
-  elements.promptArea.addEventListener("input", () => {
+  // Control fetchBtn2 visibility on input and rebuild tabs
+  const promptInputHandler = () => {
     storeLastState();
-    elements.fetchBtn2.style.display = elements.promptArea.value ? "none" : "block";
-    elements.clearPrompt.style.display = elements.promptArea.value ? "block" : "none";
+    elements.fetchBtn2.style.display = elements.promptArea.textContent ? "none" : "block";
+    elements.clearPrompt.style.display = elements.promptArea.textContent ? "block" : "none";
+    
+    // Only rebuild tabs if placeholders have actually changed
+    if (elements.promptArea.textContent.trim()) {
+      // Check if we're currently in preview mode (template has replaced placeholders)
+      const hasPlaceholderValues = Object.keys(tabsState.placeholderValues || {}).some(key => 
+        tabsState.placeholderValues[key] && tabsState.placeholderValues[key].trim() !== ''
+      );
+      
+      // If we have placeholder values, we need to restore original template before parsing
+      let contentToCheck = elements.promptArea.textContent;
+      if (hasPlaceholderValues && tabsState.currentTemplate) {
+        // Use the original template for placeholder detection
+        contentToCheck = tabsState.currentTemplate;
+      }
+      
+      const currentPlaceholders = parsePlaceholders(contentToCheck);
+      const existingPlaceholders = tabsState.placeholders || [];
+      
+      // Only rebuild if placeholders are different
+      if (JSON.stringify(currentPlaceholders) !== JSON.stringify(existingPlaceholders)) {
+        // Update the original template and rebuild tabs
+        tabsState.currentTemplate = contentToCheck;
+        buildTabsFromTemplate(contentToCheck);
+      } else {
+        // Just update the stored template content without rebuilding
+        if (!hasPlaceholderValues) {
+          tabsState.currentTemplate = elements.promptArea.textContent;
+        }
+      }
+    } else {
+      // Hide tabs when no content but preserve placeholder values
+      const tabsList = document.getElementById("editorTabs");
+      tabsList.style.display = 'none';
+      const promptArea = document.getElementById('promptArea');
+      promptArea.style.height = 'calc(100vh - 320px)';
+      // Don't clear placeholder values - they should persist
+    }
+    
     saveState();
-  });
+  };
+  
+  elements.promptArea.addEventListener("input", promptInputHandler);
 
   // Handle key events for templateTags
   elements.templateTags.addEventListener("keydown", (event) => {
@@ -1011,6 +1328,18 @@ elements.promptArea.addEventListener("keydown", function (event) {
     chrome.storage.local.get(["templates"], (result) => {
       // console.log(result);
       let templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
+      
+      // Check if current template has placeholders and update tabs
+      const currentContent = elements.promptArea.textContent;
+      if (currentContent) {
+        buildTabsFromTemplate(currentContent);
+      } else {
+        // No content, hide tabs
+        const tabsList = document.getElementById("editorTabs");
+        tabsList.style.display = 'none';
+        const promptArea = document.getElementById('promptArea');
+        promptArea.style.height = 'calc(100vh - 320px)';
+      }
       elements.dropdownResults.innerHTML = "";
       elements.favoriteSuggestions.innerHTML = "";
 
@@ -1076,7 +1405,10 @@ elements.promptArea.addEventListener("keydown", function (event) {
               // RENDER THE CLICKABLE TAGS! This is the new function call.
               switchToTagsViewMode();
 
-                elements.promptArea.value = tmpl.content;
+                elements.promptArea.textContent = tmpl.content;
+                // Build tabs from template placeholders
+                buildTabsFromTemplate(tmpl.content);
+                
                 elements.searchBox.value = "";
                 elements.dropdownResults.innerHTML = "";
                 elements.fetchBtn2.style.display = tmpl.content ? "none" : "block";
@@ -1084,6 +1416,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
                 elements.searchOverlay.style.display = 'none';
                 elements.dropdownResults.style.display = 'none';
                 elements.dropdownResults.classList.remove("show");
+                updateSaveButtonState(); // Update save button state
                 saveState();
                 elements.promptArea.focus();
                 updateExportSingleBtnState();
@@ -1122,10 +1455,15 @@ elements.promptArea.addEventListener("keydown", function (event) {
             elements.templateTags.value = tagsArray.join(", ");
             // Render the clickable tags
             switchToTagsViewMode();
-            elements.promptArea.value = tmpl.content;
+            elements.promptArea.textContent = tmpl.content;
+            
+            // Build tabs from template placeholders
+            buildTabsFromTemplate(tmpl.content);
+            
             elements.searchBox.value = "";
             elements.fetchBtn2.style.display = tmpl.content ? "none" : "block";
             elements.clearPrompt.style.display = tmpl.content ? "block" : "none";
+            updateSaveButtonState(); // Update save button state
             saveState();
             elements.promptArea.focus();
           });
@@ -1217,7 +1555,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
         elements.templateTags.focus();
         return;
       }
-      const content = elements.promptArea.value;
+      const content = elements.promptArea.textContent;
 
       if (!content.trim()) {
         showToast("Prompt content is required to save a template.", 3000, "red", [], "save");
@@ -1240,7 +1578,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
       
         const isEdited = elements.templateName.value !== template.name ||
                         currentTagsString !== savedTagsString || // <-- THE CORRECTED COMPARISON
-                        elements.promptArea.value !== template.content;
+                        elements.promptArea.textContent !== template.content;
       
         if (!isEdited) {
           showToast("No changes to save.", 3000, "red", [], "save");
@@ -1311,7 +1649,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
       const isEditing = !!selectedTemplateName;
       const isRenamed = isEditing && elements.templateName.value !== selectedTemplateName;
       const noTags = !tagsInput.trim();
-      const hasContentChanges = isEditing && elements.promptArea.value !== templates.find(t => t.name === selectedTemplateName)?.content;
+      const hasContentChanges = isEditing && elements.promptArea.textContent !== templates.find(t => t.name === selectedTemplateName)?.content;
       const hasTagChanges = isEditing && sanitizeTags(elements.templateTags.value) !== templates.find(t => t.name === selectedTemplateName)?.tags;
 
       const getTemplateMessageWithIcons = () => {
@@ -1373,7 +1711,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
         elements.templateTags.focus();
         return;
       }
-      const content = elements.promptArea.value;
+      const content = elements.promptArea.textContent;
 
       if (!content.trim()) {
         showToast("Prompt content is required to save a template.", 3000, "red", [], "saveAs");
@@ -1419,7 +1757,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
       const newTemplate = {
         name,
         tags,
-        content: elements.promptArea.value,
+        content: elements.promptArea.textContent,
         type: "custom",
         favorite: false,
         index: nextIndex
@@ -1477,7 +1815,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
             }
             if (response && response.prompt) {
               storeLastState();
-              elements.promptArea.value = response.prompt;
+              elements.promptArea.textContent = response.prompt;
               elements.fetchBtn2.style.display = "none";
               elements.clearPrompt.style.display = "block";
               saveState();
@@ -1506,7 +1844,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
       function trySendPrompt() {
         chrome.tabs.sendMessage(tabId, {
           action: "sendPrompt",
-          prompt: elements.promptArea.value
+          prompt: elements.promptArea.textContent
         }, (response) => {
           clearTimeout(timeout);
           if (chrome.runtime.lastError) {
@@ -1590,7 +1928,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
                   elements.templateName.value = getDefaultTemplateName(); // (0008732)
                   elements.templateTags.value = "";
                   switchToTagsEditMode();
-                  elements.promptArea.value = `# Your Role
+                  elements.promptArea.textContent = `# Your Role
 * 
 
 # Background Information
@@ -1601,6 +1939,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
                   elements.searchBox.value = "";
                   elements.fetchBtn2.style.display = "block";
                   elements.clearPrompt.style.display = "none";
+                  updateSaveButtonState(); // Update save button state after delete
                   loadTemplates();
                   updateExportSingleBtnState(); // Export single template
                 }
@@ -1623,11 +1962,14 @@ elements.promptArea.addEventListener("keydown", function (event) {
     if (event.ctrlKey && event.key === "z" && lastState) {
       elements.templateName.value = lastState.name || "";
       elements.templateTags.value = lastState.tags || "";
-      elements.promptArea.value = lastState.content || "";
+      elements.promptArea.textContent = lastState.content || "";
       selectedTemplateName = lastState.selectedName || null;
       
       // Restore the tag UI state from the last state
       originalTagsBeforeEdit = lastState.originalTags || null;
+      
+      // Update save button state after undo
+      updateSaveButtonState();
 
       // Restore the full template list if it was part of the action
       if (lastState.templates) {
@@ -1636,8 +1978,8 @@ elements.promptArea.addEventListener("keydown", function (event) {
         });
         showToast("Action undone successfully.", 2000, "green", [], "undo");
       }
-      elements.fetchBtn2.style.display = elements.promptArea.value ? "none" : "block";
-      elements.clearPrompt.style.display = elements.promptArea.value ? "block" : "none";
+      elements.fetchBtn2.style.display = elements.promptArea.textContent ? "none" : "block";
+      elements.clearPrompt.style.display = elements.promptArea.textContent ? "block" : "none";
 
       // Set the correct tag UI mode based on the restored state
       if (lastState.isTagsInEditMode) {
