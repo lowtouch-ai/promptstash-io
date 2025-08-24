@@ -132,6 +132,7 @@ let overrideAnimation = false; // Flag to skip animation delay for overriding to
 
 // Initialize DOM elements
 document.addEventListener("DOMContentLoaded", () => {
+  
   // DOM elements
   const elements = {
     searchBox: document.getElementById("searchBox"),
@@ -420,12 +421,14 @@ document.addEventListener("DOMContentLoaded", () => {
     currentTemplate: ""
   };
 
-  // Placeholder parser - finds {{placeholder}} patterns
-  function parsePlaceholders(templateContent) {
+  let placeholderTracker = {};
+
+function parsePlaceholders(templateContent) {
     const placeholderRegex = /\{\{([^}]+)\}\}/g;
     const placeholders = [];
     let match;
     
+    // First, find regular {{placeholder}} patterns
     while ((match = placeholderRegex.exec(templateContent)) !== null) {
       const placeholder = match[1].trim();
       if (!placeholders.includes(placeholder)) {
@@ -433,9 +436,121 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
     
+    // Also find existing placeholder spans in the DOM
+    if (elements.promptArea) {
+      const existingSpans = elements.promptArea.querySelectorAll('.placeholder-marker[data-type]');
+      existingSpans.forEach(span => {
+        const type = span.getAttribute('data-type');
+        if (type && !placeholders.includes(type)) {
+          placeholders.push(type);
+        }
+      });
+    }
+    
     return placeholders;
-  }
+}
+// Convert {{placeholder}} syntax to span elements
+function convertPlaceholdersToSpans(templateContent) {
+  const placeholderRegex = /\{\{([^}]+)\}\}/g;
+  let convertedContent = templateContent;
+  let placeholderCounter = {};
+  
+  convertedContent = convertedContent.replace(placeholderRegex, (match, placeholder) => {
+    const trimmedPlaceholder = placeholder.trim();
+    
+    // Create unique ID for this placeholder instance
+    if (!placeholderCounter[trimmedPlaceholder]) {
+      placeholderCounter[trimmedPlaceholder] = 0;
+    }
+    placeholderCounter[trimmedPlaceholder]++;
+    
+    const uniqueId = `${trimmedPlaceholder}-${placeholderCounter[trimmedPlaceholder]}`;
+    
+    // Initialize tracker for this placeholder
+    if (!placeholderTracker[uniqueId]) {
+      placeholderTracker[uniqueId] = {
+        type: trimmedPlaceholder,
+        original: match,
+        current: match,
+        isModified: false
+      };
+    }
+    
+    return `<span class="placeholder-marker" data-type="${trimmedPlaceholder}" data-id="${uniqueId}" contenteditable="true">${match}</span>`;
+  });
+  
+  return convertedContent;
+}
 
+// Extract final content with span values preserved
+function extractContentWithSpanValues() {
+  const promptArea = elements.promptArea;
+  const spans = promptArea.querySelectorAll('.placeholder-marker[data-id]');
+  
+  // Update tracker with current span values
+  spans.forEach(span => {
+    const id = span.getAttribute('data-id');
+    const currentText = span.textContent;
+    
+    if (placeholderTracker[id]) {
+      placeholderTracker[id].current = currentText;
+      placeholderTracker[id].isModified = (currentText !== placeholderTracker[id].original);
+      
+      // Update visual styling
+      if (placeholderTracker[id].isModified) {
+        span.style.backgroundColor = '#d1ecf1';
+        span.style.borderColor = '#bee5eb';
+      } else {
+        span.style.backgroundColor = '#fff3cd';
+        span.style.borderColor = '#ffeaa7';
+      }
+    }
+  });
+  
+  // Return the HTML content with spans preserved
+  return promptArea.innerHTML;
+}
+// Update placeholder value in all instances of that type
+function updatePlaceholderValue(placeholderType, newValue) {
+  if (!newValue.trim()) return;
+  
+  const spans = elements.promptArea.querySelectorAll(`[data-type="${placeholderType}"]`);
+  
+  spans.forEach(span => {
+    const id = span.getAttribute('data-id');
+    
+    // Update the visual content
+    span.textContent = newValue;
+    
+    // Update tracker
+    if (placeholderTracker[id]) {
+      placeholderTracker[id].current = newValue;
+      placeholderTracker[id].isModified = (newValue !== placeholderTracker[id].original);
+      
+      // Update styling
+      span.style.backgroundColor = '#d1ecf1';
+      span.style.borderColor = '#bee5eb';
+    }
+  });
+}
+// Reset specific placeholder type to original values
+function resetPlaceholderType(placeholderType) {
+  const spans = elements.promptArea.querySelectorAll(`[data-type="${placeholderType}"]`);
+  
+  spans.forEach(span => {
+    const id = span.getAttribute('data-id');
+    
+    if (placeholderTracker[id]) {
+      span.textContent = placeholderTracker[id].original;
+      placeholderTracker[id].current = placeholderTracker[id].original;
+      placeholderTracker[id].isModified = false;
+      
+      // Reset styling
+      span.style.backgroundColor = '#fff3cd';
+      span.style.borderColor = '#ffeaa7';
+    }
+  });
+}
   // Replace placeholders in template with actual values
   function replacePlaceholders(templateContent, placeholderValues) {
     let result = templateContent;
@@ -479,153 +594,311 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Build tabs dynamically from placeholders
-  function buildTabsFromTemplate(templateContent) {
-    const placeholders = parsePlaceholders(templateContent);
-    
-    // Check if placeholders have actually changed to avoid unnecessary rebuilding
-    const placeholdersChanged = JSON.stringify(placeholders) !== JSON.stringify(tabsState.placeholders);
-    
-    if (!placeholdersChanged && tabsState.currentTemplate) {
-      // Placeholders haven't changed, just update the stored template content
-      tabsState.currentTemplate = templateContent;
-      return;
-    }
-    
-    tabsState.placeholders = placeholders;
-    tabsState.currentTemplate = templateContent;
-    
-    // Get tab containers
-    const tabsList = document.getElementById("editorTabs");
-    const tabPanels = document.getElementById("tabPanels");
-    
-    // Clear existing placeholder tabs (keep Template tab)
-    const existingTabs = tabsList.querySelectorAll('li:not(:first-child)');
-    existingTabs.forEach(tab => tab.remove());
-    
-    const existingPanels = tabPanels.querySelectorAll('.tab-pane:not(#template-panel)');
-    existingPanels.forEach(panel => panel.remove());
-    
-    // If no placeholders, hide only the tab navigation and adjust textarea height
-    if (placeholders.length === 0) {
-      tabsList.style.display = 'none';
-      // Revert textarea height to normal when tabs are hidden
-      const promptArea = document.getElementById('promptArea');
-      promptArea.style.height = 'calc(100vh - 320px)';
-      return;
-    } else {
-      tabsList.style.display = 'flex';
-      // Set textarea height for tab mode
-      const promptArea = document.getElementById('promptArea');
-      promptArea.style.height = 'calc(100vh - 360px)';
-    }
-    
-    // Create tabs for each placeholder
-    placeholders.forEach((placeholder, index) => {
-      const tabId = `placeholder-${placeholder.replace(/\s+/g, '-').toLowerCase()}`;
-      const panelId = `${tabId}-panel`;
-      
-      // Create tab
-      const tabItem = document.createElement('li');
-      tabItem.className = 'nav-item';
-      tabItem.setAttribute('role', 'presentation');
-      
-      const tabButton = document.createElement('button');
-      tabButton.className = 'nav-link';
-      tabButton.id = tabId;
-      tabButton.setAttribute('data-bs-toggle', 'tab');
-      tabButton.setAttribute('data-bs-target', `#${panelId}`);
-      tabButton.setAttribute('type', 'button');
-      tabButton.setAttribute('role', 'tab');
-      tabButton.setAttribute('aria-controls', panelId);
-      tabButton.setAttribute('aria-selected', 'false');
-      tabButton.textContent = placeholder;
-      
-      tabItem.appendChild(tabButton);
-      tabsList.appendChild(tabItem);
-      
-      // Create tab panel
-      const tabPanel = document.createElement('div');
-      tabPanel.className = 'tab-pane fade';
-      tabPanel.id = panelId;
-      tabPanel.setAttribute('role', 'tabpanel');
-      tabPanel.setAttribute('aria-labelledby', tabId);
-      
-      const panelContent = document.createElement('div');
-      panelContent.className = 'position-relative';
-      
-      const textarea = document.createElement('textarea');
-      textarea.className = 'form-control rounded-0 rounded-bottom px-3 py-2';
-      textarea.style.resize = 'none';
-      textarea.style.height = 'calc(100vh - 360px)';
-      textarea.style.minHeight = '100px';
-      textarea.placeholder = `Enter value for ${placeholder}...`;
-      textarea.setAttribute('aria-label', `Value for ${placeholder}`);
-      textarea.id = `${tabId}-textarea`;
-      
-      const clearButton = document.createElement('button');
-      clearButton.className = 'btn btn-sm btn-outline-secondary position-absolute top-0 end-0 m-2';
-      clearButton.textContent = 'Clear';
-      clearButton.setAttribute('aria-label', `Clear ${placeholder}`);
-      clearButton.style.zIndex = '10';
-      
-      // Add event listeners
-      textarea.addEventListener('input', () => {
-        tabsState.placeholderValues[placeholder] = textarea.value;
-        updateTabTitle(placeholder, textarea.value.trim() !== '');
-        updateTemplatePreview();
-        saveState();
-      });
-      
-      clearButton.addEventListener('click', () => {
-        textarea.value = '';
-        tabsState.placeholderValues[placeholder] = '';
-        updateTabTitle(placeholder, false);
-        updateTemplatePreview();
-        textarea.focus();
-        saveState();
-      });
-      
-      panelContent.appendChild(textarea);
-      panelContent.appendChild(clearButton);
-      tabPanel.appendChild(panelContent);
-      tabPanels.appendChild(tabPanel);
-      
-      // Initialize placeholder value
-      tabsState.placeholderValues[placeholder] = '';
-    });
-    
-    // Update Template tab to show original template
-    const templateTextarea = document.getElementById('promptArea');
-    templateTextarea.textContent = templateContent;
-    
-    // Load saved placeholder values if they exist
-    chrome.storage.local.get(['placeholderValues'], (result) => {
-      const savedValues = result.placeholderValues || {};
-      placeholders.forEach(placeholder => {
-        // Use existing value if already in memory, otherwise use saved value
-        const existingValue = tabsState.placeholderValues[placeholder];
-        const savedValue = savedValues[placeholder] || '';
-        const valueToUse = existingValue !== undefined ? existingValue : savedValue;
-        
-        tabsState.placeholderValues[placeholder] = valueToUse;
-        
-        // Update the textarea in the corresponding tab
-        const tabId = `placeholder-${placeholder.replace(/\s+/g, '-').toLowerCase()}`;
-        const textarea = document.getElementById(`${tabId}-textarea`);
-        if (textarea) {
-          textarea.value = valueToUse;
-          updateTabTitle(placeholder, valueToUse.trim() !== '');
-        }
-      });
-      
-      // Update template preview with loaded values
-      updateTemplatePreview();
-    });
+// Enhanced buildTabsFromTemplate function
+function buildTabsFromTemplate(templateContent) {
+  // Convert {{placeholders}} to spans if they exist
+  const contentWithSpans = convertPlaceholdersToSpans(templateContent);
+  
+  // Update promptArea with span-enhanced content
+  if (contentWithSpans !== templateContent) {
+    elements.promptArea.innerHTML = contentWithSpans;
   }
+  
+  const placeholders = parsePlaceholders(templateContent);
+  
+  // Check if placeholders have actually changed to avoid unnecessary rebuilding
+  const placeholdersChanged = JSON.stringify(placeholders) !== JSON.stringify(tabsState.placeholders);
+  
+  if (!placeholdersChanged && tabsState.currentTemplate) {
+    tabsState.currentTemplate = templateContent;
+    return;
+  }
+  
+  tabsState.placeholders = placeholders;
+  tabsState.currentTemplate = templateContent;
+  
+  const tabsList = document.getElementById("editorTabs");
+  const tabPanels = document.getElementById("tabPanels");
+  
+  // Clear existing placeholder tabs (keep Template tab)
+  const existingTabs = tabsList.querySelectorAll('li:not(:first-child)');
+  existingTabs.forEach(tab => tab.remove());
+  
+  const existingPanels = tabPanels.querySelectorAll('.tab-pane:not(#template-panel)');
+  existingPanels.forEach(panel => panel.remove());
+  
+  if (placeholders.length === 0) {
+    tabsList.style.display = 'none';
+    elements.promptArea.style.height = 'calc(100vh - 320px)';
+    return;
+  } else {
+    tabsList.style.display = 'flex';
+    elements.promptArea.style.height = 'calc(100vh - 360px)';
+  }
+  
+  // Create tabs for each placeholder type
+  placeholders.forEach((placeholder, index) => {
+    const tabId = `placeholder-${placeholder.replace(/\s+/g, '-').toLowerCase()}`;
+    const panelId = `${tabId}-panel`;
+    
+    // Create tab
+    const tabItem = document.createElement('li');
+    tabItem.className = 'nav-item';
+    tabItem.setAttribute('role', 'presentation');
+    
+    const tabButton = document.createElement('button');
+    tabButton.className = 'nav-link';
+    tabButton.id = tabId;
+    tabButton.setAttribute('data-bs-toggle', 'tab');
+    tabButton.setAttribute('data-bs-target', `#${panelId}`);
+    tabButton.setAttribute('type', 'button');
+    tabButton.setAttribute('role', 'tab');
+    tabButton.setAttribute('aria-controls', panelId);
+    tabButton.setAttribute('aria-selected', 'false');
+    tabButton.textContent = placeholder;
+    
+    tabItem.appendChild(tabButton);
+    tabsList.appendChild(tabItem);
+    
+    // Create tab panel
+    const tabPanel = document.createElement('div');
+    tabPanel.className = 'tab-pane fade';
+    tabPanel.id = panelId;
+    tabPanel.setAttribute('role', 'tabpanel');
+    tabPanel.setAttribute('aria-labelledby', tabId);
+    
+    const panelContent = document.createElement('div');
+    panelContent.className = 'position-relative';
+    
+    const textarea = document.createElement('textarea');
+    textarea.className = 'form-control rounded-0 rounded-bottom px-3 py-2';
+    textarea.style.resize = 'none';
+    textarea.style.height = 'calc(100vh - 360px)';
+    textarea.style.minHeight = '100px';
+    textarea.placeholder = `Enter value for ${placeholder}...`;
+    textarea.setAttribute('aria-label', `Value for ${placeholder}`);
+    textarea.id = `${tabId}-textarea`;
+    
+    const updateButton = document.createElement('button');
+    updateButton.className = 'btn btn-sm btn-primary position-absolute top-0 end-0 m-2 me-5';
+    updateButton.textContent = 'Update';
+    updateButton.setAttribute('aria-label', `Update ${placeholder}`);
+    updateButton.style.zIndex = '10';
+    
+    const resetButton = document.createElement('button');
+    resetButton.className = 'btn btn-sm btn-outline-secondary position-absolute top-0 end-0 m-2';
+    resetButton.textContent = 'Reset';
+    resetButton.setAttribute('aria-label', `Reset ${placeholder}`);
+    resetButton.style.zIndex = '10';
+    
+    // Add event listeners
+    updateButton.addEventListener('click', () => {
+      const value = textarea.value.trim();
+      if (value) {
+        updatePlaceholderValue(placeholder, value);
+        updateTabTitle(placeholder, true);
+        saveState();
+      }
+    });
+    
+    resetButton.addEventListener('click', () => {
+      resetPlaceholderType(placeholder);
+      textarea.value = '';
+      updateTabTitle(placeholder, false);
+      textarea.focus();
+      saveState();
+    });
+    
+    // Update on Enter key
+    textarea.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        updateButton.click();
+      }
+    });
+    
+    // Update tab title on input
+    textarea.addEventListener('input', () => {
+      updateTabTitle(placeholder, textarea.value.trim() !== '');
+    });
+    
+    panelContent.appendChild(textarea);
+    panelContent.appendChild(updateButton);
+    panelContent.appendChild(resetButton);
+    tabPanel.appendChild(panelContent);
+    tabPanels.appendChild(tabPanel);
+    
+    // Load saved values if they exist
+    const savedValue = tabsState.placeholderValues[placeholder] || '';
+    textarea.value = savedValue;
+    updateTabTitle(placeholder, savedValue.trim() !== '');
+  });
+}
+// Enhanced prompt input handler
+const enhancedPromptInputHandler = () => {
+  storeLastState();
+  elements.fetchBtn2.style.display = elements.promptArea.textContent ? "none" : "block";
+  elements.clearPrompt.style.display = elements.promptArea.textContent ? "block" : "none";
+  
+  // Track span changes
+  const spans = elements.promptArea.querySelectorAll('.placeholder-marker[data-id]');
+  spans.forEach(span => {
+    const id = span.getAttribute('data-id');
+    const currentText = span.textContent;
+    
+    if (placeholderTracker[id] && placeholderTracker[id].current !== currentText) {
+      placeholderTracker[id].current = currentText;
+      placeholderTracker[id].isModified = (currentText !== placeholderTracker[id].original);
+      
+      // Update styling
+      if (placeholderTracker[id].isModified) {
+        span.style.backgroundColor = '#d1ecf1';
+        span.style.borderColor = '#bee5eb';
+      } else {
+        span.style.backgroundColor = '#fff3cd';
+        span.style.borderColor = '#ffeaa7';
+      }
+    }
+  });
+  
+  // Handle tab rebuilding
+  if (elements.promptArea.textContent.trim()) {
+    const contentToCheck = elements.promptArea.innerHTML; // Use innerHTML to preserve spans
+    const currentPlaceholders = parsePlaceholders(contentToCheck);
+    const existingPlaceholders = tabsState.placeholders || [];
+    
+    if (JSON.stringify(currentPlaceholders) !== JSON.stringify(existingPlaceholders)) {
+      tabsState.currentTemplate = contentToCheck;
+      buildTabsFromTemplate(contentToCheck);
+    }
+  } else {
+    const tabsList = document.getElementById("editorTabs");
+    tabsList.style.display = 'none';
+    elements.promptArea.style.height = 'calc(100vh - 320px)';
+  }
+  
+  saveState();
+};
+// Enhanced save state function
+function enhancedSaveState() {
+  const state = {
+    popupState: {
+      name: elements.templateName.value,
+      tags: elements.templateTags.value,
+      content: extractContentWithSpanValues(), // Use enhanced content extraction
+      selectedName: selectedTemplateName,
+      isTagsInEditMode: !elements.templateTags.classList.contains('hidden'),
+      originalTags: originalTagsBeforeEdit,
+    },
+    theme: currentTheme,
+    isFullscreen,
+    extensionVersion: EXTENSION_VERSION,
+    placeholderValues: tabsState.placeholderValues,
+    placeholderTracker: placeholderTracker // Save tracker state
+  };
+  chrome.storage.local.set(state);
+}
 
+// Add CSS for placeholder styling
+function addPlaceholderStyles() {
+  if (!document.getElementById('placeholder-styles')) {
+    const style = document.createElement('style');
+    style.id = 'placeholder-styles';
+    style.textContent = `
+      .placeholder-marker {
+        background-color: #fff3cd;
+        border: 1px solid #ffeaa7;
+        border-radius: 3px;
+        padding: 1px 4px;
+        margin: 0 1px;
+        display: inline-block;
+        position: relative;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+      
+      .placeholder-marker:hover {
+        background-color: #fff3a0;
+      }
+      
+      .placeholder-marker::after {
+        content: attr(data-type);
+        position: absolute;
+        top: -25px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #333;
+        color: white;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 10px;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+        z-index: 1000;
+      }
+      
+      .placeholder-marker:hover::after {
+        opacity: 1;
+      }
+      
+      .placeholder-marker[contenteditable]:focus {
+        outline: 2px solid #007bff;
+        outline-offset: 1px;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+}
+
+// Initialize enhanced placeholder system
+function initializeEnhancedPlaceholderSystem() {
+  addPlaceholderStyles();
+  
+  // Replace the existing prompt input handler
+  elements.promptArea.removeEventListener("input", promptInputHandler);
+  elements.promptArea.addEventListener("input", enhancedPromptInputHandler);
+  
+  // Replace saveState function
+  saveState = enhancedSaveState;
+  
+  // Add prevention for accidental deletion of placeholder spans
+  elements.promptArea.addEventListener('keydown', function(e) {
+    const selection = window.getSelection();
+    if (selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      const container = range.commonAncestorContainer;
+      
+      // Check if we're trying to delete a placeholder marker
+      if (container.nodeType === Node.ELEMENT_NODE && container.classList.contains('placeholder-marker')) {
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          e.preventDefault();
+          showToast('Cannot delete placeholder markers. Use the tabs below to modify them.', 3000, 'red', [], 'placeholder');
+        }
+      }
+      
+      // Also check if parent is a placeholder marker
+      if (container.parentNode && container.parentNode.classList && container.parentNode.classList.contains('placeholder-marker')) {
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          if (selection.toString() === container.parentNode.textContent) {
+            e.preventDefault();
+            showToast('Cannot delete entire placeholder. Use the tabs below to modify them.', 3000, 'red', [], 'placeholder');
+          }
+        }
+      }
+    }
+  });
+  
+  // Load placeholder tracker from storage
+  chrome.storage.local.get(['placeholderTracker'], (result) => {
+    if (result.placeholderTracker) {
+      placeholderTracker = result.placeholderTracker;
+    }
+  });
+}
   // Load popup state, recent indices, and initialize index with version check
-  chrome.storage.local.get(["popupState", "theme", "extensionVersion", "recentIndices", "templates", "nextIndex", "isFullscreen", "placeholderValues"], (result) => {
+  chrome.storage.local.get(["popupState", "theme", "extensionVersion", "recentIndices", "templates", "nextIndex", "isFullscreen", "placeholderValues","placeholderTracker"], (result) => {
     // Check if stored version matches current version
     const storedVersion = result.extensionVersion || "0.0.0";
     if (storedVersion !== EXTENSION_VERSION) {
@@ -696,6 +969,9 @@ if (!templates) {
     
     loadTemplates();
     updateSaveButtonState(); // Update save button state on initial load
+    if (result.placeholderTracker) {
+      placeholderTracker = result.placeholderTracker;
+    }
   });
 
   // Save popup state
@@ -704,16 +980,16 @@ if (!templates) {
       popupState: {
         name: elements.templateName.value,
         tags: elements.templateTags.value,
-        content: elements.promptArea.textContent,
+        content: extractContentWithSpanValues(), // Changed this line
         selectedName: selectedTemplateName,
-        // NEW: Save the editing state of the tags field
         isTagsInEditMode: !elements.templateTags.classList.contains('hidden'),
         originalTags: originalTagsBeforeEdit,
       },
       theme: currentTheme,
       isFullscreen,
       extensionVersion: EXTENSION_VERSION,
-      placeholderValues: tabsState.placeholderValues
+      placeholderValues: tabsState.placeholderValues,
+      placeholderTracker: placeholderTracker // Add this line
     };
     chrome.storage.local.set(state);
   }
@@ -1260,7 +1536,9 @@ elements.promptArea.addEventListener("keydown", function (event) {
     saveState();
   };
   
-  elements.promptArea.addEventListener("input", promptInputHandler);
+// Replace the existing prompt input handler after initialization
+elements.promptArea.removeEventListener("input", promptInputHandler);
+elements.promptArea.addEventListener("input", enhancedPromptInputHandler);
 
   // Handle key events for templateTags
   elements.templateTags.addEventListener("keydown", (event) => {
@@ -2038,4 +2316,5 @@ elements.promptArea.addEventListener("keydown", function (event) {
       focused.click();
     }
   });
+  initializeEnhancedPlaceholderSystem();
 });
