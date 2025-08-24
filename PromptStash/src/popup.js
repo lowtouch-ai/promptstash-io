@@ -423,28 +423,33 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let placeholderTracker = {};
 
-function parsePlaceholders(templateContent) {
+  function parsePlaceholders(templateContent) {
     const placeholderRegex = /\{\{([^}]+)\}\}/g;
     const placeholders = [];
     let match;
     
-    // First, find regular {{placeholder}} patterns
-    while ((match = placeholderRegex.exec(templateContent)) !== null) {
+    // First, find regular {{placeholder}} patterns in the raw content
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = templateContent;
+    const textContent = tempDiv.textContent || tempDiv.innerText || '';
+    
+    while ((match = placeholderRegex.exec(textContent)) !== null) {
       const placeholder = match[1].trim();
       if (!placeholders.includes(placeholder)) {
         placeholders.push(placeholder);
       }
     }
     
-    // Also find existing placeholder spans in the DOM
-    if (elements.promptArea) {
-      const existingSpans = elements.promptArea.querySelectorAll('.placeholder-marker[data-type]');
-      existingSpans.forEach(span => {
-        const type = span.getAttribute('data-type');
-        if (type && !placeholders.includes(type)) {
-          placeholders.push(type);
+    // Also find existing placeholder spans that still have {{}} format
+    if (typeof templateContent === 'string' && templateContent.includes('<span')) {
+      const spanRegex = /<span[^>]*data-type="([^"]*)"[^>]*>\{\{([^}]+)\}\}<\/span>/g;
+      let spanMatch;
+      while ((spanMatch = spanRegex.exec(templateContent)) !== null) {
+        const placeholder = spanMatch[2].trim();
+        if (!placeholders.includes(placeholder)) {
+          placeholders.push(placeholder);
         }
-      });
+      }
     }
     
     return placeholders;
@@ -741,23 +746,37 @@ function buildTabsFromTemplate(templateContent) {
 }
 // Enhanced prompt input handler
 // Enhanced prompt input handler
+// Enhanced prompt input handler
 const enhancedPromptInputHandler = () => {
   storeLastState();
   elements.fetchBtn2.style.display = elements.promptArea.textContent ? "none" : "block";
   elements.clearPrompt.style.display = elements.promptArea.textContent ? "block" : "none";
   
-  // Track span changes but don't rebuild if we're just editing existing spans
+  // Track span changes
   const spans = elements.promptArea.querySelectorAll('.placeholder-marker[data-id]');
-  let hasSpanChanges = false;
+  let placeholderTypeChanged = false;
   
   spans.forEach(span => {
     const id = span.getAttribute('data-id');
     const currentText = span.textContent;
+    const dataType = span.getAttribute('data-type');
     
-    if (placeholderTracker[id] && placeholderTracker[id].current !== currentText) {
+    if (placeholderTracker[id]) {
+      const wasOriginalFormat = placeholderTracker[id].current.startsWith('{{') && placeholderTracker[id].current.endsWith('}}');
+      const isOriginalFormat = currentText.startsWith('{{') && currentText.endsWith('}}');
+      
+      // Check if placeholder type changed (only for {{}} format)
+      if (isOriginalFormat) {
+        const newPlaceholderName = currentText.slice(2, -2).trim();
+        if (newPlaceholderName !== dataType) {
+          // Placeholder type changed, update data-type attribute
+          span.setAttribute('data-type', newPlaceholderName);
+          placeholderTypeChanged = true;
+        }
+      }
+      
       placeholderTracker[id].current = currentText;
       placeholderTracker[id].isModified = (currentText !== placeholderTracker[id].original);
-      hasSpanChanges = true;
       
       // Update styling
       if (placeholderTracker[id].isModified) {
@@ -770,19 +789,16 @@ const enhancedPromptInputHandler = () => {
     }
   });
   
-  // Only rebuild tabs if content structure changed, not just span content
+  // Handle tab rebuilding
   if (elements.promptArea.textContent.trim()) {
-    // Get the current content for placeholder analysis
     const currentContent = elements.promptArea.innerHTML;
-    
-    // Parse placeholders from the current structure
     const currentPlaceholders = parsePlaceholders(currentContent);
     const existingPlaceholders = tabsState.placeholders || [];
     
-    // Only rebuild if placeholder types changed (not just their values)
+    // Rebuild if placeholder structure changed OR if placeholder types changed
     const placeholdersStructureChanged = JSON.stringify(currentPlaceholders.sort()) !== JSON.stringify(existingPlaceholders.sort());
     
-    if (placeholdersStructureChanged) {
+    if (placeholdersStructureChanged || placeholderTypeChanged) {
       tabsState.currentTemplate = currentContent;
       buildTabsFromTemplate(currentContent);
     }
@@ -913,13 +929,31 @@ function initializeEnhancedPlaceholderSystem() {
   });
 }
 // Handle direct editing of placeholder spans
+// Handle direct editing of placeholder spans with type change detection
 elements.promptArea.addEventListener('input', function(e) {
   // If the change happened inside a placeholder span, update tracker immediately
   if (e.target && e.target.classList && e.target.classList.contains('placeholder-marker')) {
     const id = e.target.getAttribute('data-id');
     const currentText = e.target.textContent;
+    const currentDataType = e.target.getAttribute('data-type');
     
     if (placeholderTracker[id]) {
+      // Check if this is a placeholder type change ({{}} format)
+      if (currentText.startsWith('{{') && currentText.endsWith('}}')) {
+        const newPlaceholderName = currentText.slice(2, -2).trim();
+        if (newPlaceholderName !== currentDataType && newPlaceholderName !== '') {
+          // Update data-type attribute
+          e.target.setAttribute('data-type', newPlaceholderName);
+          
+          // Trigger tab rebuild after a short delay to allow DOM to update
+          setTimeout(() => {
+            const currentContent = elements.promptArea.innerHTML;
+            tabsState.currentTemplate = currentContent;
+            buildTabsFromTemplate(currentContent);
+          }, 10);
+        }
+      }
+      
       placeholderTracker[id].current = currentText;
       placeholderTracker[id].isModified = (currentText !== placeholderTracker[id].original);
       
