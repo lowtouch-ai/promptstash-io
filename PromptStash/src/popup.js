@@ -372,6 +372,33 @@ document.addEventListener("DOMContentLoaded", () => {
   let nextIndex = 0;
 
   // Function to update save button state based on template type
+  function updateDeleteButtonState() {
+    const deleteButtonWrapper = elements.deleteBtn.parentElement;
+
+    if (!selectedTemplateName) {
+      elements.deleteBtn.disabled = true;
+      deleteButtonWrapper.setAttribute('title', 'No template selected to delete.');
+      deleteButtonWrapper.classList.add('disabled-wrapper');
+      return;
+    }
+
+    chrome.storage.local.get(["templates"], (result) => {
+      const templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
+      const currentTemplate = templates.find(t => t.name === selectedTemplateName);
+
+      if (currentTemplate && currentTemplate.type === "pre-built") {
+        elements.deleteBtn.disabled = true;
+        const tooltipText = 'Cannot delete a default template.';
+        deleteButtonWrapper.setAttribute('title', tooltipText);
+        deleteButtonWrapper.classList.add('disabled-wrapper');
+      } else {
+        elements.deleteBtn.disabled = false;
+        deleteButtonWrapper.setAttribute('title', 'Delete this template.');
+        deleteButtonWrapper.classList.remove('disabled-wrapper');
+      }
+    });
+  }
+
   function updateSaveButtonState() {
     const saveButtonWrapper = elements.saveBtn.parentElement;
     
@@ -512,6 +539,10 @@ document.addEventListener("DOMContentLoaded", () => {
       // Revert textarea height to normal when tabs are hidden
       const promptArea = document.getElementById('promptArea');
       promptArea.style.height = 'calc(100vh - 320px)';
+
+      // Ensure the template panel is active and visible
+      const templatePanel = document.getElementById('template-panel');
+      templatePanel.classList.add('active', 'show');
       return;
     } else {
       tabsList.style.display = 'flex';
@@ -564,10 +595,14 @@ document.addEventListener("DOMContentLoaded", () => {
       textarea.id = `${tabId}-textarea`;
       
       const clearButton = document.createElement('button');
-      clearButton.className = 'btn btn-sm btn-outline-secondary position-absolute top-0 end-0 m-2';
-      clearButton.textContent = 'Clear';
+      clearButton.className = 'clrbtn position-absolute top-0 end-0 mr-2';
+      clearButton.innerHTML = `<svg width="15" height="15"><use href="sprite.svg#clear"></use></svg>`;
       clearButton.setAttribute('aria-label', `Clear ${placeholder}`);
+      clearButton.setAttribute('data-bs-toggle', 'tooltip');
+      clearButton.setAttribute('data-bs-placement', 'top');
+      clearButton.setAttribute('title', `Clear ${placeholder}`);
       clearButton.style.zIndex = '10';
+      new bootstrap.Tooltip(clearButton);
       
       // Add event listeners
       textarea.addEventListener('input', () => {
@@ -595,6 +630,13 @@ document.addEventListener("DOMContentLoaded", () => {
       tabsState.placeholderValues[placeholder] = '';
     });
     
+    // Activate the Template tab by default
+    const templateTabButton = document.getElementById('template-tab');
+    if (templateTabButton) {
+      const tab = new bootstrap.Tab(templateTabButton);
+      tab.show();
+    }
+
     // Update Template tab to show original template
     const templateTextarea = document.getElementById('promptArea');
     templateTextarea.textContent = templateContent;
@@ -650,7 +692,14 @@ document.addEventListener("DOMContentLoaded", () => {
     // Get the saved edit mode, default to true for a new session (so it's an empty text box)
     const isTagsInEditMode = state.isTagsInEditMode === undefined ? true : state.isTagsInEditMode;
 
-    const defaultText = `# Your Role*\n\n# Background Information\n*\n\n# Your Task\n*`;
+    const defaultText = `# Your Role
+* 
+
+# Background Information
+* 
+
+# Your Task
+* `;;
     elements.templateName.value = state.name || getDefaultTemplateName(); // (0008732)
     elements.templateTags.value = state.tags || "";
     elements.promptArea.textContent = state.content || defaultText;
@@ -696,7 +745,21 @@ if (!templates) {
     
     loadTemplates();
     updateSaveButtonState(); // Update save button state on initial load
+    updateDeleteButtonState(); // Update delete button state on initial load
   });
+
+  function destroyTabs() {
+    const tabsList = document.getElementById('editorTabs');
+    const tabContent = document.getElementById('myTabContent');
+
+    // Remove placeholder tabs (all but the first one)
+    const placeholderTabs = Array.from(tabsList.querySelectorAll('li:not(:first-child)'));
+    placeholderTabs.forEach(tab => tab.remove());
+
+    // Remove placeholder panels (all but the first one)
+    const placeholderPanels = Array.from(tabContent.querySelectorAll('.tab-pane:not(:first-child)'));
+    placeholderPanels.forEach(panel => panel.remove());
+  }
 
   // Save popup state
   function saveState() {
@@ -1087,6 +1150,7 @@ elements.templateTags.addEventListener("input", debounce(() => {
     elements.clearPrompt.style.display = "none";
     elements.searchBox.value = "";
     updateSaveButtonState(); // Update save button state on close
+    updateDeleteButtonState(); // Update delete button state on close
     loadTemplates();
     saveState();
     chrome.runtime.sendMessage({ action: "closePopup" });
@@ -1108,6 +1172,7 @@ elements.templateTags.addEventListener("input", debounce(() => {
     
     // 3. Update save button state for new template
     updateSaveButtonState();
+    updateDeleteButtonState(); // Update delete button state for new template
 
     // 3. Update button visibility
     elements.fetchBtn2.style.display = "none";
@@ -1172,7 +1237,16 @@ elements.templateTags.addEventListener("input", debounce(() => {
     tabsList.style.display = 'none';
     const promptArea = document.getElementById('promptArea');
     promptArea.style.height = 'calc(100vh - 320px)';
-    updateSaveButtonState(); // Update save button state on clear all
+
+    // Ensure the main panel is visible after clearing by activating the tab
+    const templateTabButton = document.getElementById('template-tab');
+    if (templateTabButton) {
+      const tab = new bootstrap.Tab(templateTabButton);
+      tab.show();
+    }
+
+    updateSaveButtonState(); 
+    updateDeleteButtonState(); // Update delete button state on clear all
     saveState();
     showToast("All fields cleared.", 2000, "green", [], "clearAll");
   });
@@ -1258,6 +1332,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
     }
     
     saveState();
+    updateDeleteButtonState(); // Update delete button state on input
   };
   
   elements.promptArea.addEventListener("input", promptInputHandler);
@@ -1273,6 +1348,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
       elements.templateTags.selectionStart = elements.templateTags.selectionEnd = cursorPos - 2;
       storeLastState();
       saveState();
+      updateDeleteButtonState(); // Update delete button state on keydown
       return;
     }
 
@@ -1282,6 +1358,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
       elements.templateTags.selectionStart = elements.templateTags.selectionEnd = cursorPos;
       storeLastState();
       saveState();
+      updateDeleteButtonState(); // Update delete button state on keydown
       return;
     }
 
@@ -1406,10 +1483,19 @@ elements.promptArea.addEventListener("keydown", function (event) {
               switchToTagsViewMode();
 
                 elements.promptArea.textContent = tmpl.content;
+
+                // Ensure the template tab is active before building
+                const templateTabButton = document.getElementById('template-tab');
+                if (templateTabButton) {
+                  const tab = new bootstrap.Tab(templateTabButton);
+                  tab.show();
+                }
+
                 // Build tabs from template placeholders
                 buildTabsFromTemplate(tmpl.content);
                 
                 elements.searchBox.value = "";
+                elements.clearSearch.style.display = "none";
                 elements.dropdownResults.innerHTML = "";
                 elements.fetchBtn2.style.display = tmpl.content ? "none" : "block";
                 elements.clearPrompt.style.display = tmpl.content ? "block" : "none";
@@ -1417,6 +1503,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
                 elements.dropdownResults.style.display = 'none';
                 elements.dropdownResults.classList.remove("show");
                 updateSaveButtonState(); // Update save button state
+                updateDeleteButtonState(); // Update delete button state
                 saveState();
                 elements.promptArea.focus();
                 updateExportSingleBtnState();
@@ -1456,6 +1543,13 @@ elements.promptArea.addEventListener("keydown", function (event) {
             // Render the clickable tags
             switchToTagsViewMode();
             elements.promptArea.textContent = tmpl.content;
+
+            // Ensure the template tab is active before building
+            const templateTabButton = document.getElementById('template-tab');
+            if (templateTabButton) {
+              const tab = new bootstrap.Tab(templateTabButton);
+              tab.show();
+            }
             
             // Build tabs from template placeholders
             buildTabsFromTemplate(tmpl.content);
@@ -1464,6 +1558,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
             elements.fetchBtn2.style.display = tmpl.content ? "none" : "block";
             elements.clearPrompt.style.display = tmpl.content ? "block" : "none";
             updateSaveButtonState(); // Update save button state
+            updateDeleteButtonState(); // Update delete button state
             saveState();
             elements.promptArea.focus();
           });
@@ -1609,6 +1704,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
             saveNextIndex();
             switchToTagsViewMode();
             updateExportSingleBtnState(); // Export single template
+            updateDeleteButtonState();
           }, true, elements.saveBtn);
         } else {
           const template = templates.find(t => t.name === selectedTemplateName);
@@ -1635,6 +1731,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
             saveState();
             switchToTagsViewMode();
             updateExportSingleBtnState(); // Export single template
+            updateDeleteButtonState();
           }, false, elements.saveBtn);
         }
       };
@@ -1774,6 +1871,8 @@ elements.promptArea.addEventListener("keydown", function (event) {
         saveNextIndex();
         switchToTagsViewMode();
         updateExportSingleBtnState(); // Export single template
+        updateSaveButtonState(); // Re-enable save button
+        updateDeleteButtonState();
       }, true, button);
     });
   }
@@ -1940,6 +2039,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
                   elements.fetchBtn2.style.display = "block";
                   elements.clearPrompt.style.display = "none";
                   updateSaveButtonState(); // Update save button state after delete
+                  updateDeleteButtonState();
                   loadTemplates();
                   updateExportSingleBtnState(); // Export single template
                 }
@@ -1970,6 +2070,7 @@ elements.promptArea.addEventListener("keydown", function (event) {
       
       // Update save button state after undo
       updateSaveButtonState();
+      updateDeleteButtonState();
 
       // Restore the full template list if it was part of the action
       if (lastState.templates) {

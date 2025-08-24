@@ -477,7 +477,7 @@ body.dark .clrbtn:hover {
 }
 
 #clearSearch {
-  margin-right: 10rem;
+  margin-right: 8.3rem;
 }
 
 #buttons {
@@ -570,6 +570,7 @@ body.dark #templateName, body.dark #templateTags,body.dark #tagsDisplay,body.dar
   justify-content: end;
   background: rgba(200, 200, 200, 0.2); /* Subtle gray hint */
   border-bottom: 1px solid #dadce0;
+  z-index: 1;
 }
 
 :root {
