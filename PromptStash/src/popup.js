@@ -451,6 +451,11 @@ function parsePlaceholders(templateContent) {
 }
 // Convert {{placeholder}} syntax to span elements
 function convertPlaceholdersToSpans(templateContent) {
+  // If content already has spans, don't convert again
+  if (templateContent.includes('<span class="placeholder-marker"')) {
+    return templateContent;
+  }
+  
   const placeholderRegex = /\{\{([^}]+)\}\}/g;
   let convertedContent = templateContent;
   let placeholderCounter = {};
@@ -735,13 +740,16 @@ function buildTabsFromTemplate(templateContent) {
   });
 }
 // Enhanced prompt input handler
+// Enhanced prompt input handler
 const enhancedPromptInputHandler = () => {
   storeLastState();
   elements.fetchBtn2.style.display = elements.promptArea.textContent ? "none" : "block";
   elements.clearPrompt.style.display = elements.promptArea.textContent ? "block" : "none";
   
-  // Track span changes
+  // Track span changes but don't rebuild if we're just editing existing spans
   const spans = elements.promptArea.querySelectorAll('.placeholder-marker[data-id]');
+  let hasSpanChanges = false;
+  
   spans.forEach(span => {
     const id = span.getAttribute('data-id');
     const currentText = span.textContent;
@@ -749,6 +757,7 @@ const enhancedPromptInputHandler = () => {
     if (placeholderTracker[id] && placeholderTracker[id].current !== currentText) {
       placeholderTracker[id].current = currentText;
       placeholderTracker[id].isModified = (currentText !== placeholderTracker[id].original);
+      hasSpanChanges = true;
       
       // Update styling
       if (placeholderTracker[id].isModified) {
@@ -761,15 +770,21 @@ const enhancedPromptInputHandler = () => {
     }
   });
   
-  // Handle tab rebuilding
+  // Only rebuild tabs if content structure changed, not just span content
   if (elements.promptArea.textContent.trim()) {
-    const contentToCheck = elements.promptArea.innerHTML; // Use innerHTML to preserve spans
-    const currentPlaceholders = parsePlaceholders(contentToCheck);
+    // Get the current content for placeholder analysis
+    const currentContent = elements.promptArea.innerHTML;
+    
+    // Parse placeholders from the current structure
+    const currentPlaceholders = parsePlaceholders(currentContent);
     const existingPlaceholders = tabsState.placeholders || [];
     
-    if (JSON.stringify(currentPlaceholders) !== JSON.stringify(existingPlaceholders)) {
-      tabsState.currentTemplate = contentToCheck;
-      buildTabsFromTemplate(contentToCheck);
+    // Only rebuild if placeholder types changed (not just their values)
+    const placeholdersStructureChanged = JSON.stringify(currentPlaceholders.sort()) !== JSON.stringify(existingPlaceholders.sort());
+    
+    if (placeholdersStructureChanged) {
+      tabsState.currentTemplate = currentContent;
+      buildTabsFromTemplate(currentContent);
     }
   } else {
     const tabsList = document.getElementById("editorTabs");
@@ -897,6 +912,28 @@ function initializeEnhancedPlaceholderSystem() {
     }
   });
 }
+// Handle direct editing of placeholder spans
+elements.promptArea.addEventListener('input', function(e) {
+  // If the change happened inside a placeholder span, update tracker immediately
+  if (e.target && e.target.classList && e.target.classList.contains('placeholder-marker')) {
+    const id = e.target.getAttribute('data-id');
+    const currentText = e.target.textContent;
+    
+    if (placeholderTracker[id]) {
+      placeholderTracker[id].current = currentText;
+      placeholderTracker[id].isModified = (currentText !== placeholderTracker[id].original);
+      
+      // Update styling immediately
+      if (placeholderTracker[id].isModified) {
+        e.target.style.backgroundColor = '#d1ecf1';
+        e.target.style.borderColor = '#bee5eb';
+      } else {
+        e.target.style.backgroundColor = '#fff3cd';
+        e.target.style.borderColor = '#ffeaa7';
+      }
+    }
+  }
+});
   // Load popup state, recent indices, and initialize index with version check
   chrome.storage.local.get(["popupState", "theme", "extensionVersion", "recentIndices", "templates", "nextIndex", "isFullscreen", "placeholderValues","placeholderTracker"], (result) => {
     // Check if stored version matches current version
@@ -2317,4 +2354,5 @@ elements.promptArea.addEventListener("input", enhancedPromptInputHandler);
     }
   });
   initializeEnhancedPlaceholderSystem();
+
 });
