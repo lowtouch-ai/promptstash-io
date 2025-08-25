@@ -3,7 +3,59 @@ import jsyaml from "js-yaml"; // Importing js-yaml
 import defaultTemplates from './defaultTemplates.mjs';
 
 // Extension version for schema validation
-const EXTENSION_VERSION = "1.1.0";                                  // UPDATE THIS WHEN RELEASING A NEW UPDATE
+const EXTENSION_VERSION = "1.1.0";
+
+const ALLOWED_PLACEHOLDERS = [
+"kind", 
+"subject", 
+"sender", 
+"recipient", 
+"context", 
+"tone", 
+"duration", 
+"topic", 
+"audience", 
+"goal", 
+"tone_style", 
+"prior_knowledge", 
+"product", 
+"campaign_details", 
+"audience_insights", 
+"target_company", 
+"stakeholder", "competitors",
+ "focus",
+ "research_data",
+ "idea",
+ "market",
+ "problem",
+ "usp",
+ "timeframe",
+ "event_or_product",
+ "platform",
+ "audience_profile",
+ "campaign_context",
+ "meeting_notes",
+ "client_profile",
+ "proposal_details",
+ "deadline",
+ "code",
+ "lang",
+ "error",
+ "rules",
+ "data",
+ "sources",
+ "scene",
+ "cinematic_direction",
+ "character",
+ "technical",
+ "scene_1",
+ "scene_2",
+ "scene_3",
+ "voice"
+  // Add more predefined placeholders as needed
+];                                  
+
+// UPDATE THIS WHEN RELEASING A NEW UPDATE
 
 // Lightweight debounce function
 function debounce(func, wait) {
@@ -447,49 +499,291 @@ document.addEventListener("DOMContentLoaded", () => {
     currentTemplate: ""
   };
 
-  // Placeholder parser - finds {{placeholder}} patterns
-  function parsePlaceholders(templateContent) {
-    const placeholderRegex = /\{\{([^}]+)\}\}/g;
-    const placeholders = [];
+window.placeholderTracker = new Map();
+
+// Helper function to check if a node is within a placeholder
+function isWithinPlaceholder(node) {
+  if (!node) return false;
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    return node.classList.contains('placeholder-marker') || node.classList.contains('placeholder-value');
+  }
+  return node.parentElement && (
+    node.parentElement.classList.contains('placeholder-marker') ||
+    node.parentElement.classList.contains('placeholder-value') ||
+    node.parentElement.closest('.placeholder-marker, .placeholder-value')
+  );
+}
+
+
+function findTextNodeAndOffset(container, charOffset) {
+  const walker = document.createTreeWalker(
+    container,
+    NodeFilter.SHOW_TEXT,
+    null,
+    false
+  );
+  let currentPos = 0;
+  let node = walker.nextNode();
+  while (node) {
+    const nodeLength = node.textContent.length;
+    if (currentPos + nodeLength >= charOffset) {
+      return {
+        node,
+        offset: charOffset - currentPos
+      };
+    }
+    currentPos += nodeLength;
+    node = walker.nextNode();
+  }
+  // Fallback to the end of the last node if not found
+  const lastNode = walker.lastChild();
+  return {
+    node: lastNode || container,
+    offset: lastNode ? lastNode.textContent.length : 0
+  };
+}
+
+// Override the renderPlaceholdersInTemplate function's cursor restoration
+function renderPlaceholdersInTemplate() {
+  if (!tabsState.currentTemplate) return;
+
+  // Get current cursor position and text content before updating the DOM.
+  const selection = window.getSelection();
+  let cursorOffset = 0;
+  let shouldPreserveCursor = selection.rangeCount > 0 && !isUpdatingContent;
+
+  if (shouldPreserveCursor) {
+    const range = selection.getRangeAt(0);
+    const preCaretRange = range.cloneRange();
+    preCaretRange.selectNodeContents(elements.promptArea);
+    preCaretRange.setEnd(range.endContainer, range.endOffset);
+    cursorOffset = preCaretRange.toString().length;
+  }
+
+  const {
+    placeholders,
+    placeholderPositions
+  } = parsePlaceholders(tabsState.currentTemplate);
+  let htmlContent = tabsState.currentTemplate;
+  let offset = 0;
+
+  // Clear and rebuild tracker (assuming this is necessary)
+  window.placeholderTracker.clear();
+
+  // Process each placeholder type to build the new HTML string.
+  placeholderPositions.forEach((positions, placeholder) => {
+    positions.forEach((pos, index) => {
+      const trackerId = `${placeholder}-${index + 1}`;
+      const hasValue = tabsState.placeholderValues[placeholder]?.trim();
+      const displayContent = hasValue ?
+        `<span class="placeholder-value" data-type="${placeholder}" data-id="${trackerId}">${tabsState.placeholderValues[placeholder]}</span>` :
+        pos.original;
+      const spanHtml = `<span class="placeholder-marker ${hasValue ? 'placeholder-filled' : 'placeholder-empty'}" data-type="${placeholder}" data-id="${trackerId}" title="Click to edit ${placeholder}">${displayContent}</span>`;
+
+      const actualStart = pos.start + offset;
+      const actualEnd = pos.end + offset;
+
+      htmlContent = htmlContent.slice(0, actualStart) + spanHtml + htmlContent.slice(actualEnd);
+      offset += spanHtml.length - (actualEnd - actualStart);
+    });
+  });
+
+  // Set a flag to prevent the overridden setter from recursively calling itself.
+  isUpdatingContent = true;
+  elements.promptArea.innerHTML = htmlContent;
+  isUpdatingContent = false;
+
+  // Restore cursor position immediately after the update.
+  if (shouldPreserveCursor) {
+    try {
+      const {
+        node,
+        offset
+      } = findTextNodeAndOffset(elements.promptArea, cursorOffset);
+      const range = document.createRange();
+      const sel = window.getSelection();
+      range.setStart(node, offset);
+      range.setEnd(node, offset);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch (e) {
+      console.warn('Cursor restoration failed:', e);
+      // Final fallback: place cursor at end
+      const range = document.createRange();
+      const sel = window.getSelection();
+      range.selectNodeContents(elements.promptArea);
+      range.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+  }
+
+  // Add click event listeners to the newly created placeholder spans.
+  elements.promptArea.querySelectorAll('.placeholder-marker, .placeholder-value').forEach(element => {
+    element.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const placeholderType = e.target.getAttribute('data-type');
+      if (placeholderType) {
+        switchToPlaceholderTab(placeholderType);
+      }
+    });
+
+    element.style.cursor = 'pointer';
+    element.setAttribute('contenteditable', 'false');
+  });
+}
+// Add this new function:
+function updatePlaceholder(type, value) {
+  // Update the tabsState
+  tabsState.placeholderValues[type] = value;
+
+  // Find the corresponding textarea element
+  const tabId = `placeholder-${type.replace(/\s+/g, '-').toLowerCase()}`;
+  const textarea = document.getElementById(`${tabId}-textarea`);
+
+  if (textarea) {
+    // 1. Save the current cursor position before updating the value
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+
+    // 2. Update the textarea's value
+    textarea.value = value;
+
+    // 3. Restore the cursor position immediately after the update
+    // The setTimeout is used to ensure the DOM update is processed before attempting to set the selection.
+    setTimeout(() => {
+      textarea.selectionStart = start;
+      textarea.selectionEnd = end;
+    }, 0);
+  }
+
+  // Update tab title to show filled status
+  updateTabTitle(type, value.trim() !== '');
+
+  // Update all instances in the tracker
+  window.placeholderTracker.forEach((info, trackerId) => {
+    if (info.type === type) {
+      info.current = value || info.original;
+    }
+  });
+
+  // Re-render the main template view
+  renderPlaceholdersInTemplate();
+  saveState();
+}
+// Add these utility functions:
+function showPlaceholderInfo() {
+  console.log('Placeholder Tracker:', Object.fromEntries(placeholderTracker));
+  console.log('Placeholder Values:', tabsState.placeholderValues);
+}
+
+function resetAllPlaceholders() {
+  // Clear all values
+  Object.keys(tabsState.placeholderValues).forEach(key => {
+    tabsState.placeholderValues[key] = '';
+  });
+  
+  // Clear all textareas
+  document.querySelectorAll('[id$="-textarea"]').forEach(textarea => {
+    textarea.value = '';
+  });
+  
+  // Update all tab titles
+  tabsState.placeholders.forEach(placeholder => {
+    updateTabTitle(placeholder, false);
+  });
+  
+  // Re-render
+  renderPlaceholdersInTemplate();
+  saveState();
+}
+
+function exportContent() {
+  const content = elements.promptArea.textContent || elements.promptArea.innerText;
+  console.log('Exported content:', content);
+  return content;
+}
+
+// Extract allowed placeholders from default templates
+function extractAllowedPlaceholders() {
+  const placeholders = new Set();
+  const regex = /\{\{([^}]+)\}\}/g;
+  
+  defaultTemplates.forEach(template => {
     let match;
+    while ((match = regex.exec(template.content)) !== null) {
+      placeholders.add(match[1].trim());
+    }
+  });
+  
+  return Array.from(placeholders);
+}
+
+// Define allowed placeholders based on your default templates
+const ALLOWED_PLACEHOLDERS = extractAllowedPlaceholders();
+
+// Add function to switch to placeholder tab:
+function switchToPlaceholderTab(placeholder) {
+  const tabId = `placeholder-${placeholder.replace(/\s+/g, '-').toLowerCase()}`;
+  const tabButton = document.getElementById(tabId);
+  if (tabButton) {
+    const tab = new bootstrap.Tab(tabButton);
+    tab.show();
     
-    while ((match = placeholderRegex.exec(templateContent)) !== null) {
-      const placeholder = match[1].trim();
+    // Focus the textarea in that tab
+    const textarea = document.getElementById(`${tabId}-textarea`);
+    if (textarea) {
+      setTimeout(() => textarea.focus(), 100);
+    }
+  }
+}
+
+// Alternative approach: Filter input to prevent {{}} creation
+function sanitizeTemplateInput(content) {
+  // Replace any {{text}} that's not in allowed list with plain text version
+  return content.replace(/\{\{([^}]+)\}\}/g, (match, placeholder) => {
+    const trimmedPlaceholder = placeholder.trim();
+    if (ALLOWED_PLACEHOLDERS.includes(trimmedPlaceholder)) {
+      return match; // Keep allowed placeholders
+    } else {
+      // Convert to plain text without escaping
+      return `{{${placeholder}}}`;
+    }
+  });
+}
+
+
+// Modified placeholder parser - only finds allowed {{placeholder}} patterns
+function parsePlaceholders(templateContent) {
+  const placeholderRegex = /\{\{([^}]+)\}\}/g;
+  const placeholders = [];
+  const placeholderPositions = new Map();
+  let match;
+  
+  while ((match = placeholderRegex.exec(templateContent)) !== null) {
+    const placeholder = match[1].trim();
+    
+    // Only process if it's in the allowed list
+    if (ALLOWED_PLACEHOLDERS.includes(placeholder)) {
       if (!placeholders.includes(placeholder)) {
         placeholders.push(placeholder);
       }
-    }
-    
-    return placeholders;
-  }
-
-  // Replace placeholders in template with actual values
-  function replacePlaceholders(templateContent, placeholderValues) {
-    let result = templateContent;
-    Object.keys(placeholderValues).forEach(placeholder => {
-      const value = placeholderValues[placeholder] || `{{${placeholder}}}`;
-      const regex = new RegExp(`\\{\\{\\s*${placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\}\\}`, 'g');
-      result = result.replace(regex, value);
-    });
-    return result;
-  }
-
-  // Update template preview with current placeholder values
-  function updateTemplatePreview() {
-    if (tabsState.currentTemplate && Object.keys(tabsState.placeholderValues).length > 0) {
-      const previewContent = replacePlaceholders(tabsState.currentTemplate, tabsState.placeholderValues);
       
-      // Temporarily disable the input event listener to prevent tab rebuilding
-      const inputHandler = elements.promptArea.oninput;
-      elements.promptArea.oninput = null;
-      
-      elements.promptArea.textContent = previewContent;
-      saveState();
-      
-      // Re-enable the input event listener
-      elements.promptArea.oninput = inputHandler;
+      // Track all occurrences of this placeholder
+      if (!placeholderPositions.has(placeholder)) {
+        placeholderPositions.set(placeholder, []);
+      }
+      placeholderPositions.get(placeholder).push({
+        start: match.index,
+        end: match.index + match[0].length,
+        original: match[0]
+      });
     }
   }
+  
+  return { placeholders, placeholderPositions };
+}
 
   // Update tab title to show filled status
   function updateTabTitle(placeholder, hasValue) {
@@ -508,7 +802,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Build tabs dynamically from placeholders
   function buildTabsFromTemplate(templateContent) {
-    const placeholders = parsePlaceholders(templateContent);
+    const { placeholders } = parsePlaceholders(templateContent);
     
     // Check if placeholders have actually changed to avoid unnecessary rebuilding
     const placeholdersChanged = JSON.stringify(placeholders) !== JSON.stringify(tabsState.placeholders);
@@ -604,22 +898,16 @@ document.addEventListener("DOMContentLoaded", () => {
       clearButton.style.zIndex = '10';
       new bootstrap.Tooltip(clearButton);
       
-      // Add event listeners
-      textarea.addEventListener('input', () => {
-        tabsState.placeholderValues[placeholder] = textarea.value;
-        updateTabTitle(placeholder, textarea.value.trim() !== '');
-        updateTemplatePreview();
-        saveState();
-      });
-      
-      clearButton.addEventListener('click', () => {
-        textarea.value = '';
-        tabsState.placeholderValues[placeholder] = '';
-        updateTabTitle(placeholder, false);
-        updateTemplatePreview();
-        textarea.focus();
-        saveState();
-      });
+      // In buildTabsFromTemplate, update the textarea event listener:
+textarea.addEventListener('input', () => {
+  updatePlaceholder(placeholder, textarea.value); // Use the new function
+});
+
+// Update the clear button listener:
+clearButton.addEventListener('click', () => {
+  updatePlaceholder(placeholder, ''); // Use the new function
+  textarea.focus();
+});
       
       panelContent.appendChild(textarea);
       panelContent.appendChild(clearButton);
@@ -640,6 +928,8 @@ document.addEventListener("DOMContentLoaded", () => {
     // Update Template tab to show original template
     const templateTextarea = document.getElementById('promptArea');
     templateTextarea.textContent = templateContent;
+    // Render placeholders as clickable spans immediately
+    renderPlaceholdersInTemplate();
     
     // Load saved placeholder values if they exist
     chrome.storage.local.get(['placeholderValues'], (result) => {
@@ -660,9 +950,6 @@ document.addEventListener("DOMContentLoaded", () => {
           updateTabTitle(placeholder, valueToUse.trim() !== '');
         }
       });
-      
-      // Update template preview with loaded values
-      updateTemplatePreview();
     });
   }
 
@@ -1289,53 +1576,376 @@ elements.promptArea.addEventListener("keydown", function (event) {
 // --- PromptStash: Indentation with TAB/Shift+TAB (0008899) END ---
 
   // Control fetchBtn2 visibility on input and rebuild tabs
-  const promptInputHandler = () => {
-    storeLastState();
-    elements.fetchBtn2.style.display = elements.promptArea.textContent ? "none" : "block";
-    elements.clearPrompt.style.display = elements.promptArea.textContent ? "block" : "none";
+const promptInputHandler = () => {
+  storeLastState();
+  
+  // Get the current content
+  let currentTextContent = elements.promptArea.textContent || '';
+  
+  // Sanitize input to prevent unauthorized placeholder creation
+  const sanitizedContent = sanitizeTemplateInput(currentTextContent);
+  
+  // If content was sanitized, update the textarea
+  if (sanitizedContent !== currentTextContent) {
+    // Store current selection
+    const selection = window.getSelection();
+    let cursorOffset = 0;
+    let wasAtEnd = false;
     
-    // Only rebuild tabs if placeholders have actually changed
-    if (elements.promptArea.textContent.trim()) {
-      // Check if we're currently in preview mode (template has replaced placeholders)
-      const hasPlaceholderValues = Object.keys(tabsState.placeholderValues || {}).some(key => 
-        tabsState.placeholderValues[key] && tabsState.placeholderValues[key].trim() !== ''
-      );
+    if (selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      // Check if cursor is at the very end
+      wasAtEnd = range.endOffset === elements.promptArea.textContent.length;
       
-      // If we have placeholder values, we need to restore original template before parsing
-      let contentToCheck = elements.promptArea.textContent;
-      if (hasPlaceholderValues && tabsState.currentTemplate) {
-        // Use the original template for placeholder detection
-        contentToCheck = tabsState.currentTemplate;
-      }
-      
-      const currentPlaceholders = parsePlaceholders(contentToCheck);
-      const existingPlaceholders = tabsState.placeholders || [];
-      
-      // Only rebuild if placeholders are different
-      if (JSON.stringify(currentPlaceholders) !== JSON.stringify(existingPlaceholders)) {
-        // Update the original template and rebuild tabs
-        tabsState.currentTemplate = contentToCheck;
-        buildTabsFromTemplate(contentToCheck);
-      } else {
-        // Just update the stored template content without rebuilding
-        if (!hasPlaceholderValues) {
-          tabsState.currentTemplate = elements.promptArea.textContent;
-        }
-      }
-    } else {
-      // Hide tabs when no content but preserve placeholder values
-      const tabsList = document.getElementById("editorTabs");
-      tabsList.style.display = 'none';
-      const promptArea = document.getElementById('promptArea');
-      promptArea.style.height = 'calc(100vh - 320px)';
-      // Don't clear placeholder values - they should persist
+      // Calculate cursor position in text
+      const preCaretRange = range.cloneRange();
+      preCaretRange.selectNodeContents(elements.promptArea);
+      preCaretRange.setEnd(range.endContainer, range.endOffset);
+      cursorOffset = preCaretRange.toString().length;
     }
     
-    saveState();
-    updateDeleteButtonState(); // Update delete button state on input
-  };
+    // Update content
+    elements.promptArea.textContent = sanitizedContent;
+    currentTextContent = sanitizedContent;
+    
+    // Restore cursor position with better handling
+    setTimeout(() => {
+      try {
+        const range = document.createRange();
+        const sel = window.getSelection();
+        
+        // If we were at the end, stay at the end
+        if (wasAtEnd) {
+          range.selectNodeContents(elements.promptArea);
+          range.collapse(false); // Collapse to end
+        } else {
+          // Otherwise, try to restore position
+          const walker = document.createTreeWalker(
+            elements.promptArea,
+            NodeFilter.SHOW_TEXT,
+            null,
+            false
+          );
+          
+          let currentPos = 0;
+          let targetNode = null;
+          let targetOffset = 0;
+          
+          while (walker.nextNode()) {
+            const node = walker.currentNode;
+            const nodeLength = node.textContent.length;
+            
+            if (currentPos + nodeLength >= cursorOffset) {
+              targetNode = node;
+              targetOffset = cursorOffset - currentPos;
+              break;
+            }
+            currentPos += nodeLength;
+          }
+          
+          if (targetNode) {
+            range.setStart(targetNode, Math.min(targetOffset, targetNode.textContent.length));
+            range.setEnd(targetNode, Math.min(targetOffset, targetNode.textContent.length));
+          } else {
+            // Fallback: place at end
+            range.selectNodeContents(elements.promptArea);
+            range.collapse(false);
+          }
+        }
+        
+        sel.removeAllRanges();
+        sel.addRange(range);
+        
+      } catch (e) {
+        // If restoration fails, place cursor at end
+        const range = document.createRange();
+        const sel = window.getSelection();
+        range.selectNodeContents(elements.promptArea);
+        range.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    }, 0);
+    
+    // Show warning message
+    showToast("Only predefined placeholders are allowed. Custom placeholders are converted to plain text.", 3000, "orange", [], "placeholder-restriction");
+  }
   
+  elements.fetchBtn2.style.display = currentTextContent ? "none" : "block";
+  elements.clearPrompt.style.display = currentTextContent ? "block" : "none";
+  
+  // Rest of your existing logic...
+  if (currentTextContent.trim()) {
+    const { placeholders: currentPlaceholders } = parsePlaceholders(currentTextContent);
+    const existingPlaceholders = tabsState.placeholders || [];
+    
+    // Check which placeholders were removed
+    const removedPlaceholders = existingPlaceholders.filter(placeholder => 
+      !currentPlaceholders.includes(placeholder)
+    );
+    
+    // Clean up placeholder values and tabs for removed placeholders
+    if (removedPlaceholders.length > 0) {
+      removedPlaceholders.forEach(placeholder => {
+        delete tabsState.placeholderValues[placeholder];
+        
+        const tabId = `placeholder-${placeholder.replace(/\s+/g, '-').toLowerCase()}`;
+        const tabElement = document.getElementById(tabId);
+        const panelElement = document.getElementById(`${tabId}-panel`);
+        
+        if (tabElement) {
+          tabElement.parentElement.remove();
+        }
+        if (panelElement) {
+          panelElement.remove();
+        }
+      });
+      
+      chrome.storage.local.set({ placeholderValues: tabsState.placeholderValues });
+      
+      const templateTabButton = document.getElementById('template-tab');
+      if (templateTabButton && !templateTabButton.classList.contains('active')) {
+        const tab = new bootstrap.Tab(templateTabButton);
+        tab.show();
+      }
+    }
+    
+    if (JSON.stringify(currentPlaceholders) !== JSON.stringify(existingPlaceholders)) {
+      tabsState.currentTemplate = currentTextContent;
+      buildTabsFromTemplate(currentTextContent);
+    } else {
+      tabsState.currentTemplate = currentTextContent;
+      setTimeout(() => {
+        renderPlaceholdersInTemplate();
+      }, 0);
+    }
+  } else {
+    const tabsList = document.getElementById("editorTabs");
+    tabsList.style.display = 'none';
+    const promptArea = document.getElementById('promptArea');
+    promptArea.style.height = 'calc(100vh - 320px)';
+    
+    tabsState.placeholderValues = {};
+    tabsState.placeholders = [];
+    chrome.storage.local.set({ placeholderValues: {} });
+  }
+  
+  saveState();
+  updateDeleteButtonState();
+};
+
   elements.promptArea.addEventListener("input", promptInputHandler);
+
+// Add event listener to handle placeholder editing prevention and tab removal
+elements.promptArea.addEventListener('keydown', (e) => {
+  // Handle delete/backspace operations that might remove placeholders
+  if (e.key === 'Backspace' || e.key === 'Delete') {
+    // Store current placeholders before the delete operation
+    const currentContent = elements.promptArea.textContent || '';
+    const { placeholders: currentPlaceholders } = parsePlaceholders(currentContent);
+    
+    // Use a timeout to check after the delete operation completes
+    setTimeout(() => {
+      const newContent = elements.promptArea.textContent || '';
+      const { placeholders: newPlaceholders } = parsePlaceholders(newContent);
+      
+      // Check for removed placeholders
+      const removedPlaceholders = currentPlaceholders.filter(placeholder => 
+        !newPlaceholders.includes(placeholder)
+      );
+      
+      if (removedPlaceholders.length > 0) {
+        removedPlaceholders.forEach(placeholder => {
+          // Remove from placeholder values
+          delete tabsState.placeholderValues[placeholder];
+          
+          // Remove the tab and panel immediately
+          const tabId = `placeholder-${placeholder.replace(/\s+/g, '-').toLowerCase()}`;
+          const tabElement = document.getElementById(tabId);
+          const panelElement = document.getElementById(`${tabId}-panel`);
+          
+          if (tabElement) {
+            // Check if this tab is currently active
+            const wasActive = tabElement.classList.contains('active');
+            tabElement.parentElement.remove();
+            
+            // If the removed tab was active, switch to Template tab
+            if (wasActive) {
+              const templateTabButton = document.getElementById('template-tab');
+              if (templateTabButton) {
+                const tab = new bootstrap.Tab(templateTabButton);
+                tab.show();
+              }
+            }
+          }
+          if (panelElement) {
+            panelElement.remove();
+          }
+        });
+        
+        // Update stored placeholder values
+        chrome.storage.local.set({ placeholderValues: tabsState.placeholderValues });
+        
+        // Update placeholders list
+        tabsState.placeholders = newPlaceholders;
+        
+        // Hide tabs navigation if no placeholders remain
+        if (newPlaceholders.length === 0) {
+          const tabsList = document.getElementById("editorTabs");
+          tabsList.style.display = 'none';
+          const promptArea = document.getElementById('promptArea');
+          promptArea.style.height = 'calc(100vh - 320px)';
+        }
+        
+        // Show toast notification
+        const message = removedPlaceholders.length === 1 
+          ? `Placeholder "${removedPlaceholders[0]}" removed and tab closed.`
+          : `${removedPlaceholders.length} placeholders removed and tabs closed.`;
+        showToast(message, 2000, "green", [], "placeholder-removal");
+      }
+    }, 10); // Small delay to let the DOM update
+    
+    return; // Don't prevent the delete operation itself
+  }
+  
+  // Get current selection for editing prevention
+  const selection = window.getSelection();
+  if (selection.rangeCount > 0) {
+    const range = selection.getRangeAt(0);
+    const startContainer = range.startContainer;
+    const endContainer = range.endContainer;
+    
+    // Check if we're trying to edit within a placeholder
+    const isInPlaceholder = (node) => {
+      if (!node) return false;
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        return node.classList.contains('placeholder-marker') || node.classList.contains('placeholder-value');
+      }
+      return node.parentElement && (
+        node.parentElement.classList.contains('placeholder-marker') ||
+        node.parentElement.classList.contains('placeholder-value')
+      );
+    };
+    
+    if (isInPlaceholder(startContainer) || isInPlaceholder(endContainer)) {
+      // Find the placeholder type
+      let placeholderElement = startContainer.nodeType === Node.ELEMENT_NODE ? 
+        startContainer : startContainer.parentElement;
+      
+      if (!placeholderElement.classList.contains('placeholder-marker') && 
+          !placeholderElement.classList.contains('placeholder-value')) {
+        placeholderElement = placeholderElement.closest('.placeholder-marker, .placeholder-value');
+      }
+      
+      if (placeholderElement) {
+        const placeholderType = placeholderElement.getAttribute('data-type');
+        if (placeholderType) {
+          e.preventDefault();
+          switchToPlaceholderTab(placeholderType);
+          return false;
+        }
+      }
+    }
+  }
+});
+
+// Also prevent paste operations on placeholders
+elements.promptArea.addEventListener('paste', (e) => {
+  const selection = window.getSelection();
+  if (selection.rangeCount > 0) {
+    const range = selection.getRangeAt(0);
+    const container = range.commonAncestorContainer;
+    
+    const isInPlaceholder = (node) => {
+      if (!node) return false;
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        return node.classList.contains('placeholder-marker') || node.classList.contains('placeholder-value');
+      }
+      return node.parentElement && (
+        node.parentElement.classList.contains('placeholder-marker') ||
+        node.parentElement.classList.contains('placeholder-value') ||
+        node.parentElement.closest('.placeholder-marker, .placeholder-value')
+      );
+    };
+    
+    if (isInPlaceholder(container)) {
+      e.preventDefault();
+      return false;
+    }
+  }
+  // Let the paste happen first
+  setTimeout(() => {
+    const content = elements.promptArea.textContent || '';
+    const sanitizedContent = sanitizeTemplateInput(content);
+    
+    if (sanitizedContent !== content) {
+      elements.promptArea.textContent = sanitizedContent;
+      showToast("Pasted content contained unauthorized placeholders. Only predefined placeholders are allowed.", 3000, "orange", [], "paste-restriction");
+    }
+  }, 0);
+});
+
+
+// Additional fix for text direction and cursor positioning
+elements.promptArea.addEventListener('focus', () => {
+  // Ensure proper text direction on focus
+  elements.promptArea.style.direction = 'ltr';
+  elements.promptArea.style.textAlign = 'left';
+  elements.promptArea.style.unicodeBidi = 'normal';
+});
+
+// Fix for cursor jumping to beginning when content changes
+let isUpdatingContent = false;
+const originalTextContent = elements.promptArea.textContent;
+
+// Override innerHTML setter to preserve cursor position
+const originalInnerHTMLDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+Object.defineProperty(elements.promptArea, 'innerHTML', {
+  set: function(value) {
+    if (!isUpdatingContent) {
+      isUpdatingContent = true;
+      
+      // Store cursor position before update
+      const selection = window.getSelection();
+      let cursorOffset = 0;
+      
+      if (selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        const preCaretRange = range.cloneRange();
+        preCaretRange.selectNodeContents(this);
+        preCaretRange.setEnd(range.endContainer, range.endOffset);
+        cursorOffset = preCaretRange.toString().length;
+      }
+      
+      // Set the content
+      originalInnerHTMLDescriptor.set.call(this, value);
+      
+      // Restore cursor position after a short delay
+      setTimeout(() => {
+        try {
+          const textNode = this.firstChild;
+          if (textNode && textNode.nodeType === Node.TEXT_NODE) {
+            const range = document.createRange();
+            const sel = window.getSelection();
+            const offset = Math.min(cursorOffset, textNode.textContent.length);
+            
+            range.setStart(textNode, offset);
+            range.setEnd(textNode, offset);
+            sel.removeAllRanges();
+            sel.addRange(range);
+          }
+        } catch (e) {
+          // If cursor restoration fails, just continue
+        }
+        isUpdatingContent = false;
+      }, 10);
+    } else {
+      originalInnerHTMLDescriptor.set.call(this, value);
+    }
+  },
+  get: originalInnerHTMLDescriptor.get,
+  configurable: true
+});
 
   // Handle key events for templateTags
   elements.templateTags.addEventListener("keydown", (event) => {
