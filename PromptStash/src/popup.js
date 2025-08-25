@@ -1575,89 +1575,72 @@ elements.promptArea.addEventListener("keydown", function (event) {
 });
 // --- PromptStash: Indentation with TAB/Shift+TAB (0008899) END ---
 
-  // Control fetchBtn2 visibility on input and rebuild tabs
+// Control fetchBtn2 visibility on input and rebuild tabs
 const promptInputHandler = () => {
   storeLastState();
-  
+
   // Get the current content
   let currentTextContent = elements.promptArea.textContent || '';
-  
+  let shouldRerender = true;
+
+  // Check if the user is in the middle of typing a placeholder
+  const isTypingPlaceholder = currentTextContent.endsWith('{{');
+  if (isTypingPlaceholder) {
+    shouldRerender = false;
+  }
+
   // Sanitize input to prevent unauthorized placeholder creation
   const sanitizedContent = sanitizeTemplateInput(currentTextContent);
-  
+
   // If content was sanitized, update the textarea
   if (sanitizedContent !== currentTextContent) {
-    // Store current selection
+    // Store cursor position and update content
     const selection = window.getSelection();
     let cursorOffset = 0;
-    let wasAtEnd = false;
-    
     if (selection.rangeCount > 0) {
       const range = selection.getRangeAt(0);
-      // Check if cursor is at the very end
-      wasAtEnd = range.endOffset === elements.promptArea.textContent.length;
-      
-      // Calculate cursor position in text
       const preCaretRange = range.cloneRange();
       preCaretRange.selectNodeContents(elements.promptArea);
       preCaretRange.setEnd(range.endContainer, range.endOffset);
       cursorOffset = preCaretRange.toString().length;
     }
-    
-    // Update content
+
     elements.promptArea.textContent = sanitizedContent;
     currentTextContent = sanitizedContent;
-    
-    // Restore cursor position with better handling
+
     setTimeout(() => {
       try {
         const range = document.createRange();
         const sel = window.getSelection();
-        
-        // If we were at the end, stay at the end
-        if (wasAtEnd) {
-          range.selectNodeContents(elements.promptArea);
-          range.collapse(false); // Collapse to end
-        } else {
-          // Otherwise, try to restore position
-          const walker = document.createTreeWalker(
-            elements.promptArea,
-            NodeFilter.SHOW_TEXT,
-            null,
-            false
-          );
-          
-          let currentPos = 0;
-          let targetNode = null;
-          let targetOffset = 0;
-          
-          while (walker.nextNode()) {
-            const node = walker.currentNode;
-            const nodeLength = node.textContent.length;
-            
-            if (currentPos + nodeLength >= cursorOffset) {
-              targetNode = node;
-              targetOffset = cursorOffset - currentPos;
-              break;
-            }
-            currentPos += nodeLength;
+        const walker = document.createTreeWalker(
+          elements.promptArea,
+          NodeFilter.SHOW_TEXT,
+          null,
+          false
+        );
+        let currentPos = 0;
+        let targetNode = null;
+        let targetOffset = 0;
+        while (walker.nextNode()) {
+          const node = walker.currentNode;
+          const nodeLength = node.textContent.length;
+          if (currentPos + nodeLength >= cursorOffset) {
+            targetNode = node;
+            targetOffset = cursorOffset - currentPos;
+            break;
           }
-          
-          if (targetNode) {
-            range.setStart(targetNode, Math.min(targetOffset, targetNode.textContent.length));
-            range.setEnd(targetNode, Math.min(targetOffset, targetNode.textContent.length));
-          } else {
-            // Fallback: place at end
-            range.selectNodeContents(elements.promptArea);
-            range.collapse(false);
-          }
+          currentPos += nodeLength;
         }
-        
+        if (targetNode) {
+          range.setStart(targetNode, Math.min(targetOffset, targetNode.textContent.length));
+          range.setEnd(targetNode, Math.min(targetOffset, targetNode.textContent.length));
+        } else {
+          range.selectNodeContents(elements.promptArea);
+          range.collapse(false);
+        }
         sel.removeAllRanges();
         sel.addRange(range);
-        
       } catch (e) {
-        // If restoration fails, place cursor at end
         const range = document.createRange();
         const sel = window.getSelection();
         range.selectNodeContents(elements.promptArea);
@@ -1666,50 +1649,54 @@ const promptInputHandler = () => {
         sel.addRange(range);
       }
     }, 0);
-    
-    // Show warning message
+
     showToast("Only predefined placeholders are allowed. Custom placeholders are converted to plain text.", 3000, "orange", [], "placeholder-restriction");
   }
-  
+
   elements.fetchBtn2.style.display = currentTextContent ? "none" : "block";
   elements.clearPrompt.style.display = currentTextContent ? "block" : "none";
-  
-  // Rest of your existing logic...
-  if (currentTextContent.trim()) {
-    const { placeholders: currentPlaceholders } = parsePlaceholders(currentTextContent);
+
+  if (shouldRerender && currentTextContent.trim()) {
+    const {
+      placeholders: currentPlaceholders
+    } = parsePlaceholders(currentTextContent);
     const existingPlaceholders = tabsState.placeholders || [];
-    
-    // Check which placeholders were removed
-    const removedPlaceholders = existingPlaceholders.filter(placeholder => 
+
+    const removedPlaceholders = existingPlaceholders.filter(placeholder =>
       !currentPlaceholders.includes(placeholder)
     );
-    
-    // Clean up placeholder values and tabs for removed placeholders
+
     if (removedPlaceholders.length > 0) {
       removedPlaceholders.forEach(placeholder => {
         delete tabsState.placeholderValues[placeholder];
-        
         const tabId = `placeholder-${placeholder.replace(/\s+/g, '-').toLowerCase()}`;
         const tabElement = document.getElementById(tabId);
         const panelElement = document.getElementById(`${tabId}-panel`);
-        
         if (tabElement) {
+          const wasActive = tabElement.classList.contains('active');
           tabElement.parentElement.remove();
+          if (wasActive) {
+            const templateTabButton = document.getElementById('template-tab');
+            if (templateTabButton) {
+              const tab = new bootstrap.Tab(templateTabButton);
+              tab.show();
+            }
+          }
         }
         if (panelElement) {
           panelElement.remove();
         }
       });
-      
-      chrome.storage.local.set({ placeholderValues: tabsState.placeholderValues });
-      
-      const templateTabButton = document.getElementById('template-tab');
-      if (templateTabButton && !templateTabButton.classList.contains('active')) {
-        const tab = new bootstrap.Tab(templateTabButton);
-        tab.show();
-      }
+      chrome.storage.local.set({
+        placeholderValues: tabsState.placeholderValues
+      });
+      tabsState.placeholders = newPlaceholders;
+      const message = removedPlaceholders.length === 1 ?
+        `Placeholder "${removedPlaceholders[0]}" removed and tab closed.` :
+        `${removedPlaceholders.length} placeholders removed and tabs closed.`;
+      showToast(message, 2000, "green", [], "placeholder-removal");
     }
-    
+
     if (JSON.stringify(currentPlaceholders) !== JSON.stringify(existingPlaceholders)) {
       tabsState.currentTemplate = currentTextContent;
       buildTabsFromTemplate(currentTextContent);
@@ -1724,12 +1711,13 @@ const promptInputHandler = () => {
     tabsList.style.display = 'none';
     const promptArea = document.getElementById('promptArea');
     promptArea.style.height = 'calc(100vh - 320px)';
-    
     tabsState.placeholderValues = {};
     tabsState.placeholders = [];
-    chrome.storage.local.set({ placeholderValues: {} });
+    chrome.storage.local.set({
+      placeholderValues: {}
+    });
   }
-  
+
   saveState();
   updateDeleteButtonState();
 };
