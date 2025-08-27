@@ -98,13 +98,11 @@
     </button>
     </div>
     <div class="position-relative">
-      <span id="tags-label" class="position-absolute ps-3" aria-hidden="true"> Tags:</span>
+      <span id="tags-label" aria-hidden="true">Tags:</span>
+      <div id="tagsView" class="tags-view-wrapper hidden">
+        <div id="tagsDisplay" class="tags-display-view"></div>
+      </div>
       <input type="text" id="templateTags" class="form-control rounded-2 pe-3 py-2" placeholder="(comma-separated)" aria-label="Template tags">
-        <!-- The display that LOOKS like text but is clickable. Starts hidden. -->
-        <div
-        id="tagsDisplay"
-        class="form-control tags-display-view hidden"
-      ></div>
 
       <!-- A simple icon to switch back to editing mode. Starts hidden. -->
       <button
@@ -130,11 +128,17 @@
     </div>
     <div class="position-relative">
       <!-- Tabs Navigation -->
-      <ul class="nav nav-tabs" id="editorTabs" role="tablist">
-        <li class="nav-item" role="presentation">
-          <button class="nav-link active" id="template-tab" data-bs-toggle="tab" data-bs-target="#template-panel" type="button" role="tab" aria-controls="template-panel" aria-selected="true">Template</button>
-        </li>
-      </ul>
+      <div class="tabs-container">
+        <button id="scroll-left-btn" class="scroll-btn left hidden">&lsaquo;</button>
+        <div class="tabs-wrapper">
+            <ul class="nav nav-tabs" id="editorTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="template-tab" data-bs-toggle="tab" data-bs-target="#template-panel" type="button" role="tab" aria-controls="template-panel" aria-selected="true">Template</button>
+                </li>
+            </ul>
+        </div>
+        <button id="scroll-right-btn" class="scroll-btn right hidden">&rsaquo;</button>
+      </div>
       
       <!-- Tab Panels -->
       <div class="tab-content" id="tabPanels">

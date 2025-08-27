@@ -35,7 +35,7 @@ header, .search-select, #template, #buttons {
   font-size: 10px;
   line-height: 15px;
   max-width: 320px;
-  z-index: 10000;
+  z-index: 99999;
   opacity: 0;
   transform: translateY(-20px);
   transition: opacity 0.3s ease, transform 0.3s ease;
@@ -376,17 +376,20 @@ body.dark .favorite-suggestion:hover, body.dark .favorite-suggestion:focus {
 }
 
 #tags-label {
+  position: absolute;
   color: #888;
   top: 50%;
-  left: 0px;
+  left: 12px; /* Adjust left padding */
   font-size: 0.9rem;
   transform: translateY(-50%);
+  z-index: 10;
+  pointer-events: none; /* Make sure it doesn't block clicks on the input */
 }
 
 #templateTags {
   border: 1px solid #dadce0;
   border-radius: 8px;
-  padding: 8px 40px 8px 56px;
+  padding: 8px 40px 8px 56px; /* Padding to make space for the label */
   font-size: 0.9rem;
   width: 100%;
   flex-shrink: 0;
@@ -409,6 +412,7 @@ body.dark .favorite-suggestion:hover, body.dark .favorite-suggestion:focus {
 #promptArea {
   flex: 1;
   border: 1px solid #dadce0;
+  border-radius: 8px !important; 
   min-height: 50px;
   height: calc(100vh - 360px); /* Extended height like first image */
   overflow-y: auto;
@@ -578,23 +582,34 @@ body.dark #templateName, body.dark #templateTags,body.dark #tagsDisplay,body.dar
 }
 
 /* Wrapper to hold the input and the display view */
-.tags-wrapper {
-  position: relative;
+/* Wrapper to hold the input and the display view */
+.tags-view-wrapper {
+  display: flex;
+  align-items: center;
+  padding: 0.375rem 40px 0.375rem 56px; /* Added right and left padding */
+  border: 1px solid #ced4da;
+  border-radius: 0.25rem;
+  min-height: 38px; /* Match form-control height */
+}
+
+#tags-label {
+  padding-right: 8px; /* Space between label and tags */
+  white-space: nowrap;
 }
 
 /* The view that contains the clickable links */
 .tags-display-view {
-  padding-left: 55px !important;
-  display: flex; /* Use flex to align tags */
+  flex-grow: 1;
+  display: flex;
   align-items: center;
-  gap: 8px; /* Space between tags */
-  padding-right: 35px; /* Make space for the edit icon */
+  gap: 8px;
+  overflow-x: auto;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
 
-  flex-wrap: wrap; /* Allow tags to wrap to the next line */
-  height: auto; /* Allow the container to grow in height */
-  padding-top: 6px; /* Add a little top/bottom padding for when it wraps */
-  padding-bottom: 6px;
-  line-height: 1.5; /* Improves spacing between wrapped lines */
+.tags-display-view::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, and Opera */
 }
 
 /* This is the individual clickable tag "link" */
@@ -606,6 +621,9 @@ body.dark #templateName, body.dark #templateTags,body.dark #tagsDisplay,body.dar
   padding: 3px 10px;
   border-radius: 4px;
   font-size: 13px;
+  display: inline-block;
+  vertical-align: middle;
+  white-space: nowrap; /* Prevent text from wrapping inside a tag */
 }
 .tag-link:hover {
   background-color: #0d6efd;
@@ -737,10 +755,7 @@ body.dark .tab-content {
 
 .tab-pane textarea {
   background: transparent;
-  border-top-left-radius: none !important;
-  border-top-right-radius: 8px !important;
-  border-bottom-left-radius: 8px !important;
-  border-bottom-right-radius: 8px !important;
+  border-radius: 8px !important;
   height: calc(100vh - 360px);
   min-height: 50px;
   padding: 0;
@@ -799,31 +814,81 @@ body.dark .tab-pane .btn-outline-secondary:hover {
   color: #000;
 }
 
-/* Filled tab indicator styles */
+/* Tab styling for dynamic placeholder tabs */
 #editorTabs .nav-link.filled {
-  background-color: #e8f5e8;
-  border-color: #28a745;
-  color: #155724;
+  background-color: transparent; /* No background color */
+  color: #3b82f6; /* A clean, soft blue for the text */
   font-weight: 600;
 }
 
-#editorTabs .nav-link.filled:hover {
-  background-color: #d4edda;
-  border-color: #28a745;
-  color: #155724;
-}
-
 body.dark #editorTabs .nav-link.filled {
-  background-color: #1e3a1e;
-  border-color: #28a745;
-  color: #a3d9a5;
+  color: #3b82f6; /* A soft sky blue for dark theme text */
 }
 
-body.dark #editorTabs .nav-link.filled:hover {
-  background-color: #2d5a2d;
-  border-color: #28a745;
-  color: #a3d9a5;
+/* Placeholder and its values styles */
+.placeholder-marker {
+  background-color: #f1f5f9;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  padding: 2px 4px;
+  margin: 0 2px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+  font-weight: 400;
+  color: #4b5563;
 }
+
+.placeholder-marker:hover {
+  background-color: #e2e8f0;
+}
+
+.placeholder-marker.placeholder-filled {
+  background-color: #dbeafe;
+  border-color: #60a5fa;
+}
+
+.placeholder-marker.placeholder-filled:hover {
+  background-color: #bfdbfe;
+}
+
+.placeholder-value {
+  font-weight: 500;
+  color: #1e40af;
+  cursor: pointer;
+  user-select: none;
+  padding: 2px 4px;
+  margin: 0 2px;
+}
+
+/* Dark theme support */
+.dark .placeholder-marker {
+  background-color: #374151;
+  border-color: #4b5563;
+  color: #e5e7eb;
+}
+
+.dark .form-control::placeholder {
+  color: #8a94a0; /* Lighter gray for dark mode placeholder text */
+}
+
+.dark .placeholder-marker:hover {
+  background-color: #4b5563;
+}
+
+.dark .placeholder-marker.placeholder-filled {
+  background-color: #1e3a8a;
+  border-color: #3b82f6;
+}
+
+.dark .placeholder-marker.placeholder-filled:hover {
+  background-color: #1e40af;
+}
+
+.dark .placeholder-value {
+  color: #9ca3af; /* Soft, light gray text for dark theme */
+}
+
 /* Responsive adjustments */
 @media (max-width: 400px) {
   #buttons .btn svg {
@@ -864,4 +929,91 @@ body.dark #editorTabs .nav-link.filled:hover {
     width: calc(8px + (16 * 100vh / 400));
     height: calc(8px + (16 * 100vh / 400));
   }
+}
+
+/* Tab Slider Styles */
+.tabs-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  z-index: 1; 
+}
+
+.tabs-wrapper {
+  flex-grow: 1;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  cursor: grab;
+  user-select: none;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  padding: 0px; /* Add padding to the wrapper */
+}
+
+.tabs-wrapper.is-dragging {
+  cursor: grabbing;
+  scroll-behavior: auto; /* Use auto for instant feedback during drag */
+}
+
+.tabs-wrapper::-webkit-scrollbar {
+  display: none;
+}
+
+.tabs-wrapper::-webkit-scrollbar {
+    display: none; /* for Chrome, Safari, and Opera */
+}
+
+#editorTabs.nav-tabs {
+  position: relative;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  /* Padding is now on the wrapper */
+}
+
+.scroll-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: rgba(255, 255, 255, 0.8);
+  border: 1px solid #ddd;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s, background-color 0.2s;
+}
+
+.scroll-btn.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.scroll-btn.left {
+  left: 5px;
+}
+
+.scroll-btn.right {
+  right: 5px;
+}
+
+.scroll-btn:hover {
+  background-color: #fff;
+}
+
+body.dark .scroll-btn {
+  background-color: rgba(45, 45, 45, 0.8);
+  border-color: #555;
+  color: #eee;
+}
+
+body.dark .scroll-btn:hover {
+  background-color: #444;
 }

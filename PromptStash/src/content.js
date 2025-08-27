@@ -337,6 +337,7 @@ function isFieldValid(field) {
 }
 
 function isFieldEditable(field) {
+  if (!field) return false;
   if (field.tagName === "TEXTAREA" || field.tagName === "INPUT") {
     return !field.disabled && !field.readOnly;
   } else if (field.tagName === "DIV" && field.contentEditable === "true") {
