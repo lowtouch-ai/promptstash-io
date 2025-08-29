@@ -153,111 +153,92 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
 
   const handleDrag = (e) => {
     e.preventDefault();
-    const constraints = getConstraints();
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    
-    let newLeft = e.clientX - offsetX;
-    let newTop = e.clientY - offsetY;
-    
-    // Get current dimensions
-    const currentWidth = popup.offsetWidth;
-    const currentHeight = popup.offsetHeight;
-    
-    // Apply boundary constraints for dragging
-    newLeft = Math.max(constraints.boundaryPadding, 
-      Math.min(vw - currentWidth - constraints.boundaryPadding, newLeft));
-    newTop = Math.max(constraints.boundaryPadding, 
-      Math.min(vh - currentHeight - constraints.boundaryPadding, newTop));
-    
-    // Batch DOM updates
-    popup.style.cssText += `
-      left: ${newLeft}px;
-      top: ${newTop}px;
-      right: auto;
-      transition: none;
-    `;
+
+    // Check conditions to prevent dragging (e.g., fullscreen, small screen)
+    const isSmallScreen = window.innerWidth < SMALL_SCREEN_MAX;
+    chrome.storage.local.get(["isFullscreen"], (result) => {
+      if (result.isFullscreen || isSmallScreen) {
+        // If dragging is disallowed, reset the state and exit
+        isDragging = false;
+        return;
+      }
+
+      const constraints = getConstraints();
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      
+      let newLeft = e.clientX - offsetX;
+      let newTop = e.clientY - offsetY;
+      
+      const currentWidth = popup.offsetWidth;
+      const currentHeight = popup.offsetHeight;
+      
+      // Apply boundary constraints
+      newLeft = Math.max(constraints.boundaryPadding, 
+        Math.min(vw - currentWidth - constraints.boundaryPadding, newLeft));
+      newTop = Math.max(constraints.boundaryPadding, 
+        Math.min(vh - currentHeight - constraints.boundaryPadding, newTop));
+      
+      // Update popup position
+      popup.style.left = `${newLeft}px`;
+      popup.style.top = `${newTop}px`;
+    });
   };
 
   const handleResize = (e) => {
     e.preventDefault();
-    const constraints = getConstraints();
-    const deltaX = e.clientX - startPointer.x;
-    const deltaY = e.clientY - startPointer.y;
-    
-    let newRect = {
-      left: startRect.left,
-      top: startRect.top,
-      width: startRect.width,
-      height: startRect.height
-    };
 
-    const resizeTransforms = {
-      e: () => { 
-        const newWidth = startRect.width + deltaX;
-        if (newWidth >= constraints.minWidth && newWidth <= constraints.maxWidth) {
-          newRect.width = newWidth;
-        } else {
-          // Clamp to constraints without reverting
-          newRect.width = Math.max(constraints.minWidth, Math.min(constraints.maxWidth, newWidth));
-        }
-      },
-      w: () => { 
-        const newWidth = startRect.width - deltaX;
-        const newLeft = startRect.left + deltaX;
-        if (newWidth >= constraints.minWidth && newLeft >= constraints.boundaryPadding) {
-          newRect.width = newWidth;
-          newRect.left = newLeft;
-        } else if (newWidth < constraints.minWidth) {
-          // Hit minimum width constraint
-          newRect.width = constraints.minWidth;
-          newRect.left = startRect.left + startRect.width - constraints.minWidth;
-        } else if (newLeft < constraints.boundaryPadding) {
-          // Hit left boundary constraint
-          newRect.left = constraints.boundaryPadding;
-          newRect.width = startRect.left + startRect.width - constraints.boundaryPadding;
-        }
-      },
-      s: () => { 
-        const newHeight = startRect.height + deltaY;
-        if (newHeight >= constraints.minHeight && newHeight <= constraints.maxHeight) {
-          newRect.height = newHeight;
-        } else {
-          // Clamp to constraints without reverting
-          newRect.height = Math.max(constraints.minHeight, Math.min(constraints.maxHeight, newHeight));
-        }
-      },
-      n: () => { 
-        const newHeight = startRect.height - deltaY;
-        const newTop = startRect.top + deltaY;
-        if (newHeight >= constraints.minHeight && newTop >= constraints.boundaryPadding) {
-          newRect.height = newHeight;
-          newRect.top = newTop;
-        } else if (newHeight < constraints.minHeight) {
-          // Hit minimum height constraint
-          newRect.height = constraints.minHeight;
-          newRect.top = startRect.top + startRect.height - constraints.minHeight;
-        } else if (newTop < constraints.boundaryPadding) {
-          // Hit top boundary constraint
-          newRect.top = constraints.boundaryPadding;
-          newRect.height = startRect.top + startRect.height - constraints.boundaryPadding;
-        }
+    // Check conditions to prevent resizing
+    const isSmallScreen = window.innerWidth < SMALL_SCREEN_MAX;
+    chrome.storage.local.get(["isFullscreen"], (result) => {
+      if (result.isFullscreen || isSmallScreen) {
+        isResizing = false;
+        return;
       }
-    };
 
-    // Execute transforms for each direction
-    [...resizeDirection].forEach(dir => {
-      resizeTransforms[dir]?.();
+      const constraints = getConstraints();
+      const deltaX = e.clientX - startPointer.x;
+      const deltaY = e.clientY - startPointer.y;
+      
+      let newRect = { ...startRect };
+
+      const resizeTransforms = {
+        e: () => { newRect.width = Math.max(constraints.minWidth, Math.min(constraints.maxWidth, startRect.width + deltaX)); },
+        w: () => {
+          const newWidth = startRect.width - deltaX;
+          if (newWidth < constraints.minWidth) {
+            newRect.width = constraints.minWidth;
+            newRect.left = startRect.left + startRect.width - constraints.minWidth;
+          } else {
+            newRect.width = newWidth;
+            newRect.left = startRect.left + deltaX;
+          }
+        },
+        s: () => { newRect.height = Math.max(constraints.minHeight, Math.min(constraints.maxHeight, startRect.height + deltaY)); },
+        n: () => {
+          const newHeight = startRect.height - deltaY;
+          if (newHeight < constraints.minHeight) {
+            newRect.height = constraints.minHeight;
+            newRect.top = startRect.top + startRect.height - constraints.minHeight;
+          } else {
+            newRect.height = newHeight;
+            newRect.top = startRect.top + deltaY;
+          }
+        }
+      };
+
+      [...resizeDirection].forEach(dir => resizeTransforms[dir]?.());
+
+      // Apply boundary constraints for position
+      newRect.left = Math.max(constraints.boundaryPadding, newRect.left);
+      newRect.top = Math.max(constraints.boundaryPadding, newRect.top);
+
+      // Apply new styles
+      popup.style.width = `${newRect.width}px`;
+      popup.style.height = `${newRect.height}px`;
+      popup.style.left = `${newRect.left}px`;
+      popup.style.top = `${newRect.top}px`;
     });
-
-    popup.style.cssText += `
-      width: ${newRect.width}px;
-      height: ${newRect.height}px;
-      left: ${newRect.left}px;
-      top: ${newRect.top}px;
-      right: auto;
-      transition: none;
-    `;
   };
 
   const onPointerUp = (e) => {
@@ -296,80 +277,72 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
   };
 
   const onDragStart = (e) => {
-    // Prevent dragging on interactive elements
+    // Prevent dragging on interactive elements like inputs, buttons, or resize handles
     const interactiveElements = ['INPUT', 'TEXTAREA', 'BUTTON', 'SELECT', 'A'];
-    const isInteractive = interactiveElements.includes(e.target.tagName) || 
-                         e.target.closest('button, input, textarea, select, a') ||
-                         e.target.classList.contains(RESIZE_HANDLE_CLASS);
-    
-    if (isInteractive) return;
+    if (interactiveElements.includes(e.target.tagName) || 
+        e.target.closest('button, input, textarea, select, a') ||
+        e.target.classList.contains(RESIZE_HANDLE_CLASS)) {
+      return;
+    }
 
-    const isSmallScreen = window.innerWidth < SMALL_SCREEN_MAX;
-    chrome.storage.local.get(["isFullscreen"], (result) => {
-      if (result.isFullscreen || isSmallScreen) return;
-      
-      isDragging = true;
-      isPointerOutOfBounds = false;
-      const rect = popup.getBoundingClientRect();
-      offsetX = e.clientX - rect.left;
-      offsetY = e.clientY - rect.top;
-      
-      // Disable interactions during drag
-      const iframe = popup.querySelector('iframe');
-      if (iframe) iframe.style.pointerEvents = 'none';
-      document.body.style.userSelect = 'none';
-      popup.style.transition = 'none';
-      popup.style.right = 'auto';
+    // Immediately start the drag process
+    isDragging = true;
+    isPointerOutOfBounds = false;
+    const rect = popup.getBoundingClientRect();
+    offsetX = e.clientX - rect.left;
+    offsetY = e.clientY - rect.top;
 
-      // Disable outside click during drag
-      document.removeEventListener('click', popup.outsideClickListener);
+    // Set initial position and disable transitions to prevent jumping
+    popup.style.transition = 'none';
+    popup.style.left = `${rect.left}px`;
+    popup.style.top = `${rect.top}px`;
+    popup.style.right = 'auto';
 
-      // Add global listeners including pointer leave
-      document.addEventListener('pointermove', onPointerMove, { passive: false });
-      document.addEventListener('pointerup', onPointerUp);
-      document.addEventListener('pointerleave', onPointerUp);
-    });
+    // Disable interactions on other elements for a smooth drag
+    const iframe = popup.querySelector('iframe');
+    if (iframe) iframe.style.pointerEvents = 'none';
+    document.body.style.userSelect = 'none';
+
+    // Temporarily remove the outside click listener to prevent the popup from closing
+    document.removeEventListener('click', popup.outsideClickListener);
+
+    // Add global listeners to handle the drag and its completion
+    document.addEventListener('pointermove', onPointerMove, { passive: false });
+    document.addEventListener('pointerup', onPointerUp);
+    document.addEventListener('pointerleave', onPointerUp);
   };
 
   const onResizeStart = (e, direction) => {
     e.stopPropagation();
-    const isSmallScreen = window.innerWidth < SMALL_SCREEN_MAX;
-    
-    chrome.storage.local.get(["isFullscreen"], (result) => {
-      // Block resize in fullscreen mode or small screens
-    if (result.isFullscreen || isSmallScreen) {
-      e.preventDefault();
-      return;
-    }
-      
-      isResizing = true;
-      isPointerOutOfBounds = false;
-      resizeDirection = direction;
-      
-      // Store initial state
-      const rect = popup.getBoundingClientRect();
-      startRect = {
-        left: rect.left,
-        top: rect.top,
-        width: rect.width,
-        height: rect.height
-      };
-      startPointer = { x: e.clientX, y: e.clientY };
-      
-      // Disable interactions during resize
-      const iframe = popup.querySelector('iframe');
-      if (iframe) iframe.style.pointerEvents = 'none';
-      document.body.style.userSelect = 'none';
-      popup.style.transition = 'none';
 
-      // Disable outside click during resize
-      document.removeEventListener('click', popup.outsideClickListener);
+    // Immediately start the resize process
+    isResizing = true;
+    isPointerOutOfBounds = false;
+    resizeDirection = direction;
 
-      // Add global listeners including pointer leave
-      document.addEventListener('pointermove', onPointerMove, { passive: false });
-      document.addEventListener('pointerup', onPointerUp);
-      document.addEventListener('pointerleave', onPointerUp);
-    });
+    // Store the initial state of the popup and pointer
+    const rect = popup.getBoundingClientRect();
+    startRect = {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height
+    };
+    startPointer = { x: e.clientX, y: e.clientY };
+
+    // Disable interactions to ensure smooth resizing
+    const iframe = popup.querySelector('iframe');
+    if (iframe) iframe.style.pointerEvents = 'none';
+    document.body.style.userSelect = 'none';
+    popup.style.transition = 'none';
+
+    // Temporarily remove the outside click listener
+    document.removeEventListener('click', popup.outsideClickListener);
+
+    // Add global listeners to handle the resize and its completion
+    document.addEventListener('pointermove', onPointerMove, { passive: false });
+    document.addEventListener('pointerup', onPointerUp);
+    document.addEventListener('pointerleave', onPointerUp);
   };
 
   const createResizeHandles = () => {

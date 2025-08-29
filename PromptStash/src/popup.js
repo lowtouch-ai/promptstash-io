@@ -358,21 +358,18 @@ function setupEventListeners() {
 // --- UI State Management Functions ---
 
 function updateExportSingleBtnState() {
-    chrome.storage.local.get(["templates"], (result) => {
-        const templates = result.templates || [];
-        const name = elements.templateName.value.trim();
-        const exists = templates.some((t) => t.name === name);
-        const btn = elements.exportSingleBtn;
-        if (exists) {
-            btn.style.display = "";
-            btn.disabled = false;
-            btn.setAttribute("aria-disabled", "false");
-        } else {
-            btn.style.display = "none";
-            btn.disabled = true;
-            btn.setAttribute("aria-disabled", "true");
-        }
-    });
+    const name = elements.templateName.value.trim();
+    const btn = elements.exportSingleBtn;
+
+    if (name) {
+        btn.style.display = ""; // Show the button
+        btn.disabled = false;
+        btn.setAttribute("aria-disabled", "false");
+    } else {
+        btn.style.display = "none"; // Hide the button
+        btn.disabled = true;
+        btn.setAttribute("aria-disabled", "true");
+    }
 }
 
 function updateSaveButtonState() {
@@ -783,6 +780,7 @@ function renderFavoriteSuggestions(favorites) {
 function loadTemplateFromSelection(tmpl) {
     selectedTemplateName = tmpl.name;
     elements.templateName.value = tmpl.name;
+    updateExportSingleBtnState();
     const tagsArray = Array.isArray(tmpl.tags) ? tmpl.tags : [];
     elements.templateTags.value = tagsArray.join(", ");
     if (tagsArray.length > 0) {
@@ -1479,25 +1477,47 @@ function handleImportFile(event) {
 function handleExportAll() {
     chrome.storage.local.get(["templates"], (result) => {
         const templates = result.templates || [];
-        const yaml = promptsToYAML(templates);
-        downloadFile(yaml, "promptstash_export_all.yaml", "text/yaml");
-        showToast("All prompts exported!", 2000, "green");
+        
+        const processedTemplates = templates.map(template => {
+            let content = template.content;
+            for (const placeholder in tabsState.placeholderValues) {
+                const value = tabsState.placeholderValues[placeholder];
+                if (value) { // Only replace if there is a value
+                    const regex = new RegExp(`\\{\\{${placeholder.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}\\}\}`, 'g');
+                    content = content.replace(regex, value);
+                }
+            }
+            return { ...template, content };
+        });
+
+        const yaml = promptsToYAML(processedTemplates);
+        downloadFile(yaml, "promptstash_export_all_dynamic.yaml", "text/yaml");
+        showToast("All prompts exported with current values!", 2000, "green");
     });
 }
 
 function handleExportSingle() {
-    chrome.storage.local.get(["templates"], (result) => {
-        const templates = result.templates || [];
-        const name = elements.templateName.value.trim();
-        const prompt = templates.find((t) => t.name === name);
-        if (prompt) {
-            const yaml = promptsToYAML([prompt]);
-            downloadFile(yaml, `promptstash_export_${prompt.name || "prompt"}.yaml`, "text/yaml");
-            showToast("Prompt exported!", 2000, "green");
-        } else {
-            showToast("No template selected to export.", 2000, "red");
-        }
-    });
+    const name = elements.templateName.value.trim();
+    if (!name) {
+        showToast("Template name is required to export.", 3000, "red", [], "exportSingle");
+        return;
+    }
+
+    let content = tabsState.currentTemplate;
+    for (const placeholder in tabsState.placeholderValues) {
+        const value = tabsState.placeholderValues[placeholder];
+        const regex = new RegExp(`\\{\\{${placeholder.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}\\}\}`, 'g');
+        content = content.replace(regex, value || `{{${placeholder}}}`);
+    }
+
+    const tags = elements.templateTags.value.trim();
+
+    const yamlString = `name: ${name}\n` +
+                       `tags: ${tags}\n` +
+                       `content: |\n  ${content.replace(/\n/g, '\n  ')}`;
+
+    downloadFile(yamlString, `${name}.yaml`, "text/yaml");
+    showToast(`Template '${name}' exported successfully.`, 3000, "green", [], "exportSingle");
 }
 
 function handleGlobalClick(event) {
