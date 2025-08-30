@@ -227,12 +227,18 @@ function initializeState() {
         const isTagsInEditMode = state.isTagsInEditMode === undefined ? true : state.isTagsInEditMode;
 
         const defaultText = `# Your Role\n*\n\n# Background Information\n*\n\n# Your Task\n*`;
-        elements.templateName.value = state.name || getDefaultTemplateName();
+        selectedTemplateName = state.selectedName || null;
+        
+        // If we have a selected template, use its name, otherwise use saved name or default
+        if (selectedTemplateName) {
+            elements.templateName.value = selectedTemplateName;
+        } else {
+            elements.templateName.value = state.name || getDefaultTemplateName();
+        }
+        
         elements.templateTags.value = state.tags || "";
         tabsState.currentTemplate = state.content || defaultText;
         elements.promptArea.textContent = tabsState.currentTemplate;
-
-        selectedTemplateName = state.selectedName || null;
         tabsState.placeholderValues = result.placeholderValues || {};
 
         if (!isTagsInEditMode && (state.tags || selectedTemplateName)) {
@@ -251,6 +257,7 @@ function initializeState() {
 
         updateSaveButtonState();
         updateDeleteButtonState();
+        updateExportSingleBtnState();
 
         let templates = result.templates;
         if (!templates) {
@@ -305,6 +312,7 @@ function setupEventListeners() {
         elements.fetchBtn2.style.display = "block";
         elements.clearPrompt.style.display = "none";
         elements.searchBox.value = "";
+        updateExportSingleBtnState()
         updateSaveButtonState();
         updateDeleteButtonState();
         saveState();
@@ -360,15 +368,29 @@ function setupEventListeners() {
 function updateExportSingleBtnState() {
     const name = elements.templateName.value.trim();
     const btn = elements.exportSingleBtn;
+    const hasSelectedTemplate = selectedTemplateName !== null; // Check if we have a saved template selected
 
-    if (name) {
-        btn.style.display = ""; // Show the button
+    if (name && hasSelectedTemplate) {
+        btn.style.display = ""; // Show the button only for saved templates
         btn.disabled = false;
         btn.setAttribute("aria-disabled", "false");
     } else {
-        btn.style.display = "none"; // Hide the button
+        btn.style.display = "none"; // Hide the button for unsaved templates
         btn.disabled = true;
         btn.setAttribute("aria-disabled", "true");
+    }
+}
+
+function updateClearButtonState() {
+    const hasContent = elements.promptArea.textContent.trim();
+    const hasTabs = tabsState.placeholders.length > 0;
+    
+    if (hasTabs) {
+        // Hide clear button when tabs/placeholders exist
+        elements.clearPrompt.style.display = "none";
+    } else {
+        // Show clear button only when no tabs and content exists
+        elements.clearPrompt.style.display = hasContent ? "block" : "none";
     }
 }
 
@@ -802,7 +824,7 @@ function loadTemplateFromSelection(tmpl) {
     elements.searchOverlay.style.display = 'none';
     elements.dropdownResults.classList.remove("show");
     elements.fetchBtn2.style.display = "none";
-    elements.clearPrompt.style.display = "block";
+    updateClearButtonState();
     updateSaveButtonState();
     updateDeleteButtonState();
     saveState();
@@ -921,6 +943,7 @@ function buildTabsFromTemplate(templateContent) {
         // Show tabs and build placeholder tabs
         tabsList.style.display = 'flex';
         elements.promptArea.style.height = 'calc(100vh - 360px)';
+        elements.clearPrompt.style.display = "none";
 
         placeholders.forEach((placeholder) => {
             const tabId = `placeholder-${placeholder.replace(/\s+/g, '-').toLowerCase()}`;
@@ -985,6 +1008,7 @@ function buildTabsFromTemplate(templateContent) {
         // Show the template tab by default
         if (templateTab) new bootstrap.Tab(templateTab).show();
     }
+    updateClearButtonState();
     renderPlaceholdersInTemplate();
     // The MutationObserver will handle the arrow updates automatically
 }
@@ -1002,6 +1026,7 @@ function destroyTabs() {
     if (templatePanel) templatePanel.classList.add('active', 'show');
     
     elements.promptArea.style.height = 'calc(100vh - 320px)';
+    updateClearButtonState();
 }
 
 function renderPlaceholdersInTemplate() {
@@ -1149,14 +1174,17 @@ function handleNewTemplate() {
     originalTagsBeforeEdit = null;
     elements.templateName.value = getDefaultTemplateName();
     elements.templateTags.value = "";
-    elements.promptArea.textContent = `# Your Role\n*\n\n# Background Information\n*\n\n# Your Task\n*`;
+    const defaultContent = `# Your Role\n*\n\n# Background Information\n*\n\n# Your Task\n*`;
+    elements.promptArea.textContent = defaultContent;
+    tabsState.currentTemplate = defaultContent; // Set the current template
     switchToTagsEditMode();
     updateSaveButtonState();
     updateDeleteButtonState();
+    updateExportSingleBtnState()
     elements.fetchBtn2.style.display = "none";
-    elements.clearPrompt.style.display = "block";
     elements.searchBox.value = "";
     destroyTabs();
+    buildTabsFromTemplate(defaultContent); // Build tabs from the default content
     saveState();
     showToast("New template created.", 2000, "green", [], "new");
 }
@@ -1497,27 +1525,32 @@ function handleExportAll() {
 }
 
 function handleExportSingle() {
-    const name = elements.templateName.value.trim();
-    if (!name) {
-        showToast("Template name is required to export.", 3000, "red", [], "exportSingle");
+    if (!selectedTemplateName) {
+        showToast("No saved template selected to export.", 3000, "red", [], "exportSingle");
         return;
     }
 
-    let content = tabsState.currentTemplate;
-    for (const placeholder in tabsState.placeholderValues) {
-        const value = tabsState.placeholderValues[placeholder];
-        const regex = new RegExp(`\\{\\{${placeholder.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}\\}\}`, 'g');
-        content = content.replace(regex, value || `{{${placeholder}}}`);
-    }
+    chrome.storage.local.get(["templates"], (result) => {
+        const templates = result.templates || [];
+        const template = templates.find(t => t.name === selectedTemplateName);
+        
+        if (!template) {
+            showToast("Template not found.", 3000, "red", [], "exportSingle");
+            return;
+        }
 
-    const tags = elements.templateTags.value.trim();
+        // Use the saved template data, not the current UI content
+        const name = template.name;
+        const content = template.content;
+        const tags = Array.isArray(template.tags) ? template.tags.join(", ") : "";
 
-    const yamlString = `name: ${name}\n` +
-                       `tags: ${tags}\n` +
-                       `content: |\n  ${content.replace(/\n/g, '\n  ')}`;
+        const yamlString = `name: ${name}\n` +
+                           `tags: ${tags}\n` +
+                           `content: |\n  ${content.replace(/\n/g, '\n  ')}`;
 
-    downloadFile(yamlString, `${name}.yaml`, "text/yaml");
-    showToast(`Template '${name}' exported successfully.`, 3000, "green", [], "exportSingle");
+        downloadFile(yamlString, `${name}.yaml`, "text/yaml");
+        showToast(`Template '${name}' exported successfully.`, 3000, "green", [], "exportSingle");
+    });
 }
 
 function handleGlobalClick(event) {
@@ -1575,12 +1608,11 @@ function handlePromptInput() {
     if (isUpdatingContent) return;
 
     const templateContent = getContentWithPlaceholders();
-    tabsState.currentTemplate = templateContent; // Update the raw template state
+    tabsState.currentTemplate = templateContent;
 
     buildTabsFromTemplate(templateContent);
 
     elements.fetchBtn2.style.display = elements.promptArea.textContent.trim() ? "none" : "block";
-    elements.clearPrompt.style.display = elements.promptArea.textContent.trim() ? "block" : "none";
     
     saveState();
 }
