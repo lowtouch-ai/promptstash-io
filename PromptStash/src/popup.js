@@ -1661,6 +1661,89 @@ function scrollToCursor() {
       }
   }
 }
+function getCharOffset(root, node, offset) {
+      const range = document.createRange();
+      range.setStart(root, 0);
+      range.setEnd(node, offset);
+      return range.toString().length;
+    }
+    
+function handleTabKey(event) {
+    const selection = window.getSelection();
+    if (!selection.rangeCount) return;
+
+    const range = selection.getRangeAt(0);
+    const isCollapsed = range.collapsed;
+
+    if (isCollapsed) {
+     // Case 1: No selection, just a cursor.
+     event.preventDefault();
+     if (event.shiftKey) {
+          // If Shift+Tab, find the start of the line and un-indent
+          const fullText = elements.promptArea.textContent;
+          const cursorOffset = getCharOffset(elements.promptArea, range.startContainer, range.startOffset);
+          const lineStart = fullText.lastIndexOf('\n', cursorOffset - 1) + 1;
+          const line = fullText.substring(lineStart, cursorOffset);
+          const spacesToRemove = Math.min(4, line.match(/^ {1,4}/)?.[0].length || 0);
+
+          if (spacesToRemove > 0) {
+               const newText = fullText.substring(0, lineStart) + fullText.substring(lineStart + spacesToRemove);
+               elements.promptArea.textContent = newText;
+               handlePromptInput();
+               const { node, offset } = findTextNodeAndOffset(elements.promptArea, cursorOffset - spacesToRemove);
+               const newRange = document.createRange();
+               newRange.setStart(node, offset);
+               selection.removeAllRanges();
+               selection.addRange(newRange);
+          }
+     } else {
+          // If Tab, simply insert 4 spaces
+          document.execCommand('insertText', false, '    ');
+     }
+     return;
+    }
+
+    // Case 2: Multiline selection.
+    event.preventDefault();
+    const startOffset = getCharOffset(elements.promptArea, range.startContainer, range.startOffset);
+    const endOffset = getCharOffset(elements.promptArea, range.endContainer, range.endOffset);
+
+    const fullText = elements.promptArea.textContent;
+    const startOfLine = fullText.lastIndexOf('\n', startOffset - 1) + 1;
+    const endOfLine = fullText.indexOf('\n', endOffset) === -1 ? fullText.length : fullText.indexOf('\n', endOffset);
+
+    const beforeText = fullText.substring(0, startOfLine);
+    const affectedText = fullText.substring(startOfLine, endOfLine);
+    const afterText = fullText.substring(endOfLine);
+
+    const lines = affectedText.split('\n');
+    let processedLines = [];
+
+    if (event.shiftKey) { // Un-indent
+     processedLines = lines.map(line => {
+          const leadingSpaces = line.match(/^ {1,4}/);
+          return leadingSpaces ? line.substring(leadingSpaces[0].length) : line;
+     });
+    } else { // Indent
+     processedLines = lines.map(line => '    ' + line);
+    }
+
+    const processedText = processedLines.join('\n');
+    const newFullText = beforeText + processedText + afterText;
+
+    elements.promptArea.textContent = newFullText;
+    handlePromptInput();
+
+    const newEndOffset = startOfLine + processedText.length;
+    const { node: startNode, offset: startNodeOffset } = findTextNodeAndOffset(elements.promptArea, startOfLine);
+    const { node: endNode, offset: endNodeOffset } = findTextNodeAndOffset(elements.promptArea, newEndOffset);
+    
+    const newRange = document.createRange();
+    newRange.setStart(startNode, startNodeOffset);
+    newRange.setEnd(endNode, endNodeOffset);
+    selection.removeAllRanges();
+    selection.addRange(newRange);
+}
 
 // Enhanced unindent function
 function handleUnindent() {
@@ -1703,39 +1786,30 @@ function handleUnindent() {
       selection.addRange(range);
   }
 }
-function handlePromptKeydown(event) {
-  // Handle Tab key for indentation
-  if (event.key === "Tab") {
-  event.preventDefault();
-  if (event.shiftKey) {
-      handleUnindent();
-  } else {
-      // Use execCommand for consistent space insertion
-      document.execCommand('insertText', false, '    '); // Inserts 4 spaces
-  }
-  // The 'input' event will fire automatically and handle state saving.
-  return;
-  }
-  
-  // Handle Enter key for line breaks
-  if (event.key === "Enter") {
-  event.preventDefault();
-  
-  // Use the browser's native command for a robust newline
-  document.execCommand('insertLineBreak');
-  
-  // The 'input' event will fire automatically and handle state saving.
-  return;
-  }
 
-  // Your existing placeholder handling
-  if (isWithinPlaceholder(window.getSelection().focusNode)) {
-  event.preventDefault();
-  const placeholderElement = window.getSelection().focusNode.closest('.placeholder-marker');
-  if (placeholderElement) {
-      switchToPlaceholderTab(placeholderElement.getAttribute('data-type'));
-  }
-  }
+function handlePromptKeydown(event) {
+    // Handle Tab key for indentation
+    if (event.key === "Tab") {
+    event.preventDefault();
+    handleTabKey(event);
+    return;
+    }
+    
+    // Handle Enter key for line breaks
+    if (event.key === "Enter") {
+    event.preventDefault();
+    document.execCommand('insertLineBreak');
+    return;
+    }
+
+    // Your existing placeholder handling
+    if (isWithinPlaceholder(window.getSelection().focusNode)) {
+    event.preventDefault();
+    const placeholderElement = window.getSelection().focusNode.closest('.placeholder-marker');
+    if (placeholderElement) {
+        switchToPlaceholderTab(placeholderElement.getAttribute('data-type'));
+    }
+    }
 }
 
 function handlePaste(event) {
