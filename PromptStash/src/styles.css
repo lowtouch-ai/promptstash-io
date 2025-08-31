@@ -420,6 +420,7 @@ body.dark .favorite-suggestion:hover, body.dark .favorite-suggestion:focus {
   resize: none;
   white-space: pre-wrap;
   word-wrap: break-word;
+  tab-size: 4;
 }
 
 /* Placeholder styling for contenteditable div */

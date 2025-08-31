@@ -1605,44 +1605,172 @@ function handlePromptInput() {
     
     saveState();
 }
+// Enhanced function to insert line break with preservation
+function insertLineBreak() {
+  const selection = window.getSelection();
+  if (selection.rangeCount === 0) return;
+  
+  const range = selection.getRangeAt(0);
+  
+  // Use newline character instead of <br> for better preservation
+  const textNode = document.createTextNode('\n');
+  range.insertNode(textNode);
+  
+  // Move cursor after the newline
+  range.setStartAfter(textNode);
+  range.setEndAfter(textNode);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  
+  scrollToCursor();
+  preserveFormatting();
+}
 
+// Enhanced function to insert spaces with preservation
+function insertSpaces(count) {
+  const selection = window.getSelection();
+  if (selection.rangeCount === 0) return;
+  
+  const range = selection.getRangeAt(0);
+  
+  // Use regular spaces - they'll be preserved by CSS white-space: pre-wrap
+  const spaces = ' '.repeat(count);
+  const textNode = document.createTextNode(spaces);
+  range.insertNode(textNode);
+  
+  // Move cursor after the spaces
+  range.setStartAfter(textNode);
+  range.setEndAfter(textNode);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  
+  scrollToCursor();
+  preserveFormatting();
+}
+
+// Function to scroll the contenteditable div to keep cursor visible
+function scrollToCursor() {
+  const selection = window.getSelection();
+  if (selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      const editorRect = elements.promptArea.getBoundingClientRect();
+      
+      if (rect.bottom > editorRect.bottom) {
+          elements.promptArea.scrollTop += rect.bottom - editorRect.bottom + 10;
+      }
+  }
+}
+
+// Enhanced unindent function
+function handleUnindent() {
+  const selection = window.getSelection();
+  if (selection.rangeCount === 0) return;
+  
+  const range = selection.getRangeAt(0);
+  const startContainer = range.startContainer;
+  
+  // Find the start of the current line
+  let textNode = startContainer.nodeType === Node.TEXT_NODE ? startContainer : startContainer.firstChild;
+  if (!textNode) return;
+  
+  const text = textNode.textContent;
+  const cursorOffset = range.startOffset;
+  
+  // Find line start
+  let lineStart = text.lastIndexOf('\n', cursorOffset - 1) + 1;
+  
+  // Check if line starts with spaces/non-breaking spaces
+  let spacesToRemove = 0;
+  for (let i = lineStart; i < Math.min(lineStart + 4, text.length); i++) {
+      if (text[i] === ' ' || text[i] === '\u00A0') {
+          spacesToRemove++;
+      } else {
+          break;
+      }
+  }
+  
+  if (spacesToRemove > 0) {
+      // Remove the spaces
+      const newText = text.substring(0, lineStart) + text.substring(lineStart + spacesToRemove);
+      textNode.textContent = newText;
+      
+      // Adjust cursor position
+      const newOffset = Math.max(lineStart, cursorOffset - spacesToRemove);
+      range.setStart(textNode, newOffset);
+      range.setEnd(textNode, newOffset);
+      selection.removeAllRanges();
+      selection.addRange(range);
+  }
+}
 function handlePromptKeydown(event) {
-    if (event.key === "Tab") {
-        event.preventDefault();
-        const { selectionStart: start, selectionEnd: end, value } = elements.promptArea;
-        const indentSize = 4;
-        const indentSpaces = " ".repeat(indentSize);
-        if (event.shiftKey) {
-            handleUnindent(elements.promptArea, start, end, value, indentSize);
-        } else {
-            handleIndent(elements.promptArea, start, end, value, indentSpaces);
-        }
-        saveState();
-        return;
-    }
+  // Handle Tab key for indentation
+  if (event.key === "Tab") {
+  event.preventDefault();
+  if (event.shiftKey) {
+      handleUnindent();
+  } else {
+      // Use execCommand for consistent space insertion
+      document.execCommand('insertText', false, '    '); // Inserts 4 spaces
+  }
+  // The 'input' event will fire automatically and handle state saving.
+  return;
+  }
+  
+  // Handle Enter key for line breaks
+  if (event.key === "Enter") {
+  event.preventDefault();
+  
+  // Use the browser's native command for a robust newline
+  document.execCommand('insertLineBreak');
+  
+  // The 'input' event will fire automatically and handle state saving.
+  return;
+  }
 
-    if (isWithinPlaceholder(window.getSelection().focusNode)) {
-        event.preventDefault();
-        const placeholderElement = window.getSelection().focusNode.closest('.placeholder-marker');
-        if (placeholderElement) {
-            switchToPlaceholderTab(placeholderElement.getAttribute('data-type'));
-        }
-    }
+  // Your existing placeholder handling
+  if (isWithinPlaceholder(window.getSelection().focusNode)) {
+  event.preventDefault();
+  const placeholderElement = window.getSelection().focusNode.closest('.placeholder-marker');
+  if (placeholderElement) {
+      switchToPlaceholderTab(placeholderElement.getAttribute('data-type'));
+  }
+  }
 }
 
 function handlePaste(event) {
-    if (isWithinPlaceholder(window.getSelection().focusNode)) {
-        event.preventDefault();
-        return;
-    }
-    setTimeout(() => {
-        const content = elements.promptArea.textContent || '';
-        const sanitizedContent = sanitizeTemplateInput(content);
-        if (sanitizedContent !== content) {
-            elements.promptArea.textContent = sanitizedContent;
-            showToast("Pasted content had invalid placeholders.", 3000, "orange", [], "paste-restriction");
-        }
-    }, 0);
+  if (isWithinPlaceholder(window.getSelection().focusNode)) {
+      event.preventDefault();
+      return;
+  }
+  
+  // Get plain text from clipboard
+  event.preventDefault();
+  const text = event.clipboardData.getData('text/plain');
+  
+  // Insert plain text at cursor position
+  const selection = window.getSelection();
+  if (selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      const textNode = document.createTextNode(text);
+      range.insertNode(textNode);
+      
+      // Move cursor after inserted text
+      range.setStartAfter(textNode);
+      range.setEndAfter(textNode);
+      selection.removeAllRanges();
+      selection.addRange(range);
+  }
+  
+  setTimeout(() => {
+      const content = elements.promptArea.textContent || '';
+      const sanitizedContent = sanitizeTemplateInput(content);
+      if (sanitizedContent !== content) {
+          elements.promptArea.textContent = sanitizedContent;
+          showToast("Pasted content had invalid placeholders.", 3000, "orange", [], "paste-restriction");
+      }
+      handlePromptInput(); // Trigger input handler to update state
+  }, 0);
 }
 
 async function handleCloseWithUnsavedCheck() {
