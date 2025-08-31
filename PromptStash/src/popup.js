@@ -1503,25 +1503,14 @@ function handleImportFile(event) {
 }
 
 function handleExportAll() {
-    chrome.storage.local.get(["templates"], (result) => {
-        const templates = result.templates || [];
-        
-        const processedTemplates = templates.map(template => {
-            let content = template.content;
-            for (const placeholder in tabsState.placeholderValues) {
-                const value = tabsState.placeholderValues[placeholder];
-                if (value) { // Only replace if there is a value
-                    const regex = new RegExp(`\\{\\{${placeholder.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}\\}\}`, 'g');
-                    content = content.replace(regex, value);
-                }
-            }
-            return { ...template, content };
-        });
-
-        const yaml = promptsToYAML(processedTemplates);
-        downloadFile(yaml, "promptstash_export_all_dynamic.yaml", "text/yaml");
-        showToast("All prompts exported with current values!", 2000, "green");
-    });
+  chrome.storage.local.get(["templates"], (result) => {
+      const templates = result.templates || [];
+      
+      // Export templates as-is from storage, without processing placeholder values
+      const yaml = promptsToYAML(templates);
+      downloadFile(yaml, "promptstash_export_all.yaml", "text/yaml");
+      showToast("All saved templates exported!", 2000, "green", [], "exportAll");
+  });
 }
 
 function handleExportSingle() {
