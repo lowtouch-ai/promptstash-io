@@ -1047,16 +1047,22 @@ function renderPlaceholdersInTemplate() {
     let htmlContent = tabsState.currentTemplate;
     let offset = 0;
     
+    const allPositions = [];
     placeholderPositions.forEach((positions, placeholder) => {
-        positions.forEach((pos) => {
-            const hasValue = tabsState.placeholderValues[placeholder]?.trim();
-            const displayContent = hasValue ? tabsState.placeholderValues[placeholder] : pos.original;
-            const spanHtml = `<span class="placeholder-marker ${hasValue ? 'placeholder-filled' : 'placeholder-empty'}" data-type="${placeholder}" title="Click to edit ${placeholder}">${displayContent}</span>`;
-            const actualStart = pos.start + offset;
-            const actualEnd = pos.end + offset;
-            htmlContent = htmlContent.slice(0, actualStart) + spanHtml + htmlContent.slice(actualEnd);
-            offset += spanHtml.length - (actualEnd - actualStart);
+        positions.forEach(pos => {
+            allPositions.push({ ...pos, placeholder });
         });
+    });
+
+    // Sort positions in descending order to avoid index shifting issues
+    allPositions.sort((a, b) => b.start - a.start);
+
+    allPositions.forEach(pos => {
+        const { placeholder, start, end, original } = pos;
+        const hasValue = tabsState.placeholderValues[placeholder]?.trim();
+        const displayContent = hasValue ? tabsState.placeholderValues[placeholder] : original;
+        const spanHtml = `<span class="placeholder-marker ${hasValue ? 'placeholder-filled' : 'placeholder-empty'}" data-type="${placeholder}" title="Click to edit ${placeholder}">${displayContent}</span>`;
+        htmlContent = htmlContent.slice(0, start) + spanHtml + htmlContent.slice(end);
     });
 
     isUpdatingContent = true;
