@@ -69,6 +69,11 @@ const SUPPORTED_HOSTS = {
     primarySelector: "div[aria-label='Write your prompt to Claude'].ProseMirror",
     previousPromptSelector: "textarea.bg-bg-000, div.bg-bg-000, textarea[aria-label*='screen reader interactions']",
     name: "Claude"
+  },
+  "labs.google": {
+    primarySelector: "textarea[placeholder*='Generate a video with text'], div[contenteditable='true'][role='textbox']",
+    previousPromptSelector: "textarea",
+    name: "Google Labs"
   }
 };
 

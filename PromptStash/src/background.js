@@ -3,9 +3,10 @@ const supportedHosts = [
   "https://chatgpt.com/",
   "https://www.perplexity.ai/",
   "https://gemini.google.com/",
-  "https://claude.ai/"
+  "https://claude.ai/",
+  "https://labs.google/"
 ];
-const supportedHostsString = "grok.com, chatgpt.com, perplexity.ai, gemini.google.com, and claude.ai";
+const supportedHostsString = "grok.com, chatgpt.com, perplexity.ai, gemini.google.com, claude.ai, and labs.google";
 
 const LARGE_SCREEN_MIN = 767;
 const SMALL_SCREEN_MAX = 400; // Half of LARGE_SCREEN_MIN + padding on both sides
@@ -261,6 +262,15 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
       document.body.style.userSelect = '';
       
       
+      // Save position on drag/resize end
+      const finalRect = popup.getBoundingClientRect();
+      chrome.storage.local.set({ popupPosition: { 
+          left: finalRect.left, 
+          top: finalRect.top, 
+          width: finalRect.width, 
+          height: finalRect.height 
+      }});
+
       // Re-enable outside click after a small delay to prevent immediate trigger
       setTimeout(() => {
         if (popup && popup.outsideClickListener) {
@@ -463,7 +473,7 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
     popup.appendChild(resizeHandles);
     document.body.appendChild(popup);
 
-    const applyPopupStyles = (isFullscreen) => {
+    const applyPopupStyles = (isFullscreen, savedPosition) => {
       const isLargeScreen = window.innerWidth > LARGE_SCREEN_MIN;
       const isSmallScreen = window.innerWidth < SMALL_SCREEN_MAX;
       const needFullscreen = isFullscreen || isSmallScreen;
@@ -500,6 +510,10 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
       
       if (needFullscreen) {
         finalPos = { x: '0px', y: '0px', right: '0' };
+      } else if (savedPosition) {
+        popupWidth = savedPosition.width;
+        popupHeight = savedPosition.height;
+        finalPos = { x: `${savedPosition.left}px`, y: `${savedPosition.top}px`, right: 'auto' };
       }
       // If no saved position, keep default right-side positioning
     
@@ -521,8 +535,8 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
     };
 
     // Initialize popup with saved state
-    chrome.storage.local.get(["isFullscreen"], (result) => {
-      applyPopupStyles(result.isFullscreen || false);
+    chrome.storage.local.get(["isFullscreen", "popupPosition"], (result) => {
+        applyPopupStyles(result.isFullscreen || false, result.popupPosition);
     });
 
     let resizeTimeout;
@@ -530,8 +544,8 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
       clearTimeout(resizeTimeout);
       resizeTimeout = setTimeout(() => {
         if (!document.getElementById(POPUP_ID)) return;
-        chrome.storage.local.get(["isFullscreen"], (result) => {
-          applyPopupStyles(result.isFullscreen || false);
+        chrome.storage.local.get(["isFullscreen", "popupPosition"], (result) => {
+            applyPopupStyles(result.isFullscreen || false, result.popupPosition);
         });
       }, 100);
     };
@@ -539,11 +553,23 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
     // Optimized event handlers
     const handleEscape = (e) => e.key === "Escape" && cleanup();
     const handleOutsideClick = (e) => {
-      // Don't close if currently dragging or resizing
       if (isDragging || isResizing) return;
       
       const p = document.getElementById(POPUP_ID);
-      if (p && !p.contains(e.target)) cleanup();
+      if (p && !p.contains(e.target)) {
+        // Save position on outside click
+        const finalRect = p.getBoundingClientRect();
+        chrome.storage.local.set({ popupPosition: { 
+            left: finalRect.left, 
+            top: finalRect.top, 
+            width: finalRect.width, 
+            height: finalRect.height 
+        }}, () => {
+            cleanup();
+        });
+      } else if (p && !p.contains(e.target)) {
+          cleanup();
+      }
     };
     
     // Add event listeners
@@ -558,8 +584,8 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
     popup.outsideClickListener = handleOutsideClick;
     popup.updateStyles = () => {
       if (!document.getElementById(POPUP_ID)) return;
-      chrome.storage.local.get(["isFullscreen"], (result) => {
-        applyPopupStyles(result.isFullscreen || false);
+      chrome.storage.local.get(["isFullscreen", "popupPosition"], (result) => {
+        applyPopupStyles(result.isFullscreen || false, result.popupPosition);
       });
     };
   }
@@ -621,7 +647,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             window.removeEventListener('resize', popup.resizeListener); // Clean up resize listener
           }
           if (popup) {
-            popup.remove(); // Remove the popup
+            // Clear saved position on 'X' button close
+            chrome.storage.local.remove('popupPosition', () => {
+                popup.remove(); // Remove the popup
+            });
           }
         }
       }, () => {
