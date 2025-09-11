@@ -4,31 +4,31 @@ const defaultTemplates = [
     tags: "email, professional, communication",
     type: "pre-built",
     content: `# Your Role
-Email Sender — Write professional emails based on provided details.
+Email Sender — Write professional emails based on the provided details.
 
 # Your Task
 Write an email of type {{kind}} about {{subject}}.
 
 # Relevant Background Information
-- {{sender}} — Name or role of the sender
-- {{recipient}} — Name and role of the recipient
-- {{kind}} — Email type
-- {{subject}} — Short topic
-- {{context}} — Background, purpose, and call-to-action, max 3 sentences
-- {{tone}} — Style of the email
+• {{sender}} — Name or role of the sender
+• {{recipient}} — Name and role of the recipient
+• {{kind}} — Email type, such as first, reply, or follow-up
+• {{subject}} — Email subject
+• {{context}} — Background, purpose, and call-to-action
+• {{tone}} — Style of the email, such as friendly, formal, or professional
 
 # Output Format
-1. Subject line
-2. Greeting
-3. Body — 1–3 short paragraphs with context, purpose, and call-to-action
-4. Closing & Signature — short sign-off with sender’s name
+• Subject line
+• Greeting (Hi [Name], Dear [Name], etc.)
+• Body — 1–3 short paragraphs with context, purpose, and call-to-action
+• Closing & Signature — short sign-off with sender’s name
 
 # Notes
-- Keep concise, clear, and under 150 words unless specified
-- Match tone to {{tone}}
-- Ensure purpose and call-to-action are explicit
-- If inputs are incomplete or unclear, flag gaps in the email and use generic phrasing
-- Assume no attachments unless specified in {{purpose}}`,
+• Keep concise and clear
+• Match tone to {{tone}}
+• Ensure purpose and call-to-action are explicit
+• If inputs are incomplete or unclear, flag gaps in the email and use generic
+phrasing, such as “details to follow.”`,
     favorite: false
   },
 
@@ -37,31 +37,30 @@ Write an email of type {{kind}} about {{subject}}.
     tags: "education, lesson plan, teaching",
     type: "pre-built",
     content: `# Your Role
-Educational Content Creator — Design engaging lesson plans tailored to the specified audience.
+Educational Content Creator — Design engaging lesson plans tailored to specific audiences.
 
 # Your Task
 Create a 10-minute lesson plan for the provided topic and audience.
 
-#  Relevant Background Information
-- {{topic}} — Lesson subject
-- {{audience}} — Specific group
-- {{goal}} — Main learning objective with 2–3 measurable outcomes
-- {{tone_style}} — Tone and delivery style
-- {{prior_knowledge}} — Students’ existing knowledge or context; if unknown, note as "unspecified"
+# Relevant Background Information
+• {{topic}} — Lesson subject
+• {{audience}} — Target group
+• {{goal}} — Main learning objective with measurable outcomes
+• {{tone_style}} — Delivery style, such as interactive, lecture, or discussion
+• {{prior_knowledge}} — Students’ existing knowledge; write unspecified if unknown
 
 # Output Format
-1. Introduction (2 min) — Hook, topic connection, and lesson goal
-2. Key Points (4 min) — 2–3 main ideas with short explanations
-3. Activity (3 min) — Interactive, topic-relevant task; list materials
-4. Summary (1 min) — Recap and a reflective question
-5. Assessment — Quick check for understanding
+• Introduction (2 min) — Hook, topic connection, and lesson goal
+• Key Points (4 min) — 2–3 main ideas with short explanations
+• Activity (3 min) — Interactive, topic-relevant task; list materials
+• Summary (1 min) — Recap and a reflective question
+• Assessment — Quick check for understanding, such as a quiz, poll, or show of hands
 
 # Notes
-- Suggest adaptations for both in-person and online delivery
-- Keep language age-appropriate and clear
-- Ensure materials are accessible and easy to prepare
-- Suggest 2–3 credible reference links
-- If inputs are incomplete or unclear, flag gaps in the lesson plan and use generic examples`,
+• Keep language age-appropriate and clear
+• Ensure materials are accessible and easy to prepare
+• Suggest 2–3 credible reference links
+• If inputs are incomplete or unclear, flag gaps in the lesson plan and use generic activities`,
     favorite: false
   },
 
@@ -70,32 +69,33 @@ Create a 10-minute lesson plan for the provided topic and audience.
     tags: "marketing, email, promotion",
     type: "pre-built",
     content: `# Your Role
-Marketing Copywriter — Craft a promotional email that aligns with the brand’s style and engages the target audience.
+Marketing Copywriter — Write a promotional email that reflects brand style and engages the target
+audience.
 
 # Your Task
-Write a promotional email for {{product}} to drive {{goal}}.
+Write a promotional email for {{product}} to achieve {{goal}}.
 
-#  Relevant Background Information
-- {{product}} — Name of the product or service
-- {{goal}} — Campaign objective
-- {{audience}} — Target group
-- {{campaign_details}} — Promotion details and brand traits to reflect, max 2 sentences
-- {{tone}} — Style of the email
-- {{audience_insights}} — Audience preferences or prior engagement; if unknown, note as "unspecified"
+# Relevant Background Information
+• {{product}} — Name of the product or service
+• {{goal}} — Campaign objective, such as driving sales, sign-ups, or engagement
+• {{audience}} — Target group, such as students or professionals
+• {{campaign_details}} — Promotion details and brand traits in 1–2 sentences
+• {{tone}} — Style of the email, such as friendly, professional, or persuasive
+• {{audience_insights}} — Audience preferences or prior engagement; write unspecified if unknown
 
 # Output Format
-1. Subject Line — Under 50 characters, attention-grabbing
-2. Greeting — Personalized if possible
-3. Hook — One sentence to capture interest
-4. Body — Present offer, value to audience, and urgency (100–150 words)
-5. CTA — Clear action
-6. Closing & Signature — Short, brand-aligned sign-off
+• Subject line — Under 50 characters, attention-grabbing
+• Greeting — Personalized if possible
+• Hook — One sentence to capture interest
+• Body — Present offer, value, and urgency (100–150 words)
+• CTA — Clear action
+• Closing & Signature — Short, brand-aligned sign-off
 
 # Notes
-- Keep sentences concise, persuasive, and benefit-focused
-- Match tone to {{tone}} and reflect brand traits in {{campaign_details}}
-- Make urgency in {{campaign_details}} explicit
-- If inputs are incomplete or unclear, flag gaps in the email and use generic phrasing`,
+• Keep concise, persuasive, and benefit-focused
+• Match tone to {{tone}} and reflect traits in {{campaign_details}}
+• Make urgency in {{campaign_details}} explicit
+• If inputs are incomplete or unclear, flag gaps and use generic phrasing, such as limited-time offer`,
     favorite: false
   },
 
@@ -104,31 +104,30 @@ Write a promotional email for {{product}} to drive {{goal}}.
     tags: "market research, analysis, business",
     type: "pre-built",
     content: `# Your Role
-Market Research Analyst — Identify and evaluate competitors, tailoring the report to {{stakeholder}}.
+Market Research Analyst — Identify and evaluate competitors for {{stakeholder}}.
 
 # Your Task
-Analyze competitors and deliver a concise, decision-ready report for {{target_company}} to achieve {{goal}}.
+Deliver a concise report on competitors of {{target_company}} to achieve {{goal}}.
 
-#  Relevant Background Information
-- {{stakeholder}} — Intended audience for the report
-- {{target_company}} — Company for which the research is being conducted
-- {{goal}} — Main business objective of the research
-- {{competitors}} — Known competitor names; leave blank to auto-identify 3–5 likely competitors with rationale
-- {{focus}} — Areas to compare
-- {{research_data}} — Customer insights and data sources with credibility noted
+# Relevant Background Information
+• {{stakeholder}} — Audience for the report
+• {{target_company}} — Company being researched
+• {{goal}} — Objective of the research
+• {{competitors}}
+• {{focus}} — Areas to compare, such as pricing or features
+• {{research_data}} — Information you already have
 
 # Output Format
-1. Executive Summary — 50–75 words tailored to {{stakeholder}}
-2. Comparison Table — Competitors vs. {{focus}}, 2–3 key metrics
-3. Key Takeaways — 3–5 strategic insights for {{target_company}} with recommended actions and timelines
-4. Opportunities & Threats — Risks and advantages for {{target_company}}
-5. References — 2–3 credible links
+• Executive Summary — 50–75 words for {{stakeholder}}
+• Comparison Table — {{focus}} with 2–3 key metrics
+• Key Takeaways — 3–5 insights with actions for {{target_company}}
+• Opportunities & Threats — Risks and advantages
+• References — 2–3 credible links
 
 # Notes
-- Use verifiable, relevant data; note gaps
-- Make tables scannable and mobile-friendly
-- Align insights with {{goal}} and {{stakeholder}} priorities
-- Provide actionable recommendations`,
+• Use verifiable data; note gaps
+• Align insights with {{goal}} and {{stakeholder}}
+• Provide actionable recommendations`,
     favorite: false
   },
 
@@ -137,31 +136,32 @@ Analyze competitors and deliver a concise, decision-ready report for {{target_co
     tags: "startup, business, feasibility",
     type: "pre-built",
     content: `# Your Role
-Startup Advisor — Provide a feasibility assessment for founders, investors, and advisors in separate sections.
+Startup Advisor — Provide a feasibility assessment for founders, investors, and advisors in separate
+sections.
 
 # Your Task
-Evaluate the feasibility of a startup idea and provide actionable recommendations to achieve the stated goal.
+Evaluate the feasibility of a startup idea and provide recommendations to achieve the stated goal.
 
-#  Relevant Background Information
-- {{idea}} — Short description of the startup idea
-- {{market}} — Target customers, demographics, and size
-- {{problem}} — Pain point and its impact
-- {{usp}} — Unique differentiator
-- {{sources}} — Data sources; note credibility
-- {{timeframe}} — Analysis period
+# Relevant Background Information
+• {{idea}} — Startup idea description
+• {{market}} — Target customers, demographics, and size
+• {{problem}} — Pain point and impact
+• {{usp}} — Unique differentiator
+• {{sources}} — Data sources with credibility noted
+• {{timeframe}} — Period of analysis
 
 # Output Format
-1. Market Need — Demand evidence with data/trends
-2. Competition — Key players, strengths/weaknesses, USP comparison
-3. Risks — Main challenges and mitigations
-4. Recommendations by Stakeholder — Founders, Investors, Advisors
-5. References — 2–3 credible links
+• Market Need — Demand evidence with data or trends
+• Competition — Key players, strengths/weaknesses, USP comparison
+• Risks — Main challenges and mitigations
+• Recommendations by Stakeholders — Founders, Investors, Advisors
+• References — 2–3 credible links
 
 # Notes
-- Keep insights concise and evidence-based
-- Make it scannable with bullets
-- Align recommendations with the goal
-- Flag data gaps`,
+• Keep insights concise and evidence-based
+• Use bullets for clarity
+• Align recommendations with the stated goal
+• Flag gaps in data`,
     favorite: false
   },
 
@@ -170,29 +170,31 @@ Evaluate the feasibility of a startup idea and provide actionable recommendation
     tags: "social media, marketing, promotion",
     type: "pre-built",
     content: `# Your Role
-Social Media Manager — Create platform-optimized promotional posts that align with brand values and drive engagement.
+Social Media Manager — Create platform-optimized promotional posts that align with brand values
+and drive engagement.
 
 # Your Task
 Write a promotional post for the specified event or product to achieve the stated campaign goal.
 
-#  Relevant Background Information
-- {{event_or_product}} — Name and one-sentence description
-- {{goal}} — Campaign objective
-- {{platform}} — Social platform
-- {{audience_profile}} — Target audience, tone style, and brand traits
-- {{campaign_context}} — Urgency, hashtags, and prior engagement
+# Relevant Background Information
+• {{event_or_product}} — Short description of the event or product
+• {{goal}} — Campaign objective, such as driving ticket sales, sign-ups, or awareness
+• {{platform}} — Social platform, such as Instagram, LinkedIn, or Twitter/X
+• {{audience_profile}} — Target audience, tone, and brand traits
+• {{campaign_context}} — Urgency, hashtags, and prior engagement
 
 # Output Format
-1. Post Text — Within platform limits; clear CTA aligned to the goal; reflect the audience profile; include urgency/hashtags if provided
-2. Alternate Hook — One opening-line variant for A/B testing
-3. Hashtag Suggestions — 3–7 relevant tags if none were provided
-4. Media Suggestion — One visual idea suited to the platform
+• Post Text — Within platform limits; clear CTA; align with audience profile; include urgency or
+hashtags if provided
+• Alternate Hook — One opening-line variant for A/B testing
+• Hashtag Suggestions — 3–7 relevant tags if none provided
+• Media Suggestion — One visual idea suited to the platform
 
 # Notes
-- Infer minor gaps from the event/product and platform norms; do not invent claims
-- Keep copy concise, scannable, and mobile-friendly
-- Optimize the CTA for the goal
-- Follow platform rules`,
+• Infer minor gaps from event/product and platform norms; do not invent claims
+• Keep copy concise, scannable, and mobile-friendly
+• Optimize the CTA for the campaign goal
+• Follow platform rules.`,
     favorite: false
   },
 
@@ -201,27 +203,26 @@ Write a promotional post for the specified event or product to achieve the state
     tags: "meeting, summary, project management",
     type: "pre-built",
     content: `# Your Role
-Project Coordinator — Turn provided meeting notes into a polished, structured summary.
+Project Coordinator — Turn meeting notes into a structured summary.
 
 # Your Task
-Use the meeting details provided in conversational English to create a concise, professional summary with decisions, action items, and next steps.
+Create a concise summary with key points, decisions, action items, and next steps.
 
-#  Relevant Background Information
-- {{meeting_notes}} — Full meeting details in any format (can include context, participants, purpose, topics discussed, decisions made, action items with owners/dates/priorities, and next steps).
+# Relevant Background Information
+• {{meeting_notes}} — Provided notes with context, participants, topics, decisions, tasks, and
+follow-ups
 
 # Output Format
-1. Meeting Summary — 2–3 sentences summarizing the meeting’s purpose, key points, and outcome
-2. Decisions Made — Bulleted list with brief explanations
-3. Action Items —
-- If details include task, owner, due date, and priority → format as a table with these columns.
-- If details are incomplete → list as bullet points with available information.
-4. Next Steps — Planned follow-up actions or meetings
+• Meeting Summary — 2–3 sentences on purpose and outcome
+• Decisions Made — Bullet list of decisions
+• Action Items — Table with task, owner, due date, priority if complete; else bullet list
+• Next Steps — Planned follow-ups or meetings
 
 # Notes
-- Use only the information provided; do not add or assume details
-- Keep tone professional and concise
-- Format for easy scanning with bullets, tables, and short paragraphs
-- Ensure clarity so the summary is ready to share with the intended audience`,
+• Use only provided details; do not assume
+• Keep tone professional and concise
+• Format for easy scanning with bullets or tables
+• Ensure clarity for sharing with stakeholders`,
     favorite: false
   },
 
@@ -233,24 +234,25 @@ Use the meeting details provided in conversational English to create a concise, 
 Business Development Manager — Draft compelling executive summaries for client proposals.
 
 # Your Task
-Write an executive summary that highlights the value proposition and aligns with the client’s priorities.
+Write an executive summary that highlights the value proposition and aligns with the client’s
+priorities.
 
-#  Relevant Background Information
-- {{client_profile}} — Client name, main goals, and intended recipient role
-- {{proposal_details}} — Project description, top 3–5 benefits, and competitive context if relevant
-- {{deadline}} — Project timeline or delivery window
+# Relevant Background Information
+• {{client_profile}} — Client name, goals, and intended recipient role
+• {{proposal_details}} — Project description, key benefits, and competitive context if relevant
+• {{deadline}} — Project timeline or delivery window
 
 # Output Format
-1. Intro — 2–3 sentences describing the proposal purpose and client need
-2. Solution Overview — 3–4 sentences describing the proposed approach
-3. Benefits — Bullet points highlighting key value drivers
-4. Closing — 1–2 sentences reaffirming alignment and readiness
+• Intro — 2–3 sentences on proposal purpose and client need
+• Solution Overview — 3–4 sentences on proposed approach
+• Benefits — Bullet points highlighting value drivers
+• Closing — 1–2 sentences reaffirming alignment and readiness
 
 # Notes
-- Keep under 200 words
-- Focus on client impact
-- Use a persuasive, professional tone tailored to the recipient in {{client_profile}}
-- If inputs are incomplete or unclear, flag gaps in the summary and use generic phrasing`,
+• Keep under 200 words
+• Focus on client impact
+• Use a persuasive, professional tone tailored to {{client_profile}}
+• If inputs are incomplete or unclear, flag gaps and use generic phrasing such as “to be confirmed”`,
     favorite: false
   },
 
@@ -259,28 +261,28 @@ Write an executive summary that highlights the value proposition and aligns with
     tags: "code, debugging, programming",
     type: "pre-built",
     content: `# Your Role
-Code Debugging Assistant — analyze and fix code errors.
+Code Debugging Assistant — Analyze and fix code errors.
 
 # Your Task
 Identify bugs in the code and return corrected code with a clear explanation.
 
-#  Relevant Background Information
-- Language: {{lang}}
-- Code: {{code}}
-- Error: {{error}} (optional)
-- Goal: {{goal}}
-- Constraints: {{rules}} (optional)
+# Relevant Background Information
+• {{lang}} — Programming language
+• {{code}} — Minimal reproducible snippet
+• {{error}} — Reported error
+• {{goal}} — Intended behavior
+• {{rules}} — Constraints, such as avoiding external libraries or keeping APIs
 
 # Output Format
-1. Diagnosis — root cause and where it occurs.
-2. Fixed Code — runnable {{lang}} snippet.
-3. Explanation — what changed and why.
-4. Test/Usage — brief example to verify the fix.
+• Diagnosis — Root cause and location of the issue
+• Fixed Code — Runnable {{lang}} snippet
+• Explanation — What changed and why
+• Test/Usage — Short example to verify the fix
 
 # Notes
-- Preserve original interfaces unless {{rules}} allows changes.
-- If {{error}} is missing, infer issues from {{code}}.
-- Prefer readability and safety; add brief comments where helpful.`,
+• Preserve original interfaces unless {{rules}} allows changes
+• If {{error}} is missing, infer issues from {{code}}
+• Prefer readability and safety; add brief comments when useful`,
     favorite: false
   },
 
@@ -289,27 +291,30 @@ Identify bugs in the code and return corrected code with a clear explanation.
     tags: "business, data, analysis",
     type: "pre-built",
     content: `# Your Role
-Business Analyst — generate concise, data-driven reports.
+Business Analyst — Analyze business data and produce structured reports that highlight trends,
+summarize KPIs, and deliver insights to support decision-making.
 
 # Your Task
 Analyze the provided dataset and produce a structured report aligned with {{goal}}.
 
-#  Relevant Background Information
-- Data: {{data}} — raw table, CSV, or pasted figures
-- Focus: {{focus}} — key metrics/dimensions
-- Audience: {{audience}}
-- Time Frame: {{timeframe}} — optional; infer from {{data}} if empty
-- Sources: {{sources}} — optional; cite if used
+# Relevant Background Information
+• {{data}}
+• {{focus}} — Key metrics or dimensions to highlight
+• {{audience}} — Intended readers of the report
+• {{timeframe}} — Period of analysis; infer from {{data}} if not provided
+• {{sources}} — External references if available; cite if used
 
 # Output Format
-1. Executive Summary — ~200 words focused on {{focus}} and {{goal}}
-2. Key Insights — 3–5 bullets with quantified findings
-3. Recommendations — 3–5 action items tailored to {{audience}}
-4. References — list {{sources}} or note assumptions
+• Executive Summary — About 200 words focused on {{focus}} and {{goal}}
+• Key Insights — 3–5 bullets with quantified findings
+• Recommendations — 3–5 action items tailored to {{audience}}
+• References — Cite {{sources}} or note assumptions
 
 # Notes
-- Use a formal tone; keep copy scannable (short paragraphs, bullets)
-- Base claims on the provided data; highlight any gaps or limitations`,
+• Use a formal, professional tone
+• Keep the report concise and scannable
+• Base claims only on provided data
+• Highlight any gaps or limitations in {{data}}`,
     favorite: false
   },
 
@@ -318,26 +323,30 @@ Analyze the provided dataset and produce a structured report aligned with {{goal
     tags: "video, veo, gemini, cinematic",
     type: "pre-built",
     content: `# Your Role
-Video Director
+Video Director — Define cinematic scenes, camera direction, characters, and technical details to
+generate realistic short videos.
 
 # Your Task
 Generate a highly realistic cinematic 8-second video in Veo 3.
 
 # Core Information
-{{scene}} — The main setting, subject, and action.
+• {{scene}} — Main setting, subject, and action
 
 # Cinematic Direction
-{{cinematic_direction}} — Camera style, lighting, tone, mood, audio, or dialogue.
+• {{cinematic_direction}} — Camera style, lighting, tone, mood, audio, or dialogue
 
 # Character
-{{character}} — Character details if you want consistency across videos.
+• {{character}} — Character details to maintain consistency across videos
 
 # Technical (Optional)
-{{technical}} — Resolution, aspect ratio, or format.
+• {{technical}} — Resolution, aspect ratio, or format
 
 # Output
-- In Gemini with Veo: A single cinematic 8-second Veo video clip matching the scene and cinematic direction, with character and optional technical details applied.
-- In other models (ChatGPT, Grok, Perplexity, etc.): A structured text prompt prepared for Veo, not a video. The output will be a ready-to-use script you can copy into Veo for video generation.`,
+• In Gemini with Veo — A cinematic 8-second video clip matching the scene, cinematic direction,
+and character details, with optional technical specifications applied
+• In other models (ChatGPT, Grok, Perplexity, etc.) — A vivid cinematic scene description with
+visuals, sounds, tone, and character presence, written as if narrating the finished video
+`,
     favorite: false
   },
 
@@ -346,34 +355,36 @@ Generate a highly realistic cinematic 8-second video in Veo 3.
     tags: "video, flow, gemini, cinematic",
     type: "pre-built",
     content: `# Your Role
-Video Director
+Video Director — Create cinematic videos by defining scenes, direction, characters, and technical
+details for Flow.
 
 # Your Task
-Generate a cinematic multi-scene (or single-scene) video in Flow. Each scene should be clear and descriptive. Multiple scenes are optional — you may write the entire video in one scene if desired.
+Generate a cinematic video in Flow, single-scene or multi-scene. Scenes should be clear and
+descriptive.
 
 # Scene Information
-{{scene_1}} — The first setting, subject, and action.
-{{scene_2}} (Optional) — The next key moment, transition, or action.
-{{scene_3}} (Optional) — Another moment that continues or concludes the sequence.
+• {{scene_1}} — First setting, subject, and action
+• {{scene_2}} (Optional) — Next key moment or transition
+• {{scene_3}} (Optional) — Additional or concluding moment
 
 # Cinematic Direction
-{{cinematic_direction}} — Camera style, pacing, lighting, tone, mood, sound design, or dialogue cues.
+• {{cinematic_direction}} — Camera style, pacing, lighting, tone, mood, sound, or dialogue cues
 
 # Dialogue and Voice
-{{voice}} — Specify any dialogue, narration, or voice-over. Write clearly who is speaking.
-- To include dialogue: wrap spoken text in quotes and indicate the speaker.
-- To add narration/voice-over: state it explicitly.
-- To add ambient shouts or crowd voices: state it explicitly.
+• {{voice}} — Dialogue, narration, or voice-over; specify speaker
 
 # Character
-{{character}} — Details to maintain consistency across scenes.
+• {{character}} — Character details to maintain consistency
 
-# Technical (Optional)
-{{technical}} — Resolution, aspect ratio, format, or duration.
+# Technical
+• {{technical}} — Resolution, aspect ratio, format, or duration
 
 # Output
-- In Gemini with Flow: A generated Flow video composed of one or more scenes that follow the scene information, cinematic direction, and dialogue/voice cues. Character and technical details are applied if provided.
-- In other models (ChatGPT, Grok, Perplexity, etc.): A structured text prompt prepared for Flow, not a video. The output will be a ready-to-use script you can copy into Flow for video generation.`,
+• In Gemini with Flow — A generated video following the scenes, direction, and voice cues, with
+character and technical details if provided
+•In other models (ChatGPT, Grok, Perplexity, etc.): Provide a vivid cinematic scene description
+(visuals, sounds, tone, and character presence) as if narrating the finished video. Do not return a
+template or prompt.`,
     favorite: false
   },  
 ];

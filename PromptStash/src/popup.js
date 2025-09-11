@@ -149,6 +149,18 @@ function getCharOffset(container, node, nodeOffset) {
     }
 }
 
+// Safe deep clone for plain data structures (templates arrays/objects)
+function deepClone(obj) {
+    try {
+        return JSON.parse(JSON.stringify(obj));
+    } catch (_) {
+        // Fallback shallow copy
+        if (Array.isArray(obj)) return obj.map(x => ({ ...x }));
+        if (obj && typeof obj === 'object') return { ...obj };
+        return obj;
+    }
+}
+
 function hasUnsavedChanges() {
     if (!selectedTemplateName) {
         // For new templates, check if there's any meaningful content
@@ -338,15 +350,19 @@ function setupEventListeners() {
     });
     elements.clearPrompt.addEventListener("click", () => {
         storeLastState();
+        if (lastState) lastState.actionType = 'clearPrompt';
         elements.promptArea.textContent = "";
         elements.fetchBtn2.style.display = "block";
         elements.clearPrompt.style.display = "none";
         destroyTabs();
         saveState();
         showToast("Prompt cleared. Press Ctrl+Z to undo.", 2000, "green", [], "clearPrompt");
+        // Move focus out of the editor so UI-level Ctrl+Z works immediately
+        moveFocusOutOfEditor();
     });
     elements.clearAllBtn.addEventListener("click", () => {
         storeLastState();
+        if (lastState) lastState.actionType = 'clearAll';
         elements.templateName.value = "";
         elements.templateTags.value = "";
         tabsState.currentTemplate = template.content;
@@ -364,6 +380,17 @@ function setupEventListeners() {
         updateDeleteButtonState();
         saveState();
         showToast("All fields cleared. Press Ctrl+Z to undo.", 2000, "green", [], "clearAll");
+        // Move focus out of the editor so UI-level Ctrl+Z works immediately
+        try {
+            if (elements.promptArea && elements.promptArea.blur) {
+                elements.promptArea.blur();
+            }
+            if (elements.saveBtn) {
+                elements.saveBtn.focus();
+            } else {
+                document.body && document.body.focus && document.body.focus();
+            }
+        } catch (_) {}
     });
     elements.themeToggle.addEventListener("click", () => {
         currentTheme = currentTheme === "light" ? "dark" : "light";
@@ -674,6 +701,7 @@ function storeLastState() {
         isTagsInEditMode: !elements.templateTags.classList.contains('hidden'),
         originalTags: originalTagsBeforeEdit,
         templates: null,
+        nextIndexSnapshot: typeof nextIndex === 'number' ? nextIndex : null,
         recentIndicesSnapshot: Array.isArray(recentIndices) ? [...recentIndices] : []
     };
 }
@@ -799,17 +827,25 @@ function saveTemplates(templates, callback, isNewTemplate) {
 function loadTemplates(query = "", showDropdown = false) {
     chrome.storage.local.get(["templates"], (result) => {
         let templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
+
+        // Helper for timestamps
+        const ts = (t) => (typeof t.updatedAt === 'number' ? t.updatedAt : (typeof t.createdAt === 'number' ? t.createdAt : 0));
+
         if (query) {
             templates = templates.filter(t => t.name.toLowerCase().includes(query) || (Array.isArray(t.tags) && t.tags.some(tag => tag.toLowerCase().includes(query))));
-            templates.sort((a, b) => (a.name.toLowerCase().indexOf(query) + (Array.isArray(a.tags) ? a.tags.join(" ").toLowerCase().indexOf(query) : -1)) - (b.name.toLowerCase().indexOf(query) + (Array.isArray(b.tags) ? b.tags.join(" ").toLowerCase().indexOf(query) : -1)));
+            // When searching, still prefer most recently updated/created for user templates
+            const customs = templates.filter(t => t.type !== "pre-built");
+            const preb = templates.filter(t => t.type === "pre-built");
+            customs.sort((a, b) => ts(b) - ts(a) || a.name.localeCompare(b.name));
+            preb.sort((a, b) => a.name.localeCompare(b.name));
+            templates = [...customs, ...preb];
         } else {
-            templates.sort((a, b) => {
-                const [aIndex, bIndex] = [recentIndices.indexOf(a.index), recentIndices.indexOf(b.index)];
-                if (aIndex === -1 && bIndex === -1) return a.name.localeCompare(b.name);
-                if (aIndex === -1) return 1;
-                if (bIndex === -1) return -1;
-                return aIndex - bIndex;
-            });
+            // No query: show user-created templates by most recent update/create, then pre-built alphabetically
+            const customs = templates.filter(t => t.type !== "pre-built");
+            const preb = templates.filter(t => t.type === "pre-built");
+            customs.sort((a, b) => ts(b) - ts(a) || a.name.localeCompare(b.name));
+            preb.sort((a, b) => a.name.localeCompare(b.name));
+            templates = [...customs, ...preb];
         }
         renderDropdown(templates, showDropdown);
         renderFavoriteSuggestions(templates.filter(t => t.favorite));
@@ -1299,14 +1335,14 @@ function handleSaveTemplate() {
             return;
         }
 
+        const hasPlaceholderValuesAll = Object.values(tabsState.placeholderValues).some(v => (v || '').trim() !== '');
         const isNewTemplate = !selectedTemplateName;
         if (!isNewTemplate) {
             const template = templates.find(t => t.name === selectedTemplateName);
-            const hasPlaceholderValues = Object.values(tabsState.placeholderValues).some(v => (v || '').trim() !== '');
             const isEdited = elements.templateName.value !== template.name ||
                 tags.join(',') !== (template.tags || []).join(',') ||
                 content !== template.content ||
-                hasPlaceholderValues;
+                hasPlaceholderValuesAll;
             if (!isEdited) {
                 showToast("No changes to save.", 3000, "red", [], "save");
                 return;
@@ -1333,18 +1369,22 @@ function handleSaveTemplate() {
         }
 
         const saveAction = () => {
+            // Re-enable undo for Save: snapshot current UI and templates before saving
             storeLastState();
-            lastState.templates = [...templates];
-            
+            if (lastState) {
+                lastState.actionType = isNewTemplate ? 'saveNew' : 'saveUpdate';
+                lastState.templates = deepClone(templates);
+            }
             if (isNewTemplate) {
-                const newTemplate = { name, tags, content, type: "custom", favorite: false, index: nextIndex };
+                const now = Date.now();
+                const newTemplate = { name, tags, content, type: "custom", favorite: false, index: nextIndex, createdAt: now, updatedAt: now };
                 templates.push(newTemplate);
                 updateRecentIndices(nextIndex);
                 nextIndex++;
                 saveNextIndex();
             } else {
                 const templateIndex = templates.findIndex(t => t.name === selectedTemplateName);
-                templates[templateIndex] = { ...templates[templateIndex], name, tags, content };
+                templates[templateIndex] = { ...templates[templateIndex], name, tags, content, updatedAt: Date.now() };
             }
             
             saveTemplates(templates, () => {
@@ -1362,16 +1402,32 @@ function handleSaveTemplate() {
                 switchToTagsViewMode();
                 updateExportSingleBtnState();
                 updateDeleteButtonState();
+                // Clear editor undo history so first Ctrl+Z targets UI undo, not editor undo
+                try { editorUndoStack = []; editorRedoStack = []; } catch (_) {}
+                // Ensure global Ctrl+Z triggers UI undo immediately after save
+                moveFocusOutOfEditor();
             }, isNewTemplate);
         };
         const hasNoTags = tags.length === 0;
-        if (hasNoTags) {
-            showToast("⚠️ No tags added. Save template?", 0, "red", [
-                { text: "Yes", callback: saveAction },
-                { text: "No", callback: () => elements.templateTags.focus() }
-            ], "save-no-tags");
+        const proceedAfterTagsCheck = () => {
+            if (hasNoTags) {
+                showToast("⚠️ No tags added. Save template?", 0, "red", [
+                    { text: "Yes", callback: saveAction },
+                    { text: "No", callback: () => elements.templateTags.focus() }
+                ], "save-no-tags");
+            } else {
+                saveAction();
+            }
+        };
+
+        // If user has filled placeholder values, warn that saving will reset them to placeholders
+        if (hasPlaceholderValuesAll) {
+            showToast("Saving will reset values to placeholders. Use ‘Save As’ to keep them.", 0, "red", [
+                { text: "Yes", callback: proceedAfterTagsCheck },
+                { text: "No", callback: () => {} }
+            ], "save-ph-reset");
         } else {
-            saveAction();
+            proceedAfterTagsCheck();
         }
     });
 }
@@ -1421,9 +1477,14 @@ function handleSaveAsTemplate() {
         }
 
         const saveAction = () => {
+            // Re-enable undo for Save As: snapshot current UI and templates before saving
             storeLastState();
-            lastState.templates = [...templates];
-            const newTemplate = { name, tags, content: contentWithValues, type: "custom", favorite: false, index: nextIndex };
+            if (lastState) {
+                lastState.actionType = 'saveAs';
+                lastState.templates = deepClone(templates);
+            }
+            const now = Date.now();
+            const newTemplate = { name, tags, content: contentWithValues, type: "custom", favorite: false, index: nextIndex, createdAt: now, updatedAt: now };
             templates.push(newTemplate);
             updateRecentIndices(nextIndex);
             nextIndex++;
@@ -1439,6 +1500,10 @@ function handleSaveAsTemplate() {
                 updateExportSingleBtnState();
                 updateSaveButtonState();
                 updateDeleteButtonState();
+                // Clear editor undo history so first Ctrl+Z targets UI undo, not editor undo
+                try { editorUndoStack = []; editorRedoStack = []; } catch (_) {}
+                // Ensure global Ctrl+Z triggers UI undo immediately after save as
+                moveFocusOutOfEditor();
             }, true);
         };
 
@@ -1476,7 +1541,10 @@ function handleDeleteTemplate() {
             0, "red",
             [{ text: "Yes", callback: () => {
                 storeLastState();
-                lastState.templates = [...templates];
+                if (lastState) {
+                    lastState.actionType = 'delete';
+                    lastState.templates = deepClone(templates);
+                }
                 const templateIndex = templates.findIndex(t => t.name === selectedTemplateName);
                 const deletedIndex = templates[templateIndex].index;
                 templates.splice(templateIndex, 1);
@@ -1488,6 +1556,17 @@ function handleDeleteTemplate() {
                         showToast("Template deleted. Press Ctrl+Z to undo.", 3000, "green", [], "delete");
                         // Create a fresh template view without overwriting lastState, so Ctrl+Z can restore deletion
                         handleNewTemplate({ skipStore: true, suppressToast: true });
+                        // Ensure focus is not in the editor so UI undo (Ctrl+Z) works immediately
+                        try {
+                            if (elements.promptArea && elements.promptArea.blur) {
+                                elements.promptArea.blur();
+                            }
+                            if (elements.saveBtn) {
+                                elements.saveBtn.focus();
+                            } else {
+                                document.body && document.body.focus && document.body.focus();
+                            }
+                        } catch (_) {}
                     }
                 });
             }},
@@ -1680,9 +1759,12 @@ function handleGlobalKeydown(event) {
         const selection = window.getSelection();
         const inEditor = document.activeElement === elements.promptArea || (selection && elements.promptArea.contains(selection.anchorNode));
         if (inEditor) {
-            event.preventDefault();
-            if (editorUndoStack.length > 0) editorUndo();
-            return; // Do not fall back to UI undo when editing
+            if (editorUndoStack.length > 0) {
+                event.preventDefault();
+                editorUndo();
+                return; // Handled by editor
+            }
+            // No editor history; fall through to UI undo handling
         }
         // Otherwise, undo the last UI action if available (clear, delete, save, etc.)
         if (lastState) {
@@ -1725,7 +1807,8 @@ function closePopupAndClearState(clearState = false) {
 
 function undoLastAction() {
     if (!lastState) return;
-
+    // Capture action type early so we can show the correct undo message
+    const action = lastState.actionType || null;
     // If templates snapshot exists, restore it first (covers delete/save operations)
     const restoreUI = () => {
         elements.templateName.value = lastState.name || "";
@@ -1761,7 +1844,19 @@ function undoLastAction() {
         updateSaveButtonState();
         updateDeleteButtonState();
         saveState();
-        showToast("Undone.", 2000, "green", [], "undo");
+        loadTemplates();
+        // Move focus out of the editor so next Ctrl+Z goes to UI undo, not editor undo
+        try {
+            if (elements.promptArea && elements.promptArea.blur) elements.promptArea.blur();
+            if (elements.saveBtn) elements.saveBtn.focus();
+        } catch (_) {}
+        const msg = action === 'clearPrompt' ? 'Clear prompt undone.' :
+                    action === 'clearAll' ? 'Clear all undone.' :
+                    action === 'saveUpdate' ? 'Template update undone.' :
+                    action === 'saveNew' ? 'Template save undone.' :
+                    action === 'saveAs' ? 'Template save undone.' :
+                    'Undone.';
+        showToast(msg, 2000, "green", [], "undo");
         lastState = null;
     };
 
@@ -1769,6 +1864,7 @@ function undoLastAction() {
         // Restore templates and recentIndices, then reload the restored template from storage to ensure full fidelity
         const payload = { templates: lastState.templates };
         if (lastState.recentIndicesSnapshot) payload.recentIndices = lastState.recentIndicesSnapshot;
+        if (typeof lastState.nextIndexSnapshot === 'number') payload.nextIndex = lastState.nextIndexSnapshot;
         chrome.storage.local.set(payload, () => {
             chrome.storage.local.get(["templates"], (result) => {
                 const templates = result.templates || [];
@@ -1780,7 +1876,21 @@ function undoLastAction() {
                 } else {
                     restoreUI();
                 }
-                showToast("Deletion undone.", 2000, "green", [], "undo-delete");
+                // Move focus out of the editor so next Ctrl+Z goes to UI undo, not editor undo
+                try {
+                    if (elements.promptArea && elements.promptArea.blur) elements.promptArea.blur();
+                    if (elements.saveBtn) elements.saveBtn.focus();
+                } catch (_) {}
+                // Refresh lists and UI after storage restore
+                try { loadTemplates(); } catch (_) {}
+                const msg = action === 'delete' ? 'Deletion undone.' :
+                            action === 'saveUpdate' ? 'Template update undone.' :
+                            action === 'saveNew' ? 'Template save undone.' :
+                            action === 'saveAs' ? 'Template save undone.' :
+                            'Undone.';
+                showToast(msg, 2000, "green", [], "undo-delete");
+                // Perform a second write shortly after to ensure this undo wins over any in-flight save
+                setTimeout(() => chrome.storage.local.set(payload), 30);
                 lastState = null;
             });
         });
@@ -2129,6 +2239,22 @@ function saveNextIndex() {
 
 function initializeTooltips() {
     document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
+}
+
+// Ensures subsequent Ctrl+Z targets UI undo, not the editor's contenteditable
+function moveFocusOutOfEditor() {
+    try {
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount && elements.promptArea && elements.promptArea.contains(sel.anchorNode)) {
+            sel.removeAllRanges();
+        }
+        if (elements.promptArea && elements.promptArea.blur) elements.promptArea.blur();
+        if (elements.saveBtn && elements.saveBtn.focus) {
+            elements.saveBtn.focus();
+        } else if (document && document.body && document.body.focus) {
+            document.body.focus();
+        }
+    } catch (_) {}
 }
 
 // --- Contenteditable Editor Undo/Redo Helpers ---
