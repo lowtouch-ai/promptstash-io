@@ -641,18 +641,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (!tabs[0]) return;
       chrome.scripting.executeScript({
         target: { tabId: tabs[0].id },
-        function: () => {
+        function: (preservePosition) => {
           const popup = document.getElementById("promptstash-popup");
-          if (popup.resizeListener) {
-            window.removeEventListener('resize', popup.resizeListener); // Clean up resize listener
+          if (popup && popup.resizeListener) {
+            window.removeEventListener('resize', popup.resizeListener);
           }
           if (popup) {
-            // Clear saved position on 'X' button close
-            chrome.storage.local.remove('popupPosition', () => {
-                popup.remove(); // Remove the popup
-            });
+            const doRemove = () => popup.remove();
+            if (preservePosition === true) {
+              // Save the current rect before removing so next open restores it
+              const rect = popup.getBoundingClientRect();
+              chrome.storage.local.set({ popupPosition: {
+                left: rect.left,
+                top: rect.top,
+                width: rect.width,
+                height: rect.height
+              }}, doRemove);
+            } else {
+              // Reset fullscreen flag and clear saved position when explicitly closing without preservation (X button)
+              chrome.storage.local.set({ isFullscreen: false }, () => {
+                chrome.storage.local.remove('popupPosition', doRemove);
+              });
+            }
           }
-        }
+        },
+        args: [message && message.preservePosition === true]
       }, () => {
         if (chrome.runtime.lastError) {
           console.error("Close popup error:", chrome.runtime.lastError.message);

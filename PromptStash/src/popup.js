@@ -210,12 +210,25 @@ let outsideClickListener = null;
 let currentOperationId = null;
 let nextToastTimeout = null;
 const toastTimestamps = {};
+let isUndoToastVisible = false; // Track if an undo-eligible toast is currently visible
 
 // --- Editor Undo/Redo State ---
 let editorUndoStack = [];
 let editorRedoStack = [];
 let editorLastSnapshot = '';
 let editorLastCaret = 0;
+
+// --- Tags Input Undo/Redo State ---
+let tagsUndoStack = [];
+let tagsRedoStack = [];
+let tagsLastSnapshot = '';
+let tagsLastCaret = 0;
+
+// --- Template Name Input Undo/Redo State ---
+let nameUndoStack = [];
+let nameRedoStack = [];
+let nameLastSnapshot = '';
+let nameLastCaret = 0;
 
 const elements = {};
 const ALLOWED_PLACEHOLDERS = [];
@@ -313,6 +326,18 @@ function initializeState() {
         editorRedoStack = [];
         editorLastSnapshot = tabsState.currentTemplate || '';
 
+        // Initialize tags undo tracking with the loaded content
+        tagsUndoStack = [];
+        tagsRedoStack = [];
+        tagsLastSnapshot = elements.templateTags.value || '';
+        tagsLastCaret = 0;
+
+        // Initialize template name undo tracking with the loaded content
+        nameUndoStack = [];
+        nameRedoStack = [];
+        nameLastSnapshot = elements.templateName.value || '';
+        nameLastCaret = 0;
+
         updateSaveButtonState();
         updateDeleteButtonState();
         updateExportSingleBtnState();
@@ -409,14 +434,18 @@ function setupEventListeners() {
     elements.cancelTagsEditBtn.addEventListener("click", () => handleCancelTagsEdit());
 
     elements.templateName.addEventListener("input", debounce(() => {
+        handleNameInput();
         validateTemplateNameInput();
         updateExportSingleBtnState();
         saveState();
     }, 10));
+    elements.templateName.addEventListener("keydown", handleNameKeydown);
     elements.templateTags.addEventListener("input", debounce(() => {
+        handleTagsInput();
         validateTagsInput();
         saveState();
     }, 100));
+    elements.templateTags.addEventListener("keydown", handleTagsKeydown);
     elements.promptArea.addEventListener("input", handlePromptInput);
     elements.promptArea.addEventListener("keydown", handlePromptKeydown);
     elements.promptArea.addEventListener("paste", handlePaste);
@@ -711,7 +740,10 @@ function storeLastState() {
 function showToast(message, duration = 4000, type = "red", buttons = [], operationId) {
     const toastKey = `${message}|${operationId}`;
     const now = Date.now();
-    if (buttons.length === 0 && toastTimestamps[toastKey] && now - toastTimestamps[toastKey] < 1010) {
+    // Determine undo eligibility up front from message text
+    const undoEligible = message.includes("Press Ctrl+Z to undo");
+    // Throttle only non-undo toasts; allow consecutive undo-eligible toasts
+    if (!undoEligible && buttons.length === 0 && toastTimestamps[toastKey] && now - toastTimestamps[toastKey] < 1010) {
         return;
     }
     toastTimestamps[toastKey] = now;
@@ -723,7 +755,9 @@ function showToast(message, duration = 4000, type = "red", buttons = [], operati
         currentOperationId = operationId;
     }
     if (operationId === currentOperationId) {
-        toastQueue.push({ message, duration, type, buttons, operationId });
+        // Use computed undoEligible to flag the toast
+        const isUndoEligible = undoEligible;
+        toastQueue.push({ message, duration, type, buttons, operationId, isUndoEligible });
         if (!isToastShowing) {
             displayNextToast();
         }
@@ -741,6 +775,10 @@ function closeToast(onClose) {
     elements.toast.classList.remove("show");
     elements.toast.classList.add("hide");
     elements.toastOverlay.style.display = "none";
+    
+    // Clear undo availability when toast closes
+    isUndoToastVisible = false;
+    
     setTimeout(() => {
         elements.toast.classList.remove("hide");
         elements.toast.innerHTML = "";
@@ -753,11 +791,16 @@ function closeToast(onClose) {
 function displayNextToast() {
     if (toastQueue.length === 0) {
         isToastShowing = false;
+        isUndoToastVisible = false;
         return;
     }
     clearTimeout(autoHideTimeout);
     isToastShowing = true;
-    const { message, duration, type, buttons } = toastQueue.shift();
+    const { message, duration, type, buttons, isUndoEligible } = toastQueue.shift();
+    
+    // Set undo availability based on toast content
+    isUndoToastVisible = isUndoEligible || false;
+    
     elements.toast.innerHTML = message;
 
     const closeBtn = document.createElement("button");
@@ -812,8 +855,8 @@ function saveTemplates(templates, callback, isNewTemplate) {
             showToast(msg, 5000, "red", [], "save");
             console.error("Local storage error:", chrome.runtime.lastError.message);
         } else {
-            showToast(isNewTemplate ? "Template saved. Press Ctrl+Z to undo." : "Template updated. Press Ctrl+Z to undo.", 3000, "green", [], "save");
             callback();
+            showToast(isNewTemplate ? "Template saved. Press Ctrl+Z to undo." : "Template updated. Press Ctrl+Z to undo.", 3000, "green", [], "save");
             chrome.storage.local.get(null, (items) => {
                 const totalSizeInBytes = new TextEncoder().encode(JSON.stringify(items)).length;
                 if (totalSizeInBytes > 0.9 * (10 * 1024 * 1024)) {
@@ -1241,6 +1284,166 @@ function updateTabTitle(placeholder, hasValue) {
 
 // --- Event Handlers ---
 
+function handleNameInput() {
+    const currentValue = elements.templateName.value;
+    const currentCaret = elements.templateName.selectionStart;
+    
+    // Push snapshot to undo stack only on user edits
+    if (currentValue !== nameLastSnapshot) {
+        nameUndoStack.push({ content: nameLastSnapshot, caret: nameLastCaret });
+        // Limit history length to avoid memory bloat
+        if (nameUndoStack.length > 100) nameUndoStack.shift();
+        nameLastSnapshot = currentValue;
+        nameLastCaret = currentCaret;
+        nameRedoStack = []; // Clear redo stack on new input
+    }
+}
+
+function handleNameKeydown(event) {
+    // Handle Ctrl+Z and Ctrl+Shift+Z within the template name input
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+        if (event.shiftKey) {
+            // Ctrl+Shift+Z = Redo for template name
+            if (nameRedoStack.length > 0) {
+                event.preventDefault();
+                nameRedo();
+                return;
+            }
+        } else {
+            // Ctrl+Z = Undo for template name
+            if (nameUndoStack.length > 0) {
+                event.preventDefault();
+                nameUndo();
+                return;
+            }
+        }
+    }
+}
+
+function nameUndo() {
+    if (!nameUndoStack.length) return;
+    
+    const prev = nameUndoStack.pop();
+    const prevContent = typeof prev === 'string' ? prev : (prev.content || '');
+    const prevCaret = typeof prev === 'string' ? 0 : (prev.caret ?? 0);
+    const currentCaret = elements.templateName.selectionStart;
+    const current = nameLastSnapshot;
+    
+    nameRedoStack.push({ content: current, caret: currentCaret });
+    nameLastSnapshot = prevContent;
+    nameLastCaret = prevCaret;
+    
+    elements.templateName.value = prevContent;
+    setTimeout(() => {
+        elements.templateName.setSelectionRange(prevCaret, prevCaret);
+    }, 0);
+    
+    validateTemplateNameInput();
+    updateExportSingleBtnState();
+    saveState();
+}
+
+function nameRedo() {
+    if (!nameRedoStack.length) return;
+    
+    const next = nameRedoStack.pop();
+    const nextContent = typeof next === 'string' ? next : (next.content || '');
+    const nextCaret = typeof next === 'string' ? 0 : (next.caret ?? 0);
+    const currentCaret = elements.templateName.selectionStart;
+    
+    nameUndoStack.push({ content: nameLastSnapshot, caret: currentCaret });
+    nameLastSnapshot = nextContent;
+    nameLastCaret = nextCaret;
+    
+    elements.templateName.value = nextContent;
+    setTimeout(() => {
+        elements.templateName.setSelectionRange(nextCaret, nextCaret);
+    }, 0);
+    
+    validateTemplateNameInput();
+    updateExportSingleBtnState();
+    saveState();
+}
+
+function handleTagsInput() {
+    const currentValue = elements.templateTags.value;
+    const currentCaret = elements.templateTags.selectionStart;
+    
+    // Push snapshot to undo stack only on user edits
+    if (currentValue !== tagsLastSnapshot) {
+        tagsUndoStack.push({ content: tagsLastSnapshot, caret: tagsLastCaret });
+        // Limit history length to avoid memory bloat
+        if (tagsUndoStack.length > 100) tagsUndoStack.shift();
+        tagsLastSnapshot = currentValue;
+        tagsLastCaret = currentCaret;
+        tagsRedoStack = []; // Clear redo stack on new input
+    }
+}
+
+function handleTagsKeydown(event) {
+    // Handle Ctrl+Z and Ctrl+Shift+Z within the tags input
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+        if (event.shiftKey) {
+            // Ctrl+Shift+Z = Redo for tags
+            if (tagsRedoStack.length > 0) {
+                event.preventDefault();
+                tagsRedo();
+                return;
+            }
+        } else {
+            // Ctrl+Z = Undo for tags
+            if (tagsUndoStack.length > 0) {
+                event.preventDefault();
+                tagsUndo();
+                return;
+            }
+        }
+    }
+}
+
+function tagsUndo() {
+    if (!tagsUndoStack.length) return;
+    
+    const prev = tagsUndoStack.pop();
+    const prevContent = typeof prev === 'string' ? prev : (prev.content || '');
+    const prevCaret = typeof prev === 'string' ? 0 : (prev.caret ?? 0);
+    const currentCaret = elements.templateTags.selectionStart;
+    const current = tagsLastSnapshot;
+    
+    tagsRedoStack.push({ content: current, caret: currentCaret });
+    tagsLastSnapshot = prevContent;
+    tagsLastCaret = prevCaret;
+    
+    elements.templateTags.value = prevContent;
+    setTimeout(() => {
+        elements.templateTags.setSelectionRange(prevCaret, prevCaret);
+    }, 0);
+    
+    validateTagsInput();
+    saveState();
+}
+
+function tagsRedo() {
+    if (!tagsRedoStack.length) return;
+    
+    const next = tagsRedoStack.pop();
+    const nextContent = typeof next === 'string' ? next : (next.content || '');
+    const nextCaret = typeof next === 'string' ? 0 : (next.caret ?? 0);
+    const currentCaret = elements.templateTags.selectionStart;
+    
+    tagsUndoStack.push({ content: tagsLastSnapshot, caret: currentCaret });
+    tagsLastSnapshot = nextContent;
+    tagsLastCaret = nextCaret;
+    
+    elements.templateTags.value = nextContent;
+    setTimeout(() => {
+        elements.templateTags.setSelectionRange(nextCaret, nextCaret);
+    }, 0);
+    
+    validateTagsInput();
+    saveState();
+}
+
 function validateTagsInput() {
     let value = elements.templateTags.value;
     if (value) {
@@ -1279,7 +1482,7 @@ function validateTagsInput() {
 }
 
 function handleNewTemplate(options = {}) {
-    const { skipStore = false, suppressToast = false } = options;
+    const { skipStore = false, suppressToast = false, skipSaveState = false } = options;
     if (!skipStore) storeLastState();
     selectedTemplateName = null;
     originalTagsBeforeEdit = null;
@@ -1301,7 +1504,9 @@ function handleNewTemplate(options = {}) {
     elements.searchBox.value = "";
     destroyTabs();
     buildTabsFromTemplate(defaultContent); // Build tabs from the default content
-    saveState();
+    if (!skipSaveState) {
+        saveState();
+    }
     if (!suppressToast) {
         showToast("New template created.", 2000, "green", [], "new");
     }
@@ -1544,8 +1749,13 @@ function handleDeleteTemplate() {
                 if (lastState) {
                     lastState.actionType = 'delete';
                     lastState.templates = deepClone(templates);
+                    // Capture auxiliary snapshots explicitly for robustness
+                    lastState.recentIndicesSnapshot = Array.isArray(recentIndices) ? [...recentIndices] : [];
+                    if (typeof nextIndex === 'number') lastState.nextIndexSnapshot = nextIndex;
                 }
                 const templateIndex = templates.findIndex(t => t.name === selectedTemplateName);
+                // Keep a copy of the template being deleted to help target restoration
+                const deletedTemplate = templates[templateIndex] ? { ...templates[templateIndex] } : null;
                 const deletedIndex = templates[templateIndex].index;
                 templates.splice(templateIndex, 1);
                 recentIndices = recentIndices.filter(idx => idx !== deletedIndex);
@@ -1553,9 +1763,9 @@ function handleDeleteTemplate() {
                     if (chrome.runtime.lastError) {
                         showToast("Failed to delete.", 3000, "red", [], "delete");
                     } else {
-                        showToast("Template deleted. Press Ctrl+Z to undo.", 3000, "green", [], "delete");
                         // Create a fresh template view without overwriting lastState, so Ctrl+Z can restore deletion
-                        handleNewTemplate({ skipStore: true, suppressToast: true });
+                        handleNewTemplate({ skipStore: true, suppressToast: true, skipSaveState: true });
+                        showToast("Template deleted. Press Ctrl+Z to undo.", 3000, "green", [], "delete");
                         // Ensure focus is not in the editor so UI undo (Ctrl+Z) works immediately
                         try {
                             if (elements.promptArea && elements.promptArea.blur) {
@@ -1567,6 +1777,10 @@ function handleDeleteTemplate() {
                                 document.body && document.body.focus && document.body.focus();
                             }
                         } catch (_) {}
+                        // Prefer restoring the exact deleted template name on undo
+                        if (lastState && deletedTemplate) {
+                            lastState.selectedName = deletedTemplate.name;
+                        }
                     }
                 });
             }},
@@ -1621,7 +1835,8 @@ function handleSendPrompt() {
                 console.error("Send prompt error:", chrome.runtime.lastError.message);
                 showToast("Failed to send prompt. Please try again.", 3000, "red", [], "send");
             } else if (response && response.success) {
-                closePopupAndClearState();
+                // Close but preserve popup position/size so it remains for next open
+                closePopupAndClearState(false, { preservePosition: true });
             } else {
                 showToast("Failed to send prompt. Target chat not found.", 3000, "red", [], "send");
             }
@@ -1755,35 +1970,118 @@ function handleGlobalKeydown(event) {
             handleCloseWithUnsavedCheck();
         }
     } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
-        // If focus/cursor is inside the editor, route Ctrl+Z to the editor only
-        const selection = window.getSelection();
-        const inEditor = document.activeElement === elements.promptArea || (selection && elements.promptArea.contains(selection.anchorNode));
-        if (inEditor) {
-            if (editorUndoStack.length > 0) {
-                event.preventDefault();
-                editorUndo();
-                return; // Handled by editor
-            }
-            // No editor history; fall through to UI undo handling
-        }
-        // Otherwise, undo the last UI action if available (clear, delete, save, etc.)
-        if (lastState) {
+        const ae = document.activeElement;
+
+        // While an undo-eligible toast is visible, UI-level undo takes precedence
+        if (!event.shiftKey && isUndoToastVisible && lastState) {
             event.preventDefault();
             undoLastAction();
             return;
         }
-    } else if ((event.ctrlKey || event.metaKey) && (event.shiftKey && event.key.toLowerCase() === "z")) {
-        const selection = window.getSelection();
-        const inEditor = document.activeElement === elements.promptArea || (selection && elements.promptArea.contains(selection.anchorNode));
-        if (inEditor) {
+        // Check if focus is in template name input field
+        const inNameInput = ae === elements.templateName;
+        if (inNameInput) {
+            if (event.shiftKey) {
+                // Ctrl+Shift+Z = Redo for template name
+                if (nameRedoStack.length > 0) {
+                    event.preventDefault();
+                    nameRedo();
+                    return;
+                }
+            } else {
+                // Ctrl+Z = Undo for template name
+                if (nameUndoStack.length > 0) {
+                    event.preventDefault();
+                    nameUndo();
+                    return;
+                }
+            }
+            // Focus is in name input but no history
+            if (!event.shiftKey && isUndoToastVisible && lastState) {
+                event.preventDefault();
+                undoLastAction();
+                return;
+            }
             event.preventDefault();
-            editorRedo();
+            return;
         }
+        
+        // Check if focus is in tags input field
+        const inTagsInput = ae === elements.templateTags;
+        if (inTagsInput) {
+            if (event.shiftKey) {
+                // Ctrl+Shift+Z = Redo for tags
+                if (tagsRedoStack.length > 0) {
+                    event.preventDefault();
+                    tagsRedo();
+                    return;
+                }
+            } else {
+                // Ctrl+Z = Undo for tags
+                if (tagsUndoStack.length > 0) {
+                    event.preventDefault();
+                    tagsUndo();
+                    return;
+                }
+            }
+            // Focus is in tags input but no history
+            if (!event.shiftKey && isUndoToastVisible && lastState) {
+                event.preventDefault();
+                undoLastAction();
+                return;
+            }
+            event.preventDefault();
+            return;
+        }
+        
+        // If focus/cursor is inside the editor, route Ctrl+Z to the editor only
+        const inEditor = ae === elements.promptArea;
+        if (inEditor) {
+            if (event.shiftKey) {
+                // Ctrl+Shift+Z = Redo for editor
+                if (editorRedoStack.length > 0) {
+                    event.preventDefault();
+                    editorRedo();
+                    return;
+                }
+            } else {
+                // Ctrl+Z = Undo for editor
+                if (editorUndoStack.length > 0) {
+                    event.preventDefault();
+                    editorUndo();
+                    return; // Handled by editor
+                }
+            }
+            // Focus is in editor but no history
+            if (!event.shiftKey && isUndoToastVisible && lastState) {
+                event.preventDefault();
+                undoLastAction();
+                return;
+            }
+            event.preventDefault();
+            return;
+        }
+
+        // If not in our managed inputs and an undo-eligible toast is visible, perform UI-level undo
+        if (!event.shiftKey && isUndoToastVisible && lastState) {
+            event.preventDefault();
+            undoLastAction();
+            return;
+        }
+
+        // If active element is some other input/textarea/contenteditable, let the browser handle native undo
+        const tag = ae && ae.tagName ? ae.tagName.toUpperCase() : '';
+        if (ae && (tag === 'INPUT' || tag === 'TEXTAREA' || ae.isContentEditable)) {
+            return; // allow native behavior
+        }
+
+        // If not in a supported input, do nothing for Ctrl+Z (no preventDefault)
+        return;
     }
 }
 
-function closePopupAndClearState(clearState = false) {
-    const close = () => chrome.runtime.sendMessage({ action: "closePopup" });
+function closePopupAndClearState(clearState = false, options = {}) {
+    const close = () => chrome.runtime.sendMessage({ action: "closePopup", preservePosition: options.preservePosition === true });
 
     if (clearState) {
         chrome.storage.local.remove(["popupState", "placeholderValues"], close);

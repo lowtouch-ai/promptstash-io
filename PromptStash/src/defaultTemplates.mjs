@@ -27,8 +27,7 @@ Write an email of type {{kind}} about {{subject}}.
 • Keep concise and clear
 • Match tone to {{tone}}
 • Ensure purpose and call-to-action are explicit
-• If inputs are incomplete or unclear, flag gaps in the email and use generic
-phrasing, such as “details to follow.”`,
+• If inputs are incomplete or unclear, flag gaps in the email and use generic phrasing, such as “details to follow.”`,
     favorite: false
   },
 
@@ -69,8 +68,7 @@ Create a 10-minute lesson plan for the provided topic and audience.
     tags: "marketing, email, promotion",
     type: "pre-built",
     content: `# Your Role
-Marketing Copywriter — Write a promotional email that reflects brand style and engages the target
-audience.
+Marketing Copywriter — Write a promotional email that reflects brand style and engages the target audience.
 
 # Your Task
 Write a promotional email for {{product}} to achieve {{goal}}.
@@ -136,8 +134,7 @@ Deliver a concise report on competitors of {{target_company}} to achieve {{goal}
     tags: "startup, business, feasibility",
     type: "pre-built",
     content: `# Your Role
-Startup Advisor — Provide a feasibility assessment for founders, investors, and advisors in separate
-sections.
+Startup Advisor — Provide a feasibility assessment for founders, investors, and advisors in separate sections.
 
 # Your Task
 Evaluate the feasibility of a startup idea and provide recommendations to achieve the stated goal.
@@ -170,8 +167,7 @@ Evaluate the feasibility of a startup idea and provide recommendations to achiev
     tags: "social media, marketing, promotion",
     type: "pre-built",
     content: `# Your Role
-Social Media Manager — Create platform-optimized promotional posts that align with brand values
-and drive engagement.
+Social Media Manager — Create platform-optimized promotional posts that align with brand values and drive engagement.
 
 # Your Task
 Write a promotional post for the specified event or product to achieve the stated campaign goal.
@@ -209,8 +205,7 @@ Project Coordinator — Turn meeting notes into a structured summary.
 Create a concise summary with key points, decisions, action items, and next steps.
 
 # Relevant Background Information
-• {{meeting_notes}} — Provided notes with context, participants, topics, decisions, tasks, and
-follow-ups
+• {{meeting_notes}} — Provided notes with context, participants, topics, decisions, tasks, and follow-ups
 
 # Output Format
 • Meeting Summary — 2–3 sentences on purpose and outcome
@@ -234,8 +229,7 @@ follow-ups
 Business Development Manager — Draft compelling executive summaries for client proposals.
 
 # Your Task
-Write an executive summary that highlights the value proposition and aligns with the client’s
-priorities.
+Write an executive summary that highlights the value proposition and aligns with the client’s priorities.
 
 # Relevant Background Information
 • {{client_profile}} — Client name, goals, and intended recipient role
@@ -291,8 +285,7 @@ Identify bugs in the code and return corrected code with a clear explanation.
     tags: "business, data, analysis",
     type: "pre-built",
     content: `# Your Role
-Business Analyst — Analyze business data and produce structured reports that highlight trends,
-summarize KPIs, and deliver insights to support decision-making.
+Business Analyst — Analyze business data and produce structured reports that highlight trends, summarize KPIs, and deliver insights to support decision-making.
 
 # Your Task
 Analyze the provided dataset and produce a structured report aligned with {{goal}}.
@@ -323,8 +316,7 @@ Analyze the provided dataset and produce a structured report aligned with {{goal
     tags: "video, veo, gemini, cinematic",
     type: "pre-built",
     content: `# Your Role
-Video Director — Define cinematic scenes, camera direction, characters, and technical details to
-generate realistic short videos.
+Video Director — Define cinematic scenes, camera direction, characters, and technical details to generate realistic short videos.
 
 # Your Task
 Generate a highly realistic cinematic 8-second video in Veo 3.
@@ -355,12 +347,10 @@ visuals, sounds, tone, and character presence, written as if narrating the finis
     tags: "video, flow, gemini, cinematic",
     type: "pre-built",
     content: `# Your Role
-Video Director — Create cinematic videos by defining scenes, direction, characters, and technical
-details for Flow.
+Video Director — Create cinematic videos by defining scenes, direction, characters, and technical details for Flow.
 
 # Your Task
-Generate a cinematic video in Flow, single-scene or multi-scene. Scenes should be clear and
-descriptive.
+Generate a cinematic video in Flow, single-scene or multi-scene. Scenes should be clear and descriptive.
 
 # Scene Information
 • {{scene_1}} — First setting, subject, and action
