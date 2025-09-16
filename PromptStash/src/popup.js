@@ -56,7 +56,9 @@ function validateTemplateName(name, templates, isSaveAs = false) {
         showToast("Template name can only contain letters, numbers, underscores(_), hyphens(-), periods(.), at(@), and spaces.", 3000, "red", [], "nameChar");
         return { isValid: false, sanitizedName: null };
     }
-    const isDuplicate = templates.some(t => t.name === sanitizedName && (isSaveAs || t.name !== selectedTemplateName));
+    // Allow updating the same template even when selectedTemplateName is null (draft after undo)
+    const currentTarget = selectedTemplateName || editingTargetName || null;
+    const isDuplicate = templates.some(t => t.name === sanitizedName && (isSaveAs || t.name !== currentTarget));
     if (isDuplicate) {
         showToast("Template name must be unique.", 3000, "red", [], "save");
         return { isValid: false, sanitizedName: null };
@@ -212,6 +214,9 @@ let nextToastTimeout = null;
 const toastTimestamps = {};
 let isUndoToastVisible = false; // Track if an undo-eligible toast is currently visible
 
+// Track the logical template we are editing (even if we temporarily mark the UI as unsaved/draft)
+let editingTargetName = null;
+
 // --- Editor Undo/Redo State ---
 let editorUndoStack = [];
 let editorRedoStack = [];
@@ -223,12 +228,17 @@ let tagsUndoStack = [];
 let tagsRedoStack = [];
 let tagsLastSnapshot = '';
 let tagsLastCaret = 0;
+let tagsStackContextSerial = 0; // isolate across templates/contexts
 
 // --- Template Name Input Undo/Redo State ---
 let nameUndoStack = [];
 let nameRedoStack = [];
 let nameLastSnapshot = '';
 let nameLastCaret = 0;
+let nameStackContextSerial = 0; // isolate across templates/contexts
+
+// Bumped whenever context changes (switch template, new template, save-undo unsaves)
+let contextSerial = 1;
 
 const elements = {};
 const ALLOWED_PLACEHOLDERS = [];
@@ -294,6 +304,7 @@ function initializeState() {
 
         const defaultText = `# Your Role\n*\n\n# Background Information\n*\n\n# Your Task\n*`;
         selectedTemplateName = state.selectedName || null;
+        editingTargetName = state.editingTargetName || selectedTemplateName || null;
         
         // If we have a selected template, use its name, otherwise use saved name or default
         if (selectedTemplateName) {
@@ -517,25 +528,82 @@ function updateSaveButtonState() {
     let tooltip = bootstrap.Tooltip.getInstance(saveButtonWrapper);
 
     if (!selectedTemplateName) {
-        elements.saveBtn.disabled = false;
-        elements.saveBtn.style.pointerEvents = 'auto';
-        
-        // Remove tooltip from wrapper if it exists
-        if (tooltip) {
-            tooltip.dispose();
-        }
-        
-        // Add tooltip to button
-        tooltip = bootstrap.Tooltip.getInstance(elements.saveBtn);
-        if (!tooltip) {
-            new bootstrap.Tooltip(elements.saveBtn, {
-                title: 'Save changes to template'
+        // If we are in a draft state (no selectedTemplateName), but our editingTargetName
+        // refers to a pre-built template, disable Save to prevent saving default templates.
+        if (editingTargetName) {
+            // Pessimistically disable until we resolve the template type to avoid momentary enable
+            elements.saveBtn.disabled = true;
+            elements.saveBtn.style.pointerEvents = 'none';
+            saveButtonWrapper.classList.add('disabled-wrapper');
+            chrome.storage.local.get(["templates"], (result) => {
+                const templates = result.templates || [];
+                const target = templates.find(t => t.name === editingTargetName);
+                const isPreBuilt = target && target.type === 'pre-built';
+
+                if (isPreBuilt) {
+                    elements.saveBtn.disabled = true;
+                    elements.saveBtn.style.pointerEvents = 'none';
+
+                    // Remove tooltip from button
+                    const buttonTooltip = bootstrap.Tooltip.getInstance(elements.saveBtn);
+                    if (buttonTooltip) {
+                        buttonTooltip.dispose();
+                    }
+
+                    // Add tooltip to wrapper
+                    if (!tooltip) {
+                        tooltip = new bootstrap.Tooltip(saveButtonWrapper, {
+                            title: 'Cannot save default templates. Use "Save As" to create a copy.'
+                        });
+                    } else {
+                        tooltip.setContent({ '.tooltip-inner': 'Cannot save default templates. Use "Save As" to create a copy.' });
+                    }
+
+                    saveButtonWrapper.classList.add('disabled-wrapper');
+                } else {
+                    elements.saveBtn.disabled = false;
+                    elements.saveBtn.style.pointerEvents = 'auto';
+
+                    // Remove tooltip from wrapper if it exists
+                    if (tooltip) {
+                        tooltip.dispose();
+                    }
+
+                    // Add tooltip to button
+                    let btnTooltip = bootstrap.Tooltip.getInstance(elements.saveBtn);
+                    if (!btnTooltip) {
+                        new bootstrap.Tooltip(elements.saveBtn, {
+                            title: 'Save changes to template'
+                        });
+                    } else {
+                        btnTooltip.setContent({ '.tooltip-inner': 'Save changes to template' });
+                    }
+
+                    saveButtonWrapper.classList.remove('disabled-wrapper');
+                }
             });
         } else {
-            tooltip.setContent({ '.tooltip-inner': 'Save changes to template' });
+            // No selected template and no target: allow saving a new custom template
+            elements.saveBtn.disabled = false;
+            elements.saveBtn.style.pointerEvents = 'auto';
+
+            // Remove tooltip from wrapper if it exists
+            if (tooltip) {
+                tooltip.dispose();
+            }
+
+            // Add tooltip to button
+            tooltip = bootstrap.Tooltip.getInstance(elements.saveBtn);
+            if (!tooltip) {
+                new bootstrap.Tooltip(elements.saveBtn, {
+                    title: 'Save changes to template'
+                });
+            } else {
+                tooltip.setContent({ '.tooltip-inner': 'Save changes to template' });
+            }
+
+            saveButtonWrapper.classList.remove('disabled-wrapper');
         }
-        
-        saveButtonWrapper.classList.remove('disabled-wrapper');
         return;
     }
 
@@ -710,6 +778,7 @@ function saveState() {
             tags: elements.templateTags.value,
             content: tabsState.currentTemplate, // Save the raw template content
             selectedName: selectedTemplateName,
+            editingTargetName,
             isTagsInEditMode: !elements.templateTags.classList.contains('hidden'),
             originalTags: originalTagsBeforeEdit,
         },
@@ -726,9 +795,16 @@ function storeLastState() {
         name: elements.templateName.value,
         tags: elements.templateTags.value,
         content: elements.promptArea.textContent,
+        rawTemplate: tabsState.currentTemplate || elements.promptArea.textContent,
         selectedName: selectedTemplateName,
+        // Capture the template context at the time of the action
+        contextName: selectedTemplateName,
         isTagsInEditMode: !elements.templateTags.classList.contains('hidden'),
         originalTags: originalTagsBeforeEdit,
+        // Snapshot current placeholder values so we can restore tabs with values on undo
+        placeholderValuesSnapshot: deepClone(tabsState.placeholderValues),
+        // Snapshot allowed placeholders so we can revert any newly added placeholders on undo
+        allowedPlaceholdersSnapshot: Array.isArray(ALLOWED_PLACEHOLDERS) ? [...ALLOWED_PLACEHOLDERS] : [],
         templates: null,
         nextIndexSnapshot: typeof nextIndex === 'number' ? nextIndex : null,
         recentIndicesSnapshot: Array.isArray(recentIndices) ? [...recentIndices] : []
@@ -789,18 +865,18 @@ function closeToast(onClose) {
 }
 
 function displayNextToast() {
-    if (toastQueue.length === 0) {
-        isToastShowing = false;
-        isUndoToastVisible = false;
-        return;
-    }
+    // If a toast is already visible, don't touch the flags or try to show another
+    if (isToastShowing) return;
+    if (toastQueue.length === 0) return;
+
     clearTimeout(autoHideTimeout);
     isToastShowing = true;
+
     const { message, duration, type, buttons, isUndoEligible } = toastQueue.shift();
-    
+
     // Set undo availability based on toast content
-    isUndoToastVisible = isUndoEligible || false;
-    
+    isUndoToastVisible = !!isUndoEligible;
+
     elements.toast.innerHTML = message;
 
     const closeBtn = document.createElement("button");
@@ -838,6 +914,7 @@ function displayNextToast() {
     } else {
         autoHideTimeout = setTimeout(() => closeToast(), duration);
     }
+
     elements.toast.className = `toast ${type} ${buttons.length > 0 ? 'confirmation' : ''}`;
     elements.toast.classList.add("show");
 }
@@ -942,11 +1019,28 @@ function renderFavoriteSuggestions(favorites) {
 }
 
 function loadTemplateFromSelection(tmpl) {
+    // New template context: bump serial to isolate undo stacks
+    contextSerial++;
     selectedTemplateName = tmpl.name;
+    editingTargetName = tmpl.name;
     elements.templateName.value = tmpl.name;
     updateExportSingleBtnState();
     const tagsArray = Array.isArray(tmpl.tags) ? tmpl.tags : [];
     elements.templateTags.value = tagsArray.join(", ");
+    // Reset name/tags undo-redo stacks for the newly selected template
+    try {
+        nameUndoStack = [];
+        nameRedoStack = [];
+        nameLastSnapshot = elements.templateName.value || '';
+        nameLastCaret = 0;
+        nameStackContextSerial = contextSerial;
+
+        tagsUndoStack = [];
+        tagsRedoStack = [];
+        tagsLastSnapshot = elements.templateTags.value || '';
+        tagsLastCaret = 0;
+        tagsStackContextSerial = contextSerial;
+    } catch (_) {}
     if (tagsArray.length > 0) {
         switchToTagsViewMode();
     } else {
@@ -1287,6 +1381,15 @@ function updateTabTitle(placeholder, hasValue) {
 function handleNameInput() {
     const currentValue = elements.templateName.value;
     const currentCaret = elements.templateName.selectionStart;
+    // Rebase stacks if context changed
+    if (nameStackContextSerial !== contextSerial) {
+        nameUndoStack = [];
+        nameRedoStack = [];
+        nameLastSnapshot = currentValue;
+        nameLastCaret = currentCaret || 0;
+        nameStackContextSerial = contextSerial;
+        return;
+    }
     
     // Push snapshot to undo stack only on user edits
     if (currentValue !== nameLastSnapshot) {
@@ -1302,26 +1405,43 @@ function handleNameInput() {
 function handleNameKeydown(event) {
     // Handle Ctrl+Z and Ctrl+Shift+Z within the template name input
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
         if (event.shiftKey) {
-            // Ctrl+Shift+Z = Redo for template name
+            // Redo
+            if (nameStackContextSerial !== contextSerial) {
+                // Rebase to current context and do nothing
+                nameUndoStack = [];
+                nameRedoStack = [];
+                nameLastSnapshot = elements.templateName.value || '';
+                nameLastCaret = elements.templateName.selectionStart || 0;
+                nameStackContextSerial = contextSerial;
+                return;
+            }
             if (nameRedoStack.length > 0) {
-                event.preventDefault();
                 nameRedo();
-                return;
             }
+            return;
         } else {
-            // Ctrl+Z = Undo for template name
-            if (nameUndoStack.length > 0) {
-                event.preventDefault();
-                nameUndo();
+            // Undo
+            if (nameStackContextSerial !== contextSerial) {
+                nameUndoStack = [];
+                nameRedoStack = [];
+                nameLastSnapshot = elements.templateName.value || '';
+                nameLastCaret = elements.templateName.selectionStart || 0;
+                nameStackContextSerial = contextSerial;
                 return;
             }
+            if (nameUndoStack.length > 0) {
+                nameUndo();
+            }
+            return;
         }
     }
 }
 
 function nameUndo() {
     if (!nameUndoStack.length) return;
+    if (nameStackContextSerial !== contextSerial) return;
     
     const prev = nameUndoStack.pop();
     const prevContent = typeof prev === 'string' ? prev : (prev.content || '');
@@ -1345,6 +1465,7 @@ function nameUndo() {
 
 function nameRedo() {
     if (!nameRedoStack.length) return;
+    if (nameStackContextSerial !== contextSerial) return;
     
     const next = nameRedoStack.pop();
     const nextContent = typeof next === 'string' ? next : (next.content || '');
@@ -1368,6 +1489,15 @@ function nameRedo() {
 function handleTagsInput() {
     const currentValue = elements.templateTags.value;
     const currentCaret = elements.templateTags.selectionStart;
+    // Rebase stacks if context changed
+    if (tagsStackContextSerial !== contextSerial) {
+        tagsUndoStack = [];
+        tagsRedoStack = [];
+        tagsLastSnapshot = currentValue;
+        tagsLastCaret = currentCaret || 0;
+        tagsStackContextSerial = contextSerial;
+        return;
+    }
     
     // Push snapshot to undo stack only on user edits
     if (currentValue !== tagsLastSnapshot) {
@@ -1383,18 +1513,67 @@ function handleTagsInput() {
 function handleTagsKeydown(event) {
     // Handle Ctrl+Z and Ctrl+Shift+Z within the tags input
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
         if (event.shiftKey) {
-            // Ctrl+Shift+Z = Redo for tags
-            if (tagsRedoStack.length > 0) {
-                event.preventDefault();
-                tagsRedo();
+            if (tagsStackContextSerial !== contextSerial) {
+                tagsUndoStack = [];
+                tagsRedoStack = [];
+                tagsLastSnapshot = elements.templateTags.value || '';
+                tagsLastCaret = elements.templateTags.selectionStart || 0;
+                tagsStackContextSerial = contextSerial;
                 return;
             }
+            if (tagsRedoStack.length > 0) {
+                tagsRedo();
+            }
+            return;
         } else {
-            // Ctrl+Z = Undo for tags
+            if (tagsStackContextSerial !== contextSerial) {
+                tagsUndoStack = [];
+                tagsRedoStack = [];
+                tagsLastSnapshot = elements.templateTags.value || '';
+                tagsLastCaret = elements.templateTags.selectionStart || 0;
+                tagsStackContextSerial = contextSerial;
+                return;
+            }
             if (tagsUndoStack.length > 0) {
-                event.preventDefault();
                 tagsUndo();
+            }
+            return;
+        }
+    }
+
+    // Smart Backspace handling for comma-space separators
+    // When the caret is just after a comma-space (", "), delete both at once
+    // This prevents the caret from getting stuck on the space due to input normalization
+    if (event.key === "Backspace" && !event.ctrlKey && !event.metaKey) {
+        const input = elements.templateTags;
+        const start = input.selectionStart;
+        const end = input.selectionEnd;
+        if (start === end && start >= 2) {
+            const v = input.value;
+            if (v[start - 1] === " " && v[start - 2] === ",") {
+                event.preventDefault();
+
+                // Snapshot current state for tags undo/redo consistency
+                const prevContent = input.value;
+                const prevCaret = start;
+                tagsUndoStack.push({ content: tagsLastSnapshot, caret: tagsLastCaret });
+                if (tagsUndoStack.length > 100) tagsUndoStack.shift();
+                tagsLastSnapshot = prevContent;
+                tagsLastCaret = prevCaret;
+                tagsRedoStack = [];
+
+                // Remove the comma-space pair
+                const newValue = v.slice(0, start - 2) + v.slice(end);
+                input.value = newValue;
+                const newCaret = start - 2;
+                setTimeout(() => {
+                    input.setSelectionRange(newCaret, newCaret);
+                }, 0);
+
+                validateTagsInput();
+                saveState();
                 return;
             }
         }
@@ -1403,6 +1582,7 @@ function handleTagsKeydown(event) {
 
 function tagsUndo() {
     if (!tagsUndoStack.length) return;
+    if (tagsStackContextSerial !== contextSerial) return;
     
     const prev = tagsUndoStack.pop();
     const prevContent = typeof prev === 'string' ? prev : (prev.content || '');
@@ -1425,6 +1605,7 @@ function tagsUndo() {
 
 function tagsRedo() {
     if (!tagsRedoStack.length) return;
+    if (tagsStackContextSerial !== contextSerial) return;
     
     const next = tagsRedoStack.pop();
     const nextContent = typeof next === 'string' ? next : (next.content || '');
@@ -1473,18 +1654,23 @@ function validateTagsInput() {
       value = sanitizedTags.join(", ");
       elements.templateTags.value = value;
     }
-  
-    // Adjust cursor position to avoid landing on a comma or space
-    const cursorPos = elements.templateTags.selectionStart;
-    if (value && cursorPos > 0 && value[cursorPos] === " " && value[cursorPos - 1] === ",") {
-      elements.templateTags.selectionStart = elements.templateTags.selectionEnd = cursorPos - 1;
+}
+
+function validateTemplateNameInput() {
+    const name = elements.templateName.value.trim();
+    // Just basic validation for real-time feedback
+    if (name.length > 50) {
+        elements.templateName.value = name.slice(0, 50);
     }
 }
 
 function handleNewTemplate(options = {}) {
     const { skipStore = false, suppressToast = false, skipSaveState = false } = options;
     if (!skipStore) storeLastState();
+    // New template context: bump serial to isolate undo stacks
+    contextSerial++;
     selectedTemplateName = null;
+    editingTargetName = null;
     originalTagsBeforeEdit = null;
     elements.templateName.value = getDefaultTemplateName();
     elements.templateTags.value = "";
@@ -1496,6 +1682,20 @@ function handleNewTemplate(options = {}) {
     editorRedoStack = [];
     editorLastSnapshot = defaultContent;
     editorLastCaret = 0;
+    // Reset name/tags stacks for new template context
+    try {
+        nameUndoStack = [];
+        nameRedoStack = [];
+        nameLastSnapshot = elements.templateName.value || '';
+        nameLastCaret = 0;
+        nameStackContextSerial = contextSerial;
+
+        tagsUndoStack = [];
+        tagsRedoStack = [];
+        tagsLastSnapshot = elements.templateTags.value || '';
+        tagsLastCaret = 0;
+        tagsStackContextSerial = contextSerial;
+    } catch (_) {}
     switchToTagsEditMode();
     updateSaveButtonState();
     updateDeleteButtonState();
@@ -1540,7 +1740,11 @@ function handleSaveTemplate() {
             return;
         }
 
-        const hasPlaceholderValuesAll = Object.values(tabsState.placeholderValues).some(v => (v || '').trim() !== '');
+        const { placeholders } = parsePlaceholders(content);
+        const hasPlaceholderValuesAll = placeholders.some(placeholder => {
+            const value = tabsState.placeholderValues[placeholder];
+            return value && value.trim() !== '';
+        });
         const isNewTemplate = !selectedTemplateName;
         if (!isNewTemplate) {
             const template = templates.find(t => t.name === selectedTemplateName);
@@ -1594,6 +1798,7 @@ function handleSaveTemplate() {
             
             saveTemplates(templates, () => {
                 selectedTemplateName = name;
+                editingTargetName = name;
                 
                 // Update UI with raw content (placeholders retained)
                 tabsState.currentTemplate = content;
@@ -1607,10 +1812,6 @@ function handleSaveTemplate() {
                 switchToTagsViewMode();
                 updateExportSingleBtnState();
                 updateDeleteButtonState();
-                // Clear editor undo history so first Ctrl+Z targets UI undo, not editor undo
-                try { editorUndoStack = []; editorRedoStack = []; } catch (_) {}
-                // Ensure global Ctrl+Z triggers UI undo immediately after save
-                moveFocusOutOfEditor();
             }, isNewTemplate);
         };
         const hasNoTags = tags.length === 0;
@@ -1694,21 +1895,31 @@ function handleSaveAsTemplate() {
             updateRecentIndices(nextIndex);
             nextIndex++;
             saveTemplates(templates, () => {
+                // Select the newly saved template, but do not reload content
+                // to preserve editor undo history and current UI edits.
                 selectedTemplateName = name;
-                elements.templateName.value = name;
+                editingTargetName = name;
                 loadTemplates();
-                // After saving, reload the new template to reflect the changes
-                loadTemplateFromSelection(newTemplate, true);
+                // Update the editor to the value-filled content and rebuild tabs (placeholders removed)
+                try {
+                    isUpdatingContent = true;
+                    tabsState.currentTemplate = contentWithValues;
+                    elements.promptArea.textContent = contentWithValues;
+                    destroyTabs();
+                    buildTabsFromTemplate(contentWithValues);
+                    renderPlaceholdersInTemplate();
+                    elements.fetchBtn2.style.display = elements.promptArea.textContent.trim() ? "none" : "block";
+                    updateClearButtonState();
+                } finally {
+                    isUpdatingContent = false;
+                }
                 saveState();
                 saveNextIndex();
+                // After save as completes, show tags in view mode (clickable)
                 switchToTagsViewMode();
                 updateExportSingleBtnState();
                 updateSaveButtonState();
                 updateDeleteButtonState();
-                // Clear editor undo history so first Ctrl+Z targets UI undo, not editor undo
-                try { editorUndoStack = []; editorRedoStack = []; } catch (_) {}
-                // Ensure global Ctrl+Z triggers UI undo immediately after save as
-                moveFocusOutOfEditor();
             }, true);
         };
 
@@ -1731,6 +1942,7 @@ function handleDeleteTemplate() {
     }
     chrome.storage.local.get(["templates", "recentIndices"], (result) => {
         const templates = result.templates || [];
+        const storedRecentIndices = result.recentIndices || [];
         const template = templates.find(t => t.name === selectedTemplateName);
         if (!template) {
             showToast("Template not found.", 3000, "red", [], "delete");
@@ -1745,42 +1957,43 @@ function handleDeleteTemplate() {
             `Are you sure you want to delete "${selectedTemplateName}"?`,
             0, "red",
             [{ text: "Yes", callback: () => {
+                const templateIndex = templates.findIndex(t => t.name === selectedTemplateName);
+                const deletedTemplate = templates[templateIndex] ? { ...templates[templateIndex] } : null;
+                
                 storeLastState();
                 if (lastState) {
                     lastState.actionType = 'delete';
                     lastState.templates = deepClone(templates);
-                    // Capture auxiliary snapshots explicitly for robustness
-                    lastState.recentIndicesSnapshot = Array.isArray(recentIndices) ? [...recentIndices] : [];
-                    if (typeof nextIndex === 'number') lastState.nextIndexSnapshot = nextIndex;
+                    lastState.recentIndicesSnapshot = [...storedRecentIndices];
+                    lastState.nextIndexSnapshot = nextIndex;
+                    lastState.deletedTemplate = deletedTemplate;
                 }
-                const templateIndex = templates.findIndex(t => t.name === selectedTemplateName);
-                // Keep a copy of the template being deleted to help target restoration
-                const deletedTemplate = templates[templateIndex] ? { ...templates[templateIndex] } : null;
                 const deletedIndex = templates[templateIndex].index;
                 templates.splice(templateIndex, 1);
-                recentIndices = recentIndices.filter(idx => idx !== deletedIndex);
-                chrome.storage.local.set({ templates, recentIndices }, () => {
+                const updatedRecentIndices = storedRecentIndices.filter(idx => idx !== deletedIndex);
+                
+                chrome.storage.local.set({ templates, recentIndices: updatedRecentIndices }, () => {
                     if (chrome.runtime.lastError) {
                         showToast("Failed to delete.", 3000, "red", [], "delete");
                     } else {
-                        // Create a fresh template view without overwriting lastState, so Ctrl+Z can restore deletion
-                        handleNewTemplate({ skipStore: true, suppressToast: true, skipSaveState: true });
-                        showToast("Template deleted. Press Ctrl+Z to undo.", 3000, "green", [], "delete");
-                        // Ensure focus is not in the editor so UI undo (Ctrl+Z) works immediately
-                        try {
-                            if (elements.promptArea && elements.promptArea.blur) {
-                                elements.promptArea.blur();
-                            }
-                            if (elements.saveBtn) {
-                                elements.saveBtn.focus();
-                            } else {
-                                document.body && document.body.focus && document.body.focus();
-                            }
-                        } catch (_) {}
-                        // Prefer restoring the exact deleted template name on undo
                         if (lastState && deletedTemplate) {
                             lastState.selectedName = deletedTemplate.name;
                         }
+                        // Update global variables to match storage
+                        recentIndices = updatedRecentIndices;
+                        
+                        handleNewTemplate({ skipStore: true, suppressToast: true, skipSaveState: true });
+                        showToast("Template deleted. Press Ctrl+Z to undo.", 3000, "green", [], "delete");
+                        // Ensure focus is moved out of all inputs immediately
+                        setTimeout(() => {
+                            moveFocusOutOfEditor();
+                            if (elements.templateName && elements.templateName.blur) elements.templateName.blur();
+                            if (elements.templateTags && elements.templateTags.blur) elements.templateTags.blur();
+                            // Focus on a neutral element
+                            if (elements.deleteBtn && elements.deleteBtn.focus) {
+                                elements.deleteBtn.focus();
+                            }
+                        }, 0);
                     }
                 });
             }},
@@ -1863,14 +2076,25 @@ function handleImportFile(event) {
     reader.onload = (e) => {
         try {
             const imported = jsyaml.load(e.target.result);
-            if (!Array.isArray(imported)) {
-                showToast("Invalid YAML: Expected a list of prompts.", 3000, "red");
+            // Accept either a list of templates or a single template object
+            const list = Array.isArray(imported) ? imported : (imported && typeof imported === 'object' ? [imported] : null);
+            if (!list) {
+                showToast("Invalid YAML: Expected a list of prompts or a single template.", 3000, "red");
                 return;
             }
             chrome.storage.local.get(["templates"], (result) => {
                 let templates = result.templates || [];
                 let added = 0, overwritten = 0;
-                imported.forEach((imp) => {
+                list.forEach((imp) => {
+                    // Normalize shape
+                    if (typeof imp !== 'object' || !imp) imp = {};
+                    // tags may come as comma-separated string from single export; normalize to array
+                    if (typeof imp.tags === 'string') {
+                        imp.tags = imp.tags.split(',').map(t => t.trim()).filter(Boolean);
+                    }
+                    if (!Array.isArray(imp.tags)) imp.tags = [];
+                    if (typeof imp.type !== 'string') imp.type = 'custom';
+                    if (typeof imp.favorite !== 'boolean') imp.favorite = false;
                     if (!imp.name || typeof imp.name !== "string" || !imp.name.trim()) {
                         imp.name = `Imported Prompt ${templates.length + 1}`;
                     }
@@ -2037,6 +2261,13 @@ function handleGlobalKeydown(event) {
         // If focus/cursor is inside the editor, route Ctrl+Z to the editor only
         const inEditor = ae === elements.promptArea;
         if (inEditor) {
+            // If an undo-eligible toast is visible for the CURRENT template, prioritize UI-level undo
+            if (!event.shiftKey && isUndoToastVisible && lastState && lastState.contextName === selectedTemplateName) {
+                event.preventDefault();
+                undoLastAction();
+                return;
+            }
+
             if (event.shiftKey) {
                 // Ctrl+Shift+Z = Redo for editor
                 if (editorRedoStack.length > 0) {
@@ -2052,18 +2283,13 @@ function handleGlobalKeydown(event) {
                     return; // Handled by editor
                 }
             }
-            // Focus is in editor but no history
-            if (!event.shiftKey && isUndoToastVisible && lastState) {
-                event.preventDefault();
-                undoLastAction();
-                return;
-            }
+            // No editor history and no UI undo to perform: keep focus and do nothing
             event.preventDefault();
             return;
         }
 
-        // If not in our managed inputs and an undo-eligible toast is visible, perform UI-level undo
-        if (!event.shiftKey && isUndoToastVisible && lastState) {
+        // If not in our managed inputs and an undo-eligible toast belongs to current template, perform UI-level undo
+        if (!event.shiftKey && isUndoToastVisible && lastState && lastState.contextName === selectedTemplateName) {
             event.preventDefault();
             undoLastAction();
             return;
@@ -2117,6 +2343,12 @@ function undoLastAction() {
         // Restore content to editor
         const content = lastState.content || '';
         tabsState.currentTemplate = content;
+        // Restore placeholder values so tabs reappear filled as before
+        try {
+            tabsState.placeholderValues = deepClone(lastState.placeholderValuesSnapshot || {});
+        } catch (_) {
+            tabsState.placeholderValues = lastState.placeholderValuesSnapshot || {};
+        }
         elements.promptArea.textContent = content;
         destroyTabs();
         buildTabsFromTemplate(content);
@@ -2143,11 +2375,6 @@ function undoLastAction() {
         updateDeleteButtonState();
         saveState();
         loadTemplates();
-        // Move focus out of the editor so next Ctrl+Z goes to UI undo, not editor undo
-        try {
-            if (elements.promptArea && elements.promptArea.blur) elements.promptArea.blur();
-            if (elements.saveBtn) elements.saveBtn.focus();
-        } catch (_) {}
         const msg = action === 'clearPrompt' ? 'Clear prompt undone.' :
                     action === 'clearAll' ? 'Clear all undone.' :
                     action === 'saveUpdate' ? 'Template update undone.' :
@@ -2163,32 +2390,121 @@ function undoLastAction() {
         const payload = { templates: lastState.templates };
         if (lastState.recentIndicesSnapshot) payload.recentIndices = lastState.recentIndicesSnapshot;
         if (typeof lastState.nextIndexSnapshot === 'number') payload.nextIndex = lastState.nextIndexSnapshot;
+        
         chrome.storage.local.set(payload, () => {
+            // Update global variables to match restored storage
+            if (lastState.recentIndicesSnapshot) recentIndices = [...lastState.recentIndicesSnapshot];
+            if (typeof lastState.nextIndexSnapshot === 'number') nextIndex = lastState.nextIndexSnapshot;
+            
             chrome.storage.local.get(["templates"], (result) => {
                 const templates = result.templates || [];
-                const tmpl = templates.find(t => t.name === lastState.selectedName);
-                if (tmpl) {
-                    // Put restored template at the top of recents
-                    updateRecentIndices(tmpl.index);
-                    loadTemplateFromSelection(tmpl);
+                
+                // For delete action, use the stored deleted template
+                if (action === 'delete' && lastState.deletedTemplate) {
+                    updateRecentIndices(lastState.deletedTemplate.index);
+                    loadTemplateFromSelection(lastState.deletedTemplate);
+                } else if (action === 'saveAs') {
+                    // For Save As undo: softly restore pre-save UI (placeholders/tabs + values)
+                    // without clearing editor undo/redo stacks
+                    try {
+                        isUpdatingContent = true;
+                        // Restore inputs
+                        elements.templateName.value = lastState.name || "";
+                        elements.templateTags.value = lastState.tags || "";
+                        selectedTemplateName = lastState.selectedName || null;
+                        originalTagsBeforeEdit = lastState.originalTags || null;
+
+                        // Restore content and placeholder values
+                        const raw = lastState.rawTemplate || lastState.content || '';
+                        tabsState.currentTemplate = raw;
+                        try {
+                            tabsState.placeholderValues = deepClone(lastState.placeholderValuesSnapshot || {});
+                        } catch (_) {
+                            tabsState.placeholderValues = lastState.placeholderValuesSnapshot || {};
+                        }
+                        elements.promptArea.textContent = raw;
+                        destroyTabs();
+                        buildTabsFromTemplate(raw);
+                        renderPlaceholdersInTemplate();
+                        elements.fetchBtn2.style.display = elements.promptArea.textContent.trim() ? "none" : "block";
+                        updateClearButtonState();
+
+                        // Sync editor undo baseline to restored content (do not clear stacks)
+                        try {
+                            editorLastSnapshot = raw || '';
+                            // keep editorUndoStack/editorRedoStack intact
+                        } catch (_) {}
+
+                        // Force a microtask refresh to ensure immediate UI update
+                        setTimeout(() => {
+                            // Re-render placeholders and tabs to be extra sure
+                            try { renderPlaceholdersInTemplate(); } catch (_) {}
+                            // Run the same pipeline as user input to fully sync all dependent UI
+                            try { handlePromptInput(); } catch (_) {}
+                        }, 0);
+
+                        // Keep tags editable after undoing a save action
+                        switchToTagsEditMode();
+
+                        updateExportSingleBtnState();
+                        updateSaveButtonState();
+                        updateDeleteButtonState();
+                        saveState();
+                        loadTemplates();
+                    } finally {
+                        isUpdatingContent = false;
+                    }
+                } else if (action === 'saveNew' || action === 'saveUpdate') {
+                    // For save/save as/update undo: only undo the storage action.
+                    // Do NOT revert the current UI edits in promptArea, tabs, tags, or template name.
+                    // Treat the current UI as an unsaved draft.
+                    selectedTemplateName = null;
+                    // Keep association with original template for validation
+                    editingTargetName = lastState.selectedName || editingTargetName || null;
+                    updateExportSingleBtnState();
+                    updateSaveButtonState();
+                    updateDeleteButtonState();
+                    // Revert tags to edit mode (plain text) after undoing a save action
+                    switchToTagsEditMode();
+                    // Revert allowed placeholders to the snapshot so newly added ones are removed
+                    try {
+                        const defaults = extractAllowedPlaceholdersFromDefaults();
+                        // Replace ALLOWED_PLACEHOLDERS contents with snapshot
+                        ALLOWED_PLACEHOLDERS.length = 0;
+                        (lastState.allowedPlaceholdersSnapshot || defaults).forEach(ph => ALLOWED_PLACEHOLDERS.push(ph));
+                        // Recompute userPlaceholders as snapshot minus defaults
+                        const snapshot = new Set(lastState.allowedPlaceholdersSnapshot || defaults);
+                        const base = new Set(defaults);
+                        const user = [...snapshot].filter(x => !base.has(x));
+                        chrome.storage.local.set({ userPlaceholders: user });
+                    } catch (_) {}
+                    // Rebuild tabs and rendering based on current content so unknown placeholders are plain text
+                    try {
+                        destroyTabs();
+                        buildTabsFromTemplate(tabsState.currentTemplate || elements.promptArea.textContent || '');
+                        renderPlaceholdersInTemplate();
+                    } catch (_) {}
+                    // Persist current UI as-is; preserve name/tags undo stacks so Ctrl+Z works
+                    saveState();
                 } else {
-                    restoreUI();
+                    const tmpl = templates.find(t => t.name === lastState.selectedName);
+                    if (tmpl) {
+                        updateRecentIndices(tmpl.index);
+                        loadTemplateFromSelection(tmpl);
+                    } else {
+                        restoreUI();
+                    }
                 }
-                // Move focus out of the editor so next Ctrl+Z goes to UI undo, not editor undo
-                try {
-                    if (elements.promptArea && elements.promptArea.blur) elements.promptArea.blur();
-                    if (elements.saveBtn) elements.saveBtn.focus();
-                } catch (_) {}
-                // Refresh lists and UI after storage restore
-                try { loadTemplates(); } catch (_) {}
+                
+                // Keep current focus unchanged during undo
+                loadTemplates();
+                
                 const msg = action === 'delete' ? 'Deletion undone.' :
                             action === 'saveUpdate' ? 'Template update undone.' :
                             action === 'saveNew' ? 'Template save undone.' :
                             action === 'saveAs' ? 'Template save undone.' :
                             'Undone.';
-                showToast(msg, 2000, "green", [], "undo-delete");
-                // Perform a second write shortly after to ensure this undo wins over any in-flight save
-                setTimeout(() => chrome.storage.local.set(payload), 30);
+                showToast(msg, 2000, "green", [], "undo");
                 lastState = null;
             });
         });
@@ -2546,7 +2862,12 @@ function moveFocusOutOfEditor() {
         if (sel && sel.rangeCount && elements.promptArea && elements.promptArea.contains(sel.anchorNode)) {
             sel.removeAllRanges();
         }
+        // Blur all input fields
         if (elements.promptArea && elements.promptArea.blur) elements.promptArea.blur();
+        if (elements.templateName && elements.templateName.blur) elements.templateName.blur();
+        if (elements.templateTags && elements.templateTags.blur) elements.templateTags.blur();
+        
+        // Focus on a button instead
         if (elements.saveBtn && elements.saveBtn.focus) {
             elements.saveBtn.focus();
         } else if (document && document.body && document.body.focus) {
