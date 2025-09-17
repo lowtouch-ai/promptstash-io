@@ -1905,7 +1905,7 @@ function handleSaveTemplate() {
 
         // If user has filled placeholder values, warn that saving will reset them to placeholders
         if (hasPlaceholderValuesAll) {
-            showToast("Saving will reset values to placeholders. Use ‘Save As’ to keep them.", 0, "red", [
+            showToast("Saving will reset values to placeholders. Use ‘Save As’ to keep them. Do you want to proceed?.", 0, "red", [
                 { text: "Yes", callback: proceedAfterTagsCheck },
                 { text: "No", callback: () => {} }
             ], "save-ph-reset");
