@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PromptStash - Prompt Template Assistant for ChatGPT, Perplexity & More by lowtouch.ai",
-  "version": "2.3.0",
+  "version": "2.3.2",
   "description": " Chrome extension to manage and deploy AI prompt templates for ChatGPT, Perplexity & More.",
   "permissions": [
     "storage",
