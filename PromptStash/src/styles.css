@@ -421,7 +421,10 @@ body.dark .favorite-suggestion:hover, body.dark .favorite-suggestion:focus {
   white-space: pre-wrap;
   word-wrap: break-word;
 }
-
+#previewArea {
+  border: 1px solid #dadce0;
+  border-radius: 8px !important; 
+}
 /* Placeholder styling for contenteditable div */
 #promptArea:empty:before {
   content: attr(data-placeholder);
@@ -435,6 +438,17 @@ body.dark .favorite-suggestion:hover, body.dark .favorite-suggestion:focus {
   cursor: pointer;
 }
 #promptArea::-webkit-scrollbar-thumb {
+  background-color: #8888;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#previewArea::-webkit-scrollbar {
+  background: #8882;
+  width: 5px;
+  cursor: pointer;
+}
+#previewArea::-webkit-scrollbar-thumb {
   background-color: #8888;
   border-radius: 4px;
   cursor: pointer;

@@ -252,7 +252,7 @@ const tabsState = {
 
 document.addEventListener("DOMContentLoaded", () => {
     ['searchBox', 'dropdownResults', 'template', 'templateName', 'templateTags', 'tagsDisplay', 'tagsView', 'editTagsBtn', 'cancelTagsEditBtn',
-     'promptArea', 'buttons', 'fetchBtn', 'fetchBtn2', 'saveBtn', 'saveAsBtn', 'deleteBtn', 'clearSearch', 'clearPrompt',
+     'promptArea', 'previewArea', 'buttons', 'fetchBtn', 'fetchBtn2', 'saveBtn', 'saveAsBtn', 'deleteBtn', 'clearSearch', 'clearPrompt',
      'clearAllBtn', 'sendBtn', 'favoriteSuggestions', 'fullscreenToggle', 'closeBtn', 'newBtn', 'searchOverlay',
      'toastOverlay', 'toast', 'themeToggle', 'importBtn', 'importFileInput', 'exportAllBtn', 'exportSingleBtn', 'scroll-left-btn', 'scroll-right-btn'].forEach(id => {
         elements[id] = document.getElementById(id);
@@ -1169,21 +1169,27 @@ function buildTabsFromTemplate(templateContent) {
     const tabPanels = document.getElementById("tabPanels");
     const templateTab = document.getElementById('template-tab');
     const templatePanel = document.getElementById('template-panel');
+    const previewTab = document.getElementById('preview-tab');
+    const previewPanel = document.getElementById('preview-panel');
 
-    // Always clear placeholder tabs and panels
-    tabsList.querySelectorAll('li:not(:first-child)').forEach(tab => tab.remove());
-    tabPanels.querySelectorAll('.tab-pane:not(#template-panel)').forEach(panel => panel.remove());
+    // Always clear placeholder tabs and panels (but keep Template and Preview tabs)
+    tabsList.querySelectorAll('li:not(:first-child):not(:nth-child(2))').forEach(tab => tab.remove());
+    tabPanels.querySelectorAll('.tab-pane:not(#template-panel):not(#preview-panel)').forEach(panel => panel.remove());
 
     if (placeholders.length === 0) {
         // Hide tabs and show only the main editor
         tabsList.style.display = 'none';
         if (templateTab) templateTab.classList.remove('active');
         if (templatePanel) templatePanel.classList.add('active', 'show');
+        if (previewTab) previewTab.style.display = 'none';
         elements.promptArea.style.height = 'calc(100vh - 320px)';
+        if (elements.previewArea) elements.previewArea.style.height = 'calc(100vh - 320px)';
     } else {
         // Show tabs and build placeholder tabs
         tabsList.style.display = 'flex';
+        if (previewTab) previewTab.style.display = 'block';
         elements.promptArea.style.height = 'calc(100vh - 360px)';
+        if (elements.previewArea) elements.previewArea.style.height = 'calc(100vh - 360px)';
         // Do not force-hide clear here; let updateClearButtonState decide based on template type
 
         placeholders.forEach((placeholder) => {
@@ -1251,6 +1257,7 @@ function buildTabsFromTemplate(templateContent) {
     }
     updateClearButtonState();
     renderPlaceholdersInTemplate();
+    updatePreviewArea(); // Update preview area when tabs are built
     // The MutationObserver will handle the arrow updates automatically
 }
 
@@ -1258,15 +1265,19 @@ function destroyTabs() {
     const tabsList = document.getElementById('editorTabs');
     const templateTab = document.getElementById('template-tab');
     const templatePanel = document.getElementById('template-panel');
+    const previewTab = document.getElementById('preview-tab');
 
     tabsList.style.display = 'none';
-    tabsList.querySelectorAll('li:not(:first-child)').forEach(tab => tab.remove());
-    document.getElementById('tabPanels').querySelectorAll('.tab-pane:not(#template-panel)').forEach(panel => panel.remove());
+    // Remove only placeholder tabs, keep Template and Preview tabs
+    tabsList.querySelectorAll('li:not(:first-child):not(:nth-child(2))').forEach(tab => tab.remove());
+    document.getElementById('tabPanels').querySelectorAll('.tab-pane:not(#template-panel):not(#preview-panel)').forEach(panel => panel.remove());
     
     if (templateTab) templateTab.classList.remove('active');
     if (templatePanel) templatePanel.classList.add('active', 'show');
+    if (previewTab) previewTab.style.display = 'none';
     
     elements.promptArea.style.height = 'calc(100vh - 320px)';
+    if (elements.previewArea) elements.previewArea.style.height = 'calc(100vh - 320px)';
     updateClearButtonState();
 }
 
@@ -1301,7 +1312,8 @@ function renderPlaceholdersInTemplate() {
     allPositions.forEach(pos => {
         const { placeholder, start, end, original } = pos;
         const hasValue = tabsState.placeholderValues[placeholder]?.trim();
-        const displayContent = hasValue ? tabsState.placeholderValues[placeholder] : original;
+        // Always show placeholder in Template tab, values are shown in Preview tab
+        const displayContent = original;
         const spanHtml = `<span class="placeholder-marker ${hasValue ? 'placeholder-filled' : 'placeholder-empty'}" data-type="${placeholder}" title="Click to edit ${placeholder}">${displayContent}</span>`;
         htmlContent = htmlContent.slice(0, start) + spanHtml + htmlContent.slice(end);
     });
@@ -1346,6 +1358,7 @@ function updatePlaceholder(type, value) {
     }
     updateTabTitle(type, value.trim() !== '');
     renderPlaceholdersInTemplate();
+    updatePreviewArea(); // Update preview when placeholder values change
     saveState(); // Ensure state is saved whenever a placeholder is updated
 }
 
@@ -1374,6 +1387,68 @@ function updateTabTitle(placeholder, hasValue) {
             tabButton.appendChild(checkmark);
         }
     }
+}
+
+function generatePreviewContent() {
+    if (!tabsState.currentTemplate) return '';
+    
+    const { placeholderPositions } = parsePlaceholders(tabsState.currentTemplate);
+    let htmlContent = tabsState.currentTemplate;
+    
+    const allPositions = [];
+    placeholderPositions.forEach((positions, placeholder) => {
+        positions.forEach(pos => {
+            allPositions.push({ ...pos, placeholder });
+        });
+    });
+
+    // Sort positions in descending order to avoid index shifting issues
+    allPositions.sort((a, b) => b.start - a.start);
+
+    allPositions.forEach(pos => {
+        const { placeholder, start, end, original } = pos;
+        const hasValue = tabsState.placeholderValues[placeholder]?.trim();
+        // Show value if available, otherwise show placeholder
+        const displayContent = hasValue ? tabsState.placeholderValues[placeholder] : original;
+        const spanHtml = `<span class="placeholder-marker ${hasValue ? 'placeholder-filled' : 'placeholder-empty'}" data-type="${placeholder}" title="${placeholder}: ${hasValue ? displayContent : 'No value set'}">${displayContent}</span>`;
+        htmlContent = htmlContent.slice(0, start) + spanHtml + htmlContent.slice(end);
+    });
+    
+    return htmlContent;
+}
+
+function updatePreviewArea() {
+    if (elements.previewArea) {
+        elements.previewArea.innerHTML = generatePreviewContent();
+        
+        // Add click handlers to preview placeholders to switch to their tabs
+        elements.previewArea.querySelectorAll('.placeholder-marker').forEach(element => {
+            element.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const placeholderType = e.target.getAttribute('data-type');
+                if (placeholderType) switchToPlaceholderTab(placeholderType);
+            });
+            element.setAttribute('contenteditable', 'false');
+            element.style.cursor = 'pointer';
+        });
+    }
+}
+
+function getPreviewTextContent() {
+    if (!tabsState.currentTemplate) return '';
+    
+    let previewContent = tabsState.currentTemplate;
+    
+    // Replace all placeholders with their values (plain text, no HTML)
+    Object.entries(tabsState.placeholderValues).forEach(([placeholder, value]) => {
+        if (value && value.trim()) {
+            const placeholderRegex = new RegExp(`\\{\\{\\s*${placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\}\\}`, 'g');
+            previewContent = previewContent.replace(placeholderRegex, value);
+        }
+    });
+    
+    return previewContent;
 }
 
 // --- Event Handlers ---
@@ -1677,6 +1752,7 @@ function handleNewTemplate(options = {}) {
     const defaultContent = `# Your Role\n*\n\n# Background Information\n*\n\n# Your Task\n*`;
     elements.promptArea.textContent = defaultContent;
     tabsState.currentTemplate = defaultContent; // Set the current template
+    tabsState.placeholderValues = {}; // Clear placeholder values for new template
     // Reset editor stacks to this blank template so later Ctrl+Z doesn't jump back here
     editorUndoStack = [];
     editorRedoStack = [];
@@ -1704,6 +1780,7 @@ function handleNewTemplate(options = {}) {
     elements.searchBox.value = "";
     destroyTabs();
     buildTabsFromTemplate(defaultContent); // Build tabs from the default content
+    updatePreviewArea(); // Clear and update preview area
     if (!skipSaveState) {
         saveState();
     }
@@ -2043,7 +2120,9 @@ function handleFetchPrompt() {
 function handleSendPrompt() {
     getTargetTabId(tabId => {
         if (!tabId) return;
-        chrome.tabs.sendMessage(tabId, { action: "sendPrompt", prompt: elements.promptArea.textContent }, (response) => {
+        // Send the preview content (with placeholder values filled in) instead of template content
+        const promptToSend = getPreviewTextContent();
+        chrome.tabs.sendMessage(tabId, { action: "sendPrompt", prompt: promptToSend }, (response) => {
             if (chrome.runtime.lastError) {
                 console.error("Send prompt error:", chrome.runtime.lastError.message);
                 showToast("Failed to send prompt. Please try again.", 3000, "red", [], "send");
