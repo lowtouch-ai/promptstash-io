@@ -1031,3 +1031,14 @@ body.dark .scroll-btn {
 body.dark .scroll-btn:hover {
   background-color: #444;
 }
+
+/* Preview tab close button hover effect */
+#preview-close-btn {
+  transition: opacity 0.2s ease, transform 0.1s ease;
+}
+
+#preview-close-btn:hover {
+  opacity: 1 !important;
+  transform: scale(1.1);
+  font-weight: bold;
+}

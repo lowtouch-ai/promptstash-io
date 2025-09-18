@@ -135,8 +135,11 @@
                 <li class="nav-item" role="presentation">
                     <button class="nav-link active" id="template-tab" data-bs-toggle="tab" data-bs-target="#template-panel" type="button" role="tab" aria-controls="template-panel" aria-selected="true">Template</button>
                 </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="preview-tab" data-bs-toggle="tab" data-bs-target="#preview-panel" type="button" role="tab" aria-controls="preview-panel" aria-selected="false">Preview</button>
+                <li class="nav-item" role="presentation" id="preview-tab-item" style="display: none;">
+                    <button class="nav-link" id="preview-tab" data-bs-toggle="tab" data-bs-target="#preview-panel" type="button" role="tab" aria-controls="preview-panel" aria-selected="false">
+                        Preview
+                        <svg id="preview-close-btn" width="10" height="10" style="margin-left: 8px; cursor: pointer; opacity: 0.8;"><use href="sprite.svg#close"></use></svg>
+                    </button>
                 </li>
             </ul>
         </div>
