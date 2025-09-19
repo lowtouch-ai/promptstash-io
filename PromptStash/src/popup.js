@@ -1585,17 +1585,10 @@ function updatePreviewArea() {
         // Only update preview content if we're in preview mode or have placeholders
         if (tabsState.previewMode && tabsState.currentTemplate) {
             elements.previewArea.innerHTML = generatePreviewContent();
-            
-            // Add click handlers to preview placeholders to switch to their tabs
+            // Make preview read-only: no interactive handlers, normal text cursor
             elements.previewArea.querySelectorAll('.placeholder-marker').forEach(element => {
-                element.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const placeholderType = e.target.getAttribute('data-type');
-                    if (placeholderType) switchToPlaceholderTab(placeholderType);
-                });
                 element.setAttribute('contenteditable', 'false');
-                element.style.cursor = 'pointer';
+                element.style.cursor = 'text';
             });
         } else {
             // Clear preview area when not in preview mode
