@@ -245,7 +245,8 @@ const ALLOWED_PLACEHOLDERS = [];
 const tabsState = {
     placeholders: [],
     placeholderValues: {},
-    currentTemplate: ""
+    currentTemplate: "",
+    previewMode: false
 };
 
 // --- Initialization and Core Logic ---
@@ -317,6 +318,7 @@ function initializeState() {
         tabsState.currentTemplate = state.content || defaultText;
         elements.promptArea.textContent = tabsState.currentTemplate;
         tabsState.placeholderValues = result.placeholderValues || {};
+        tabsState.previewMode = state.previewMode || false; // Restore preview mode state
 
         if (!isTagsInEditMode && (state.tags || selectedTemplateName)) {
             switchToTagsViewMode();
@@ -330,6 +332,48 @@ function initializeState() {
         if (tabsState.currentTemplate) {
             buildTabsFromTemplate(tabsState.currentTemplate);
             renderPlaceholdersInTemplate(); // Re-render placeholders with saved values
+
+            // Restore preview mode with transitions suppressed, then re-enable them
+            if (tabsState.previewMode) {
+                const tabsList = document.getElementById('editorTabs');
+                const previewTabItem = document.getElementById('preview-tab-item');
+                const previewPanel = document.getElementById('preview-panel');
+                const templatePanel = document.getElementById('template-panel');
+                const previewTabLink = document.getElementById('preview-tab');
+                const templateTabLink = document.getElementById('template-tab');
+
+                if (previewTabItem && previewPanel && templatePanel && tabsList && previewTabLink) {
+                    // Ensure Preview tab button is visible and hide placeholder tabs
+                    previewTabItem.style.display = 'block';
+                    tabsList.querySelectorAll('li:not(:first-child):not(#preview-tab-item)').forEach(tab => {
+                        tab.style.display = 'none';
+                    });
+
+                    // Temporarily remove fade to avoid initial transition flicker
+                    const hadFadePreview = previewPanel.classList.contains('fade');
+                    const hadFadeTemplate = templatePanel.classList.contains('fade');
+                    previewPanel.classList.remove('fade');
+                    templatePanel.classList.remove('fade');
+
+                    // Use Bootstrap API to set the correct active state
+                    updatePreviewArea();
+                    const tab = bootstrap.Tab.getOrCreateInstance(previewTabLink);
+                    tab.show();
+                    // Force button active states and aria for first interaction to be correct
+                    previewTabLink.classList.add('active');
+                    previewTabLink.setAttribute('aria-selected', 'true');
+                    if (templateTabLink) {
+                        templateTabLink.classList.remove('active');
+                        templateTabLink.setAttribute('aria-selected', 'false');
+                    }
+
+                    // Restore fade classes on next frame so subsequent switches animate
+                    requestAnimationFrame(() => {
+                        if (hadFadePreview) previewPanel.classList.add('fade');
+                        if (hadFadeTemplate) templatePanel.classList.add('fade');
+                    });
+                }
+            }
         }
 
         // Initialize editor undo tracking with the loaded content
@@ -396,6 +440,16 @@ function setupEventListeners() {
         // Move focus out of the editor so UI-level Ctrl+Z works immediately
         moveFocusOutOfEditor();
     });
+    
+    // Preview tab close button event listener
+    const previewCloseBtn = document.getElementById('preview-close-btn');
+    if (previewCloseBtn) {
+        previewCloseBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            togglePreviewTab(false);
+        });
+    }
     elements.clearAllBtn.addEventListener("click", () => {
         storeLastState();
         if (lastState) lastState.actionType = 'clearAll';
@@ -781,6 +835,7 @@ function saveState() {
             editingTargetName,
             isTagsInEditMode: !elements.templateTags.classList.contains('hidden'),
             originalTags: originalTagsBeforeEdit,
+            previewMode: tabsState.previewMode, // Save preview mode state
         },
         theme: currentTheme,
         isFullscreen,
@@ -945,8 +1000,51 @@ function saveTemplates(templates, callback, isNewTemplate) {
 }
 
 function loadTemplates(query = "", showDropdown = false) {
-    chrome.storage.local.get(["templates"], (result) => {
-        let templates = result.templates || defaultTemplates.map((t, i) => ({ ...t, index: i }));
+    chrome.storage.local.get(["templates", "nextIndex"], (result) => {
+        const toArrayTags = (tags) => {
+            if (Array.isArray(tags)) return tags;
+            if (typeof tags === 'string') return tags.split(',').map(s => s.trim()).filter(Boolean);
+            return [];
+        };
+
+        const normalize = (t) => ({ ...t, tags: toArrayTags(t.tags) });
+
+        const storedRaw = Array.isArray(result.templates) ? result.templates : [];
+        let next = typeof result.nextIndex === 'number' ? result.nextIndex : storedRaw.length;
+
+        const stored = storedRaw.map(normalize);
+        const defaults = defaultTemplates.map(normalize);
+
+        // Build name sets
+        const defaultNames = new Set(defaults.map(t => t.name));
+
+        // Remove obsolete pre-built defaults that no longer exist (renamed/removed) to avoid duplicates
+        // Keep all user templates (type !== 'pre-built') and pre-built that still exist by name
+        const kept = stored.filter(t => t && (t.type !== 'pre-built' || defaultNames.has(t.name)));
+
+        const keptNames = new Set(kept.map(t => t.name));
+
+        // Add any new defaults not present in kept
+        const newDefaults = defaults
+            .filter(dt => dt && !keptNames.has(dt.name))
+            .map((dt) => ({ ...dt, index: next++ }));
+
+        // If no stored, initialize from defaults with stable indices
+        const merged = (stored.length > 0) ? [...kept, ...newDefaults] : defaults.map((t, i) => ({ ...t, index: i }));
+
+        // Persist if we normalized tags, removed obsolete defaults, or added new defaults
+        const changed = (storedRaw.length !== merged.length)
+            || storedRaw.some((t, i) => {
+                const a = t && Array.isArray(t.tags) ? t.tags.join(',') : (typeof t.tags === 'string' ? t.tags : '');
+                const bT = merged.find(m => m.name === (t && t.name));
+                const b = bT ? (Array.isArray(bT.tags) ? bT.tags.join(',') : '') : '';
+                return a !== b;
+            });
+        if (changed) {
+            chrome.storage.local.set({ templates: merged, nextIndex: next });
+        }
+
+        let templates = merged;
 
         // Helper for timestamps
         const ts = (t) => (typeof t.updatedAt === 'number' ? t.updatedAt : (typeof t.createdAt === 'number' ? t.createdAt : 0));
@@ -1048,6 +1146,18 @@ function loadTemplateFromSelection(tmpl) {
     }
     tabsState.currentTemplate = tmpl.content; // Set the raw template content
     elements.promptArea.textContent = tmpl.content;
+    // Reset scroll to top when switching templates
+    try { elements.promptArea.scrollTop = 0; } catch (_) {}
+    // When switching templates, exit preview mode and hide preview UI
+    tabsState.previewMode = false;
+    const previewTabItem = document.getElementById('preview-tab-item');
+    const previewPanel = document.getElementById('preview-panel');
+    if (previewTabItem) previewTabItem.style.display = 'none';
+    if (previewPanel) {
+        previewPanel.classList.remove('active', 'show');
+        previewPanel.classList.add('fade');
+    }
+    if (elements.previewArea) elements.previewArea.innerHTML = '';
     // Reset editor undo/redo stacks to this template's content to avoid undoing into previous screens
     editorUndoStack = [];
     editorRedoStack = [];
@@ -1058,6 +1168,9 @@ function loadTemplateFromSelection(tmpl) {
     if (templateTabButton) {
         new bootstrap.Tab(templateTabButton).show();
     }
+    // Ensure both editors start at top after building tabs
+    try { elements.promptArea.scrollTop = 0; } catch (_) {}
+    try { if (elements.previewArea) elements.previewArea.scrollTop = 0; } catch (_) {}
     buildTabsFromTemplate(tmpl.content);
     renderPlaceholdersInTemplate(); // Ensure styles are applied
     elements.searchBox.value = "";
@@ -1181,13 +1294,17 @@ function buildTabsFromTemplate(templateContent) {
         tabsList.style.display = 'none';
         if (templateTab) templateTab.classList.remove('active');
         if (templatePanel) templatePanel.classList.add('active', 'show');
-        if (previewTab) previewTab.style.display = 'none';
+        // Hide Preview tab by default
+        const previewTabItem = document.getElementById('preview-tab-item');
+        if (previewTabItem) previewTabItem.style.display = 'none';
         elements.promptArea.style.height = 'calc(100vh - 320px)';
         if (elements.previewArea) elements.previewArea.style.height = 'calc(100vh - 320px)';
     } else {
         // Show tabs and build placeholder tabs
         tabsList.style.display = 'flex';
-        if (previewTab) previewTab.style.display = 'block';
+        // Hide Preview tab by default - it will be shown when preview icon is clicked
+        const previewTabItem = document.getElementById('preview-tab-item');
+        if (previewTabItem) previewTabItem.style.display = 'none';
         elements.promptArea.style.height = 'calc(100vh - 360px)';
         if (elements.previewArea) elements.previewArea.style.height = 'calc(100vh - 360px)';
         // Do not force-hide clear here; let updateClearButtonState decide based on template type
@@ -1227,22 +1344,43 @@ function buildTabsFromTemplate(templateContent) {
             textarea.addEventListener('input', () => updatePlaceholder(placeholder, textarea.value));
             panelContentWrapper.appendChild(textarea);
 
+            // Create button container with justify-between
+            const buttonContainer = document.createElement('div');
+            buttonContainer.className = 'position-absolute top-0 end-0 d-flex justify-content-between align-items-center';
+            buttonContainer.style.zIndex = '10';
+            buttonContainer.style.gap = '5px';
+            buttonContainer.style.padding = '8px';
+
+            const previewButton = document.createElement('button');
+            previewButton.className = 'clrbtn';
+            previewButton.innerHTML = `<svg width="18" height="18"><use href="sprite.svg#preview"></use></svg>`;
+            previewButton.setAttribute('aria-label', `Preview ${placeholder}`);
+            previewButton.setAttribute('data-bs-toggle', 'tooltip');
+            previewButton.setAttribute('data-bs-placement', 'top');
+            previewButton.title = `Preview template with values`;
+            previewButton.addEventListener('click', () => {
+                togglePreviewTab(true);
+            });
+            buttonContainer.appendChild(previewButton);
+
             const clearButton = document.createElement('button');
-            clearButton.className = 'clrbtn position-absolute top-0 end-0 mr-2';
+            clearButton.className = 'clrbtn';
             clearButton.innerHTML = `<svg width="15" height="15"><use href="sprite.svg#clear"></use></svg>`;
             clearButton.setAttribute('aria-label', `Clear ${placeholder}`);
             clearButton.setAttribute('data-bs-toggle', 'tooltip');
             clearButton.setAttribute('data-bs-placement', 'top');
             clearButton.title = `Clear ${placeholder}`;
-            clearButton.style.zIndex = '10';
             clearButton.addEventListener('click', () => {
                 updatePlaceholder(placeholder, '');
                 textarea.value = '';
                 textarea.focus();
             });
-            panelContentWrapper.appendChild(clearButton);
+            buttonContainer.appendChild(clearButton);
+
+            panelContentWrapper.appendChild(buttonContainer);
             
             new bootstrap.Tooltip(clearButton);
+            new bootstrap.Tooltip(previewButton);
 
             tabPanel.appendChild(panelContentWrapper);
             tabPanels.appendChild(tabPanel);
@@ -1252,8 +1390,21 @@ function buildTabsFromTemplate(templateContent) {
             updateTabTitle(placeholder, textarea.value.trim() !== '');
         });
 
-        // Show the template tab by default
-        if (templateTab) new bootstrap.Tab(templateTab).show();
+        // Show the template tab by default, unless we're in preview mode
+        if (templateTab && !tabsState.previewMode) new bootstrap.Tab(templateTab).show();
+        
+        // If we were in preview mode, restore it after rebuilding tabs
+        if (tabsState.previewMode) {
+            const previewTabItem = document.getElementById('preview-tab-item');
+            if (previewTabItem) {
+                previewTabItem.style.display = 'block';
+                // Hide all placeholder tabs again
+                tabsList.querySelectorAll('li:not(:first-child):not(#preview-tab-item)').forEach(tab => {
+                    tab.style.display = 'none';
+                });
+                // Don't automatically switch to preview tab when editing - stay on current tab
+            }
+        }
     }
     updateClearButtonState();
     renderPlaceholdersInTemplate();
@@ -1265,16 +1416,28 @@ function destroyTabs() {
     const tabsList = document.getElementById('editorTabs');
     const templateTab = document.getElementById('template-tab');
     const templatePanel = document.getElementById('template-panel');
-    const previewTab = document.getElementById('preview-tab');
+    const previewTabItem = document.getElementById('preview-tab-item');
+    const previewPanel = document.getElementById('preview-panel');
 
+    // Reset preview mode when destroying tabs
+    tabsState.previewMode = false;
+    
     tabsList.style.display = 'none';
     // Remove only placeholder tabs, keep Template and Preview tabs
-    tabsList.querySelectorAll('li:not(:first-child):not(:nth-child(2))').forEach(tab => tab.remove());
+    tabsList.querySelectorAll('li:not(:first-child):not(#preview-tab-item)').forEach(tab => tab.remove());
     document.getElementById('tabPanels').querySelectorAll('.tab-pane:not(#template-panel):not(#preview-panel)').forEach(panel => panel.remove());
     
     if (templateTab) templateTab.classList.remove('active');
     if (templatePanel) templatePanel.classList.add('active', 'show');
-    if (previewTab) previewTab.style.display = 'none';
+    // Hide Preview tab by default
+    if (previewTabItem) previewTabItem.style.display = 'none';
+    // Hide Preview panel and clear its content
+    if (previewPanel) {
+        previewPanel.classList.remove('active', 'show');
+        previewPanel.classList.add('fade');
+    }
+    // Clear preview area content
+    if (elements.previewArea) elements.previewArea.innerHTML = '';
     
     elements.promptArea.style.height = 'calc(100vh - 320px)';
     if (elements.previewArea) elements.previewArea.style.height = 'calc(100vh - 320px)';
@@ -1419,19 +1582,64 @@ function generatePreviewContent() {
 
 function updatePreviewArea() {
     if (elements.previewArea) {
-        elements.previewArea.innerHTML = generatePreviewContent();
-        
-        // Add click handlers to preview placeholders to switch to their tabs
-        elements.previewArea.querySelectorAll('.placeholder-marker').forEach(element => {
-            element.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const placeholderType = e.target.getAttribute('data-type');
-                if (placeholderType) switchToPlaceholderTab(placeholderType);
+        // Only update preview content if we're in preview mode or have placeholders
+        if (tabsState.previewMode && tabsState.currentTemplate) {
+            elements.previewArea.innerHTML = generatePreviewContent();
+            
+            // Add click handlers to preview placeholders to switch to their tabs
+            elements.previewArea.querySelectorAll('.placeholder-marker').forEach(element => {
+                element.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const placeholderType = e.target.getAttribute('data-type');
+                    if (placeholderType) switchToPlaceholderTab(placeholderType);
+                });
+                element.setAttribute('contenteditable', 'false');
+                element.style.cursor = 'pointer';
             });
-            element.setAttribute('contenteditable', 'false');
-            element.style.cursor = 'pointer';
+        } else {
+            // Clear preview area when not in preview mode
+            elements.previewArea.innerHTML = '';
+        }
+    }
+}
+
+function togglePreviewTab(show) {
+    const previewTabItem = document.getElementById('preview-tab-item');
+    const previewTab = document.getElementById('preview-tab');
+    const templateTab = document.getElementById('template-tab');
+    const tabsList = document.getElementById("editorTabs");
+    
+    // Update preview mode state
+    tabsState.previewMode = show;
+    
+    if (show) {
+        // Show Preview tab and hide all placeholder tabs
+        previewTabItem.style.display = 'block';
+        
+        // Hide all placeholder tabs (keep only Template and Preview)
+        tabsList.querySelectorAll('li:not(:first-child):not(#preview-tab-item)').forEach(tab => {
+            tab.style.display = 'none';
         });
+        
+        // Switch to Preview tab
+        updatePreviewArea();
+        new bootstrap.Tab(previewTab).show();
+        // Persist state so reopening the popup restores preview mode
+        try { saveState(); } catch (_) {}
+    } else {
+        // Hide Preview tab and show all placeholder tabs
+        previewTabItem.style.display = 'none';
+        
+        // Show all placeholder tabs
+        tabsList.querySelectorAll('li:not(:first-child):not(#preview-tab-item)').forEach(tab => {
+            tab.style.display = 'block';
+        });
+        
+        // Switch back to Template tab
+        new bootstrap.Tab(templateTab).show();
+        // Persist state so reopening the popup restores non-preview mode
+        try { saveState(); } catch (_) {}
     }
 }
 
@@ -1753,6 +1961,12 @@ function handleNewTemplate(options = {}) {
     elements.promptArea.textContent = defaultContent;
     tabsState.currentTemplate = defaultContent; // Set the current template
     tabsState.placeholderValues = {}; // Clear placeholder values for new template
+    tabsState.previewMode = false; // Reset preview mode for new template
+    // Clear preview area content
+    if (elements.previewArea) elements.previewArea.innerHTML = '';
+    // Reset scroll positions for a fresh editor view
+    try { elements.promptArea.scrollTop = 0; } catch (_) {}
+    try { if (elements.previewArea) elements.previewArea.scrollTop = 0; } catch (_) {}
     // Reset editor stacks to this blank template so later Ctrl+Z doesn't jump back here
     editorUndoStack = [];
     editorRedoStack = [];
@@ -1778,9 +1992,14 @@ function handleNewTemplate(options = {}) {
     updateExportSingleBtnState()
     elements.fetchBtn2.style.display = "none";
     elements.searchBox.value = "";
+    // Reset preview mode before destroying tabs
+    tabsState.previewMode = false;
     destroyTabs();
     buildTabsFromTemplate(defaultContent); // Build tabs from the default content
-    updatePreviewArea(); // Clear and update preview area
+    // Ensure scroll stays at the top after layout updates
+    try { elements.promptArea.scrollTop = 0; } catch (_) {}
+    try { if (elements.previewArea) elements.previewArea.scrollTop = 0; } catch (_) {}
+    // Don't call updatePreviewArea() here since we're not in preview mode
     if (!skipSaveState) {
         saveState();
     }
