@@ -1458,10 +1458,11 @@ function renderPlaceholdersInTemplate() {
         cursorOffset = preCaretRange.toString().length;
     }
 
+    // Create a document fragment to safely build the content
+    const fragment = document.createDocumentFragment();
     const { placeholderPositions } = parsePlaceholders(tabsState.currentTemplate);
-    let htmlContent = tabsState.currentTemplate;
-    let offset = 0;
     
+    let lastIndex = 0;
     const allPositions = [];
     placeholderPositions.forEach((positions, placeholder) => {
         positions.forEach(pos => {
@@ -1469,20 +1470,40 @@ function renderPlaceholdersInTemplate() {
         });
     });
 
-    // Sort positions in descending order to avoid index shifting issues
-    allPositions.sort((a, b) => b.start - a.start);
+    // Sort positions in ascending order for proper processing
+    allPositions.sort((a, b) => a.start - b.start);
 
     allPositions.forEach(pos => {
         const { placeholder, start, end, original } = pos;
+        
+        // Add text before this placeholder (safely escaped)
+        if (start > lastIndex) {
+            const textBefore = tabsState.currentTemplate.slice(lastIndex, start);
+            fragment.appendChild(document.createTextNode(textBefore));
+        }
+        
+        // Create placeholder span
         const hasValue = tabsState.placeholderValues[placeholder]?.trim();
-        // Always show placeholder in Template tab, values are shown in Preview tab
-        const displayContent = original;
-        const spanHtml = `<span class="placeholder-marker ${hasValue ? 'placeholder-filled' : 'placeholder-empty'}" data-type="${placeholder}" title="Click to edit ${placeholder}">${displayContent}</span>`;
-        htmlContent = htmlContent.slice(0, start) + spanHtml + htmlContent.slice(end);
+        const span = document.createElement('span');
+        span.className = `placeholder-marker ${hasValue ? 'placeholder-filled' : 'placeholder-empty'}`;
+        span.setAttribute('data-type', placeholder);
+        span.setAttribute('title', `Click to edit ${placeholder}`);
+        span.setAttribute('contenteditable', 'false');
+        span.textContent = original; // This safely escapes the content
+        fragment.appendChild(span);
+        
+        lastIndex = end;
     });
 
+    // Add remaining text after the last placeholder
+    if (lastIndex < tabsState.currentTemplate.length) {
+        const textAfter = tabsState.currentTemplate.slice(lastIndex);
+        fragment.appendChild(document.createTextNode(textAfter));
+    }
+
     isUpdatingContent = true;
-    elements.promptArea.innerHTML = htmlContent;
+    elements.promptArea.innerHTML = '';
+    elements.promptArea.appendChild(fragment);
     isUpdatingContent = false;
 
     if (shouldPreserveCursor) {
@@ -2825,6 +2846,7 @@ function handlePromptInput() {
     // If the user is typing inside an unclosed token like "{{...",
     // skip re-rendering placeholders to prevent flicker and brace changes.
     if (isTypingInUnclosedToken(templateContent, cursorOffset)) {
+        console.log('Skipping re-render - typing in unclosed token:', templateContent.slice(Math.max(0, cursorOffset - 10), cursorOffset + 10));
         elements.fetchBtn2.style.display = elements.promptArea.textContent.trim() ? "none" : "block";
         saveState();
         return;
@@ -3122,7 +3144,9 @@ function isTypingInUnclosedToken(content, cursorOffset) {
         const upto = content.slice(0, Math.max(0, cursorOffset));
         const opens = (upto.match(/\{\{/g) || []).length;
         const closes = (upto.match(/\}\}/g) || []).length;
-        return opens > closes; // more opens than closes means within an unclosed token
+        const result = opens > closes;
+        console.log('isTypingInUnclosedToken:', { content: upto, opens, closes, result, cursorOffset });
+        return result; // more opens than closes means within an unclosed token
     } catch (_) {
         return false;
     }

@@ -511,23 +511,10 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
       if (needFullscreen) {
         finalPos = { x: '0px', y: '0px', right: '0' };
       } else if (savedPosition) {
-        // Start from saved dimensions
-        let width = savedPosition.width;
-        let height = savedPosition.height;
-
-        // Clamp to current constraints
-        width = Math.max(constraints.minWidth, Math.min(constraints.maxWidth, width));
-        height = Math.max(constraints.minHeight, Math.min(constraints.maxHeight, height));
-
-        // Compute clamped left/top so the popup stays inside the viewport
-        let left = Math.max(0, Math.min(window.innerWidth - width, savedPosition.left));
-        let top = Math.max(0, Math.min(window.innerHeight - height, savedPosition.top));
-
-        popupWidth = width;
-        popupHeight = height;
-        finalPos = { x: `${left}px`, y: `${top}px`, right: 'auto' };
+        popupWidth = savedPosition.width;
+        popupHeight = savedPosition.height;
+        finalPos = { x: `${savedPosition.left}px`, y: `${savedPosition.top}px`, right: 'auto' };
       }
-    
       // If no saved position, keep default right-side positioning
     
       // Apply styles with optimized CSS
@@ -545,8 +532,6 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
         transition: width 0.2s ease-out, height 0.2s ease-out, top 0.2s ease-out, right 0.2s ease-out, left 0.2s ease-out;
         backdrop-filter: blur(1px);
       `;
-
-      // Do not persist clamped position on window resize; preserve the last user-dragged position.
     };
 
     // Initialize popup with saved state
@@ -754,9 +739,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   transition: "width 0.3s ease, height 0.3s ease, top 0.3s ease, left 0.3s ease, right 0.3s ease"
                 };
                 Object.assign(popup.style, styles);
-
-                // Clear any previously saved manual position so future resizes keep this default position
-                try { chrome.storage.local.remove('popupPosition'); } catch (_) {}
               }
             }
           },

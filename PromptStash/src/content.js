@@ -643,18 +643,54 @@ function createWidget(inputField, inputContainer) {
     // *** Generate the element-specific key ***
     const storageKey = getWidgetStorageKey(inputField);
 
-    // Load the saved top/right offset using the specific key
+    // Set a safe initial position before async load so it's visible immediately
+    const prelimLeft = Math.max(0, inputContainer.offsetWidth - 10 - 30); // containerWidth - margin - widgetWidth(30)
+    widget.style.left = `${prelimLeft}px`;
+    widget.style.top = '10px';
+    widget.style.right = 'auto';
+
+    // Utilities to clamp and apply percentage-based position
+    const clampAndApply = (leftPx, topPx) => {
+        const maxLeft = Math.max(0, inputContainer.offsetWidth - widget.offsetWidth);
+        const maxTop = Math.max(0, inputContainer.offsetHeight - widget.offsetHeight);
+        const left = Math.min(Math.max(0, leftPx), maxLeft);
+        const top = Math.min(Math.max(0, topPx), maxTop);
+        widget.style.left = `${left}px`;
+        widget.style.top = `${top}px`;
+        widget.style.right = 'auto';
+        return { left, top, leftPercent: maxLeft ? left / maxLeft : 0, topPercent: maxTop ? top / maxTop : 0 };
+    };
+
+    const applyPercentPosition = (leftPercent, topPercent) => {
+        const maxLeft = Math.max(0, inputContainer.offsetWidth - widget.offsetWidth);
+        const maxTop = Math.max(0, inputContainer.offsetHeight - widget.offsetHeight);
+        const left = Math.round(maxLeft * Math.min(Math.max(0, leftPercent), 1));
+        const top = Math.round(maxTop * Math.min(Math.max(0, topPercent), 1));
+        widget.style.left = `${left}px`;
+        widget.style.top = `${top}px`;
+        widget.style.right = 'auto';
+    };
+
+    // Load the saved position using the specific key
     chrome.storage.local.get(storageKey, (result) => {
-        const savedPosition = result[storageKey];
-        if (savedPosition && savedPosition.right && savedPosition.top) {
-            widget.style.right = savedPosition.right;
-            widget.style.top = savedPosition.top;
-            widget.style.left = 'auto';
-            console.log(`PromptStash: Loaded position for key: ${storageKey}`);
+        const saved = result[storageKey];
+        if (saved && typeof saved.leftPercent === 'number' && typeof saved.topPercent === 'number') {
+            applyPercentPosition(saved.leftPercent, saved.topPercent);
+            // console.log(`PromptStash: Loaded % position for key: ${storageKey}`);
+        } else if (saved && saved.right && saved.top) {
+            // Backward-compat: convert right/top px into left/top %, then persist in new format
+            const rightPx = parseFloat(saved.right);
+            const topPx = parseFloat(saved.top);
+            const leftPx = inputContainer.offsetWidth - rightPx - widget.offsetWidth;
+            const { leftPercent, topPercent } = clampAndApply(leftPx, topPx);
+            chrome.storage.local.set({ [storageKey]: { leftPercent, topPercent } });
+            // console.log(`PromptStash: Migrated position for key: ${storageKey}`);
         } else {
-            widget.style.right = '10px';
-            widget.style.top = '10px';
-            console.log(`PromptStash: Using default position for key: ${storageKey}`);
+            // Default position: 10px from right/top -> convert to left px now
+            const leftPx = Math.max(0, inputContainer.offsetWidth - 10 - widget.offsetWidth);
+            clampAndApply(leftPx, 10);
+            chrome.storage.local.set({ [storageKey]: { leftPercent: (inputContainer.offsetWidth - 10 - widget.offsetWidth) / Math.max(1, (inputContainer.offsetWidth - widget.offsetWidth)), topPercent: 10 / Math.max(1, (inputContainer.offsetHeight - widget.offsetHeight)) } });
+            // console.log(`PromptStash: Using default position for key: ${storageKey}`);
         }
     });
 
@@ -662,17 +698,30 @@ function createWidget(inputField, inputContainer) {
         <img src="${chrome.runtime.getURL('icon48.png')}" alt="Open PromptStash" title="Open PromptStash" style="width: 100%; height: 100%; display: block; user-select: none; -webkit-user-drag: none;" draggable="false">
     `;
 
+    // Expose an updatePosition method to recompute from saved percentages
+    widget.updatePosition = () => {
+        chrome.storage.local.get(storageKey, (result) => {
+            const saved = result[storageKey];
+            if (saved && typeof saved.leftPercent === 'number' && typeof saved.topPercent === 'number') {
+                applyPercentPosition(saved.leftPercent, saved.topPercent);
+            } else {
+                // If nothing saved, keep current clamped position
+                const rect = widget.getBoundingClientRect();
+                const containerRect = inputContainer.getBoundingClientRect();
+                clampAndApply(rect.left - containerRect.left, rect.top - containerRect.top);
+            }
+        });
+    };
+
+    // Append to DOM and initialize dragging and accessibility
     inputContainer.appendChild(widget);
     widget.associatedField = inputField;
-
-    // *** Pass the inputField to makeDraggable so it can generate the same key ***
     makeDraggable(widget, inputContainer, inputField, () => {});
 
-    // ... (rest of the function is the same)
     widget.setAttribute('role', 'button');
     widget.setAttribute('tabindex', '0');
     widget.setAttribute('aria-label', 'Open PromptStash');
-    
+
     widget.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
@@ -685,7 +734,22 @@ function createWidget(inputField, inputContainer) {
             }
         }
     });
-    
+
+    // Ensure initial positioning after insertion
+    setTimeout(() => widget.updatePosition && widget.updatePosition(), 0);
+
+    // Reposition on container or window resize
+    try {
+        const ro = new ResizeObserver(() => widget.updatePosition());
+        ro.observe(inputContainer);
+        widget.resizeObserver = ro;
+    } catch (e) {
+        // Fallback for environments without ResizeObserver
+        const listener = () => widget.updatePosition();
+        window.addEventListener('resize', listener);
+        widget.resizeListener = listener;
+    }
+
     return widget;
 }
 
@@ -748,21 +812,20 @@ function makeDraggable(widget, container, inputField, onPositionChange) {
         if (!isDragging) return;
 
         if (dragStarted) {
-            const finalLeft = parseFloat(widget.style.left);
-            const newRight = container.offsetWidth - finalLeft - widget.offsetWidth;
-            
-            const positionToSave = {
-                right: `${newRight}px`,
-                top: widget.style.top
-            };
+            const finalLeftPx = parseFloat(widget.style.left) || 0;
+            const finalTopPx = parseFloat(widget.style.top) || 0;
+            const maxLeft = Math.max(0, container.offsetWidth - widget.offsetWidth);
+            const maxTop = Math.max(0, container.offsetHeight - widget.offsetHeight);
+            const leftPercent = maxLeft ? Math.min(Math.max(0, finalLeftPx / maxLeft), 1) : 0;
+            const topPercent = maxTop ? Math.min(Math.max(0, finalTopPx / maxTop), 1) : 0;
 
-            // *** Save using the specific key ***
-            chrome.storage.local.set({ [storageKey]: positionToSave }, () => {
-                console.log(`PromptStash: Position saved for key: ${storageKey}`);
+            // Save percentage-based position
+            chrome.storage.local.set({ [storageKey]: { leftPercent, topPercent } }, () => {
+                // console.log(`PromptStash: % position saved for key: ${storageKey}`);
             });
 
-            widget.style.right = positionToSave.right;
-            widget.style.left = 'auto';
+            // Keep left/top anchoring for consistent behavior
+            widget.style.right = 'auto';
         } else {
             // Click logic
             if (widget.associatedField && isFieldValid(widget.associatedField)) {
