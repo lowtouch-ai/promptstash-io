@@ -2323,6 +2323,37 @@ function getTargetTabId(callback) {
     });
 }
 
+function processFetchedContent(fetchedPrompt) {
+    storeLastState();
+    
+    // Exit preview mode if we're currently in it
+    if (tabsState.previewMode) {
+        togglePreviewTab(false);
+    }
+    
+    // Set the content and update the template
+    tabsState.currentTemplate = fetchedPrompt;
+    elements.promptArea.textContent = fetchedPrompt;
+    
+    // Rebuild tabs from the new content
+    destroyTabs();
+    buildTabsFromTemplate(fetchedPrompt);
+    renderPlaceholdersInTemplate();
+    
+    // Update UI elements
+    elements.fetchBtn2.style.display = "none";
+    elements.clearPrompt.style.display = "block";
+    updateClearButtonState();
+    
+    // Reset editor undo/redo to this new content
+    editorUndoStack = [];
+    editorRedoStack = [];
+    editorLastSnapshot = fetchedPrompt;
+    editorLastCaret = 0;
+    
+    saveState();
+}
+
 function handleFetchPrompt() {
     getTargetTabId(tabId => {
         if (!tabId) return;
@@ -2330,19 +2361,13 @@ function handleFetchPrompt() {
             if (chrome.runtime.lastError) {
                 reInjectAndRetry(tabId, "getPrompt", (res) => {
                     if (res && res.prompt) {
-                        elements.promptArea.textContent = res.prompt;
-                        elements.fetchBtn2.style.display = "none";
-                        elements.clearPrompt.style.display = "block";
-                        saveState();
+                        processFetchedContent(res.prompt);
                     } else {
                         showToast("No text found.", 3000, "red", [], "fetch");
                     }
                 });
             } else if (response && response.prompt) {
-                storeLastState();
-                elements.promptArea.textContent = response.prompt;
-                handlePromptInput();
-                saveState();
+                processFetchedContent(response.prompt);
             } else {
                 showToast("No text found. Please select a field that contains text.", 3000, "red", [], "fetch");
             }
