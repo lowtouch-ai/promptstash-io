@@ -30,6 +30,30 @@
       <span class="title">&nbsp;by&nbsp;</span>
       <a href="https://www.lowtouch.ai/" target="_blank" class="title text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="top" title="Visit lowtouch.ai">lowtouch.ai</a>
     </div>
+    
+    <!-- Content Finder Widget -->
+    <div id="globalSearchWidget" class="global-search-widget position-absolute" style="display: none;">
+      <div class="global-search-container d-flex align-items-center">
+        <input type="text" id="globalSearchInput" class="global-search-input" placeholder="Find" aria-label="Find text in current template" autocomplete="off">
+        <div class="search-navigation d-flex align-items-center" style="gap: 4px;">
+          <span id="searchMatchCount" class="search-match-count" style="color: #6c757d; white-space: nowrap;"></span>
+          <div class="search-divider"></div>
+          <button id="searchPrevious" class="search-nav-btn" aria-label="Previous match" data-bs-toggle="tooltip" title="Previous (Shift+Enter)" disabled>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"/>
+            </svg>
+          </button>
+          <button id="searchNext" class="search-nav-btn" aria-label="Next match" data-bs-toggle="tooltip" title="Next (Enter)" disabled>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/>
+            </svg>
+          </button>
+        </div>
+        <button id="globalSearchClose" class="global-search-close" aria-label="Close search" data-bs-toggle="tooltip" data-bs-placement="top" title="Close search (Esc)">
+          <svg width="10" height="10"><use href="sprite.svg#close"></use></svg>
+        </button>
+      </div>
+    </div>
   </header>
 
   <div class="search-select w-100 position-relative">
@@ -204,6 +228,12 @@
         <svg><use href="sprite.svg#clearAll"></use></svg>
       </button>
       <span class="btn-label mt-0">Clear all</span>
+    </div>
+    <div class="d-flex flex-column align-items-center">
+      <button id="findBtn" class="btn rounded-pill" aria-label="Find in content" data-bs-toggle="tooltip" data-bs-placement="top" title="Find in content (Ctrl+Shift+F)">
+        <svg><use href="sprite.svg#search"></use></svg>
+      </button>
+      <span class="btn-label mt-0">Find</span>
     </div>
   </div>
 

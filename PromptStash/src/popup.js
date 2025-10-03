@@ -41,6 +41,41 @@ function downloadFile(data, filename, mimeType) {
     }, 100);
 }
 
+// Re-apply highlights for the currently active container (called on tab switches)
+function rehighlightActiveContainer() {
+    if (!isGlobalSearchVisible || !elements.globalSearchInput) return;
+    const q = elements.globalSearchInput.value.trim();
+    if (!q) return;
+    const activeId = getActiveContainerId();
+    const container = getContainerById(activeId);
+    if (!container) return;
+    if (container.type === 'textarea' && container.element) {
+        ensureTextareaHighlightOverlay(container.element);
+        const matches = getContainerMatches(container.id);
+        let activeIndex = -1;
+        if (currentGlobalMatchIndex >= 0 && allSearchMatches[currentGlobalMatchIndex] && allSearchMatches[currentGlobalMatchIndex].containerId === container.id) {
+            const active = allSearchMatches[currentGlobalMatchIndex];
+            activeIndex = matches.findIndex(m => m.start === active.start && m.end === active.end);
+        }
+        renderTextareaHighlights(container.element, matches, activeIndex);
+        syncTextareaOverlayScroll(container.element);
+    } else if (container.element) {
+        const matches = getContainerMatches(container.id);
+        clearHighlightsInElement(container.element);
+        let activeIndex = -1;
+        if (currentGlobalMatchIndex >= 0 && allSearchMatches[currentGlobalMatchIndex] && allSearchMatches[currentGlobalMatchIndex].containerId === container.id) {
+            const active = allSearchMatches[currentGlobalMatchIndex];
+            activeIndex = matches.findIndex(m => m.start === active.start && m.end === active.end);
+        }
+        applyHighlightsInElement(container.element, matches, activeIndex);
+    }
+}
+
+// Re-highlight on bootstrap tab switch
+document.addEventListener('shown.bs.tab', () => {
+    try { rehighlightActiveContainer(); } catch (_) {}
+});
+
 function validateTemplateName(name, templates, isSaveAs = false) {
     const trimmedName = name.trim();
     if (!trimmedName) {
@@ -240,6 +275,16 @@ let nameStackContextSerial = 0; // isolate across templates/contexts
 // Bumped whenever context changes (switch template, new template, save-undo unsaves)
 let contextSerial = 1;
 
+// --- Content Finder State ---
+let isGlobalSearchVisible = false;
+let currentSearchMatches = [];
+let currentMatchIndex = -1;
+let searchHighlightClass = 'content-search-highlight';
+// Global scope across all containers (Template, Placeholder tabs, Preview)
+let allSearchMatches = [];
+let currentGlobalMatchIndex = -1;
+let searchContainers = [];
+
 const elements = {};
 const ALLOWED_PLACEHOLDERS = [];
 const tabsState = {
@@ -254,8 +299,9 @@ const tabsState = {
 document.addEventListener("DOMContentLoaded", () => {
     ['searchBox', 'dropdownResults', 'template', 'templateName', 'templateTags', 'tagsDisplay', 'tagsView', 'editTagsBtn', 'cancelTagsEditBtn',
      'promptArea', 'previewArea', 'buttons', 'fetchBtn', 'fetchBtn2', 'saveBtn', 'saveAsBtn', 'deleteBtn', 'clearSearch', 'clearPrompt',
-     'clearAllBtn', 'sendBtn', 'favoriteSuggestions', 'fullscreenToggle', 'closeBtn', 'newBtn', 'searchOverlay',
-     'toastOverlay', 'toast', 'themeToggle', 'importBtn', 'importFileInput', 'exportAllBtn', 'exportSingleBtn', 'scroll-left-btn', 'scroll-right-btn'].forEach(id => {
+     'clearAllBtn', 'findBtn', 'sendBtn', 'favoriteSuggestions', 'fullscreenToggle', 'closeBtn', 'newBtn', 'searchOverlay',
+     'toastOverlay', 'toast', 'themeToggle', 'importBtn', 'importFileInput', 'exportAllBtn', 'exportSingleBtn', 'scroll-left-btn', 'scroll-right-btn',
+     'globalSearchWidget', 'globalSearchInput', 'globalSearchClose', 'searchMatchCount', 'searchPrevious', 'searchNext'].forEach(id => {
         elements[id] = document.getElementById(id);
     });
 
@@ -470,18 +516,12 @@ function setupEventListeners() {
         updateDeleteButtonState();
         saveState();
         showToast("All fields cleared. Press Ctrl+Z to undo.", 2000, "green", [], "clearAll");
-        // Move focus out of the editor so UI-level Ctrl+Z works immediately
-        try {
-            if (elements.promptArea && elements.promptArea.blur) {
-                elements.promptArea.blur();
-            }
-            if (elements.saveBtn) {
-                elements.saveBtn.focus();
-            } else {
-                document.body && document.body.focus && document.body.focus();
-            }
-        } catch (_) {}
     });
+    
+    elements.findBtn.addEventListener("click", () => {
+        toggleGlobalSearch();
+    });
+    
     elements.themeToggle.addEventListener("click", () => {
         currentTheme = currentTheme === "light" ? "dark" : "light";
         document.body.className = currentTheme;
@@ -528,7 +568,729 @@ function setupEventListeners() {
     document.addEventListener("click", (event) => handleGlobalClick(event));
     document.addEventListener("keydown", (event) => handleGlobalKeydown(event));
 
+    // Global search event listeners
+    setupGlobalSearchListeners();
     setupTabSlider();
+}
+
+// --- Content Finder Functions ---
+
+function setupGlobalSearchListeners() {
+    if (elements.globalSearchInput) {
+        elements.globalSearchInput.addEventListener("input", debounce(() => {
+            performContentSearch(elements.globalSearchInput.value);
+        }, 100));
+        
+        elements.globalSearchInput.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") {
+                hideGlobalSearch();
+            } else if (e.key === "Enter") {
+                e.preventDefault();
+                if (e.shiftKey) {
+                    navigateToPreviousMatch();
+                } else {
+                    navigateToNextMatch();
+                }
+            }
+        });
+    }
+    
+    if (elements.globalSearchClose) {
+        elements.globalSearchClose.addEventListener("click", () => {
+            hideGlobalSearch();
+        });
+    }
+    
+    if (elements.searchNext) {
+        elements.searchNext.addEventListener("click", () => {
+            navigateToNextMatch();
+        });
+    }
+    
+    if (elements.searchPrevious) {
+        elements.searchPrevious.addEventListener("click", () => {
+            navigateToPreviousMatch();
+        });
+    }
+}
+
+// Receive shortcut forwarded from host page (content script/background) to toggle finder
+window.addEventListener('message', (e) => {
+    const data = e && e.data;
+    if (data && data.type === 'promptstash:toggleFind') {
+        toggleGlobalSearch();
+    }
+});
+
+function toggleGlobalSearch() {
+    if (isGlobalSearchVisible) {
+        hideGlobalSearch();
+    } else {
+        showGlobalSearch();
+    }
+}
+
+function showGlobalSearch() {
+    if (!elements.globalSearchWidget) return;
+    
+    isGlobalSearchVisible = true;
+    elements.globalSearchWidget.style.display = 'block';
+    
+    // Trigger animation after a small delay to ensure display is set
+    requestAnimationFrame(() => {
+        elements.globalSearchWidget.classList.add('show');
+    });
+    
+    // Focus input after animation starts
+    setTimeout(() => {
+        elements.globalSearchInput.focus();
+    }, 50);
+    
+    elements.globalSearchInput.value = '';
+    // Mark finder-open for CSS overlays
+    try { document.body.classList.add('ps-finder-open'); } catch (_) {}
+    clearSearchHighlights();
+    updateMatchCount();
+}
+
+function hideGlobalSearch() {
+    if (!elements.globalSearchWidget) return;
+    
+    isGlobalSearchVisible = false;
+    
+    // Start closing animation
+    elements.globalSearchWidget.classList.remove('show');
+    
+    // Hide after animation completes
+    setTimeout(() => {
+        elements.globalSearchWidget.style.display = 'none';
+    }, 300); // Match the CSS transition duration
+    
+    elements.globalSearchInput.value = '';
+    clearSearchHighlights();
+    currentSearchMatches = [];
+    // Remove finder-open marker
+    try { document.body.classList.remove('ps-finder-open'); } catch (_) {}
+    updateMatchCount();
+}
+
+function performContentSearch(query) {
+    // Clear previous search
+    clearSearchHighlights();
+    currentSearchMatches = [];
+    currentMatchIndex = -1;
+    allSearchMatches = [];
+    currentGlobalMatchIndex = -1;
+    
+    const cleanQuery = (query || '').trim();
+    if (!cleanQuery) {
+        updateMatchCount();
+        return;
+    }
+
+    // Build container scope in desired order: Template -> Placeholder tabs -> Preview
+    searchContainers = collectSearchContainers();
+
+    // Build flexible whitespace regex
+    const queryNormalized = cleanQuery.replace(/\s+/g, ' ');
+    const escaped = queryNormalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = escaped.replace(/\s+/g, '\\s+');
+    const regex = new RegExp(pattern, 'gi');
+
+    // Aggregate matches across all containers
+    searchContainers.forEach((c) => {
+        const text = c.getText();
+        if (!text) return;
+        let m;
+        while ((m = regex.exec(text)) !== null) {
+            allSearchMatches.push({ containerId: c.id, start: m.index, end: m.index + m[0].length, text: m[0] });
+            // Reset lastIndex to just after match start to find overlapping/consecutive matches
+            regex.lastIndex = m.index + 1;
+        }
+    });
+
+    if (allSearchMatches.length === 0) {
+        updateMatchCount();
+        return;
+    }
+
+    // Prefer matches in the currently active tab/panel; do not auto-switch away
+    const activeId = getActiveContainerId();
+    const firstInActive = allSearchMatches.findIndex(m => m.containerId === activeId);
+    if (firstInActive !== -1) {
+        currentGlobalMatchIndex = firstInActive;
+        focusGlobalMatch(currentGlobalMatchIndex);
+    } else {
+        // No match in current container: stay on current tab
+        // Don't focus any match yet - let user press Enter to start navigation
+        currentGlobalMatchIndex = -1;
+        currentSearchMatches = [];
+        currentMatchIndex = -1;
+        // If the active container is a placeholder textarea, update its overlay to clear highlights
+        const activeContainer = getContainerById(activeId);
+        if (activeContainer && activeContainer.type === 'textarea' && activeContainer.element) {
+            try {
+                ensureTextareaHighlightOverlay(activeContainer.element);
+                const matchesInActive = getContainerMatches(activeId);
+                renderTextareaHighlights(activeContainer.element, matchesInActive, -1);
+                syncTextareaOverlayScroll(activeContainer.element);
+            } catch (_) {}
+        }
+    }
+    updateMatchCount();
+}
+
+// Build the list of searchable containers in navigation order
+function collectSearchContainers() {
+    const containers = [];
+
+    // Template container
+    if (elements.promptArea) {
+        containers.push({
+            id: 'template',
+            type: 'contenteditable',
+            element: elements.promptArea,
+            panelId: 'template-panel',
+            getText: () => elements.promptArea.textContent || ''
+        });
+    }
+
+    // Placeholder tabs in visual order
+    const tabsList = document.getElementById('editorTabs');
+    if (tabsList) {
+        const buttons = Array.from(tabsList.querySelectorAll('li .nav-link'))
+            .filter(btn => btn.id && btn.id.startsWith('placeholder-'));
+        buttons.forEach(btn => {
+            const id = btn.id; // placeholder-<name>
+            const textId = `${id}-textarea`;
+            const textarea = document.getElementById(textId);
+            const placeholderName = id.replace(/^placeholder-/, '').replace(/-/g, ' ');
+            containers.push({
+                id,
+                type: 'textarea',
+                element: textarea,
+                panelId: `${id}-panel`,
+                placeholder: placeholderName,
+                getText: () => (textarea ? textarea.value : (tabsState.placeholderValues[placeholderName] || ''))
+            });
+        });
+    }
+
+    // Preview container
+    if (elements.previewArea) {
+        containers.push({
+            id: 'preview',
+            type: 'div',
+            element: elements.previewArea,
+            panelId: 'preview-panel',
+            getText: () => getPreviewTextContent()
+        });
+    }
+
+    return containers;
+}
+
+// Identify the active container (template, a specific placeholder tab, or preview)
+function getActiveContainerId() {
+    const activePanel = document.querySelector('.tab-pane.active');
+    if (!activePanel) return 'template';
+    const id = activePanel.id || '';
+    if (id === 'template-panel') return 'template';
+    if (id === 'preview-panel') return 'preview';
+    if (id.startsWith('placeholder-') && id.endsWith('-panel')) {
+        return id.replace(/-panel$/, '');
+    }
+    return 'template';
+}
+
+// Toggle readOnly on placeholder textareas to prevent accidental editing during Finder
+function setPlaceholderTextareasReadonly(flag) {
+    try {
+        const panels = document.getElementById('tabPanels');
+        if (!panels) return;
+        panels.querySelectorAll('.tab-pane textarea').forEach(ta => {
+            ta.readOnly = !!flag;
+        });
+    } catch (_) {}
+}
+
+function getContainerById(id) {
+    return searchContainers.find(c => c.id === id);
+}
+
+function getContainerMatches(containerId) {
+    return allSearchMatches.filter(m => m.containerId === containerId);
+}
+
+function focusGlobalMatch(globalIndex) {
+    const match = allSearchMatches[globalIndex];
+    if (!match) return;
+    const container = getContainerById(match.containerId);
+    if (!container) return;
+
+    // Ensure the correct tab/panel is visible for this container
+    ensureContainerVisible(container);
+
+    // Apply per-container focus/highlight behavior
+    if (container.type === 'textarea' && container.element) {
+        // Textarea: do not move focus into the editor; only update overlay highlight
+        // Optionally, we could setSelectionRange without focusing, but avoid to prevent caret jump
+        // Highlight ONLY the active match, not all matches in this container
+        currentSearchMatches = [match];  // Only the single active match
+        currentMatchIndex = 0;  // It's the only match we're showing
+        // Build/update overlay highlight for the textarea (with only active match)
+        try {
+            const ta = container.element;
+            ensureTextareaHighlightOverlay(ta);
+            renderTextareaHighlights(ta, currentSearchMatches, currentMatchIndex);
+            syncTextareaOverlayScroll(ta);
+        } catch (_) {}
+        // Do not change focus here; keep user's current focus (e.g., typing in textarea)
+        updateMatchCount();
+        return;
+    }
+
+    // Contenteditable/div containers: highlight ONLY the active match
+    currentSearchMatches = [match];  // Only the single active match
+    currentMatchIndex = 0;  // It's the only match we're showing
+    if (container.element) {
+        // Clear highlights only in the target container to preserve others
+        clearHighlightsInElement(container.element);
+        // Highlight only the active match in this container
+        applyHighlightsInElement(container.element, currentSearchMatches, currentMatchIndex);
+        scrollToMatch(currentMatchIndex, container.element);
+    }
+}
+
+// Ensure overlay elements for a placeholder textarea exist and are wired
+function ensureTextareaHighlightOverlay(textarea) {
+    if (!textarea || !textarea.parentElement) return null;
+    const wrapper = textarea.parentElement; // panelContentWrapper (position-relative)
+    let layer = wrapper.querySelector('.ps-highlight-layer');
+    if (!layer) {
+        layer = document.createElement('div');
+        layer.className = 'ps-highlight-layer';
+        const content = document.createElement('div');
+        content.className = 'ps-highlight-content';
+        layer.appendChild(content);
+        wrapper.insertBefore(layer, textarea); // place behind textarea in DOM
+    }
+    const content = layer.querySelector('.ps-highlight-content');
+
+    // Copy key text metrics from textarea so overlay lines wrap identically
+    try {
+        const cs = getComputedStyle(textarea);
+        content.style.fontFamily = cs.fontFamily;
+        content.style.fontSize = cs.fontSize;
+        content.style.lineHeight = cs.lineHeight;
+        content.style.letterSpacing = cs.letterSpacing;
+        // Match padding to align text
+        content.style.paddingTop = cs.paddingTop;
+        content.style.paddingRight = cs.paddingRight;
+        content.style.paddingBottom = cs.paddingBottom;
+        content.style.paddingLeft = cs.paddingLeft;
+    } catch (_) {}
+
+    // Sync scroll
+    if (!textarea.__psScrollSync) {
+        textarea.addEventListener('scroll', () => syncTextareaOverlayScroll(textarea));
+        textarea.__psScrollSync = true;
+    }
+    return { layer, content };
+}
+
+function syncTextareaOverlayScroll(textarea) {
+    try {
+        const wrapper = textarea.parentElement;
+        const layer = wrapper && wrapper.querySelector('.ps-highlight-layer');
+        const content = layer && layer.querySelector('.ps-highlight-content');
+        if (content) {
+            content.style.transform = `translate(${-textarea.scrollLeft}px, ${-textarea.scrollTop}px)`;
+        }
+    } catch (_) {}
+}
+
+// Render overlay highlights for a textarea from its matches
+function renderTextareaHighlights(textarea, matches, activeIndex) {
+    if (!textarea || !Array.isArray(matches)) return;
+    const wrapper = textarea.parentElement;
+    const layer = wrapper && wrapper.querySelector('.ps-highlight-layer');
+    const content = layer && layer.querySelector('.ps-highlight-content');
+    if (!content) return;
+
+    const text = textarea.value || '';
+    if (!text) { content.innerHTML = ''; return; }
+
+    const parts = [];
+    let last = 0;
+    const sorted = [...matches].sort((a,b) => a.start - b.start);
+    sorted.forEach((m, i) => {
+        if (m.start > last) parts.push(escapeHtml(text.slice(last, m.start)));
+        const cls = i === activeIndex ? 'content-search-highlight active' : 'content-search-highlight';
+        parts.push(`<span class="${cls}">` + escapeHtml(text.slice(m.start, m.end)) + '</span>');
+        last = m.end;
+    });
+    if (last < text.length) parts.push(escapeHtml(text.slice(last)));
+    content.innerHTML = parts.join('');
+}
+
+function ensureContainerVisible(container) {
+    // Switch tabs/panels as needed
+    if (container.id === 'template') {
+        const templateTab = document.getElementById('template-tab');
+        if (templateTab) new bootstrap.Tab(templateTab).show();
+        // If preview mode hides placeholders, it's fine for template
+        return;
+    }
+    if (container.id === 'preview') {
+        // Ensure preview is visible and populated
+        togglePreviewTab(true);
+        // updatePreviewArea will run inside togglePreviewTab; also re-apply highlights after tab switch
+        setTimeout(() => { try { rehighlightActiveContainer(); } catch (_) {} }, 0);
+        return;
+    }
+    // Placeholder tab
+    if (container.id.startsWith('placeholder-')) {
+        // Make sure placeholder tabs are visible
+        if (tabsState.previewMode) togglePreviewTab(false);
+        const tabButton = document.getElementById(container.id);
+        if (tabButton) new bootstrap.Tab(tabButton).show();
+    }
+}
+
+function highlightMatches(searchTerm, targetElement = elements.promptArea, originalContent = null) {
+    const content = targetElement.textContent || targetElement.value || '';
+
+    // Only highlight in contenteditable elements or divs, not textareas
+    if (targetElement.tagName === 'TEXTAREA') {
+        // For textareas, we can't highlight, so just store the matches
+        return;
+    }
+
+    // Apply highlights non-destructively using DOM Ranges so existing
+    // placeholder markup and event listeners are preserved
+    const matchesDesc = [...currentSearchMatches].sort((a, b) => b.start - a.start);
+
+    matchesDesc.forEach((match) => {
+        try {
+            const startPos = findTextNodeAndOffset(targetElement, match.start);
+            const endPos = findTextNodeAndOffset(targetElement, match.end);
+            if (!startPos.node || !endPos.node) return;
+
+            const range = document.createRange();
+            range.setStart(startPos.node, Math.max(0, startPos.offset));
+            range.setEnd(endPos.node, Math.max(0, endPos.offset));
+
+            const wrapper = document.createElement('span');
+            wrapper.className = 'content-search-highlight';
+            range.surroundContents(wrapper);
+        } catch (_) {
+            // Ignore ranges that cannot be wrapped safely
+        }
+    });
+}
+
+function clearSearchHighlights() {
+    // Remove only the highlight wrappers in all relevant containers
+    const containers = [elements.promptArea, elements.previewArea].filter(Boolean);
+    containers.forEach((container) => {
+        // For placeholder spans, just remove highlight classes
+        const placeholderHighlights = container.querySelectorAll('.placeholder-marker.content-search-highlight');
+        placeholderHighlights.forEach(span => {
+            span.classList.remove('content-search-highlight', 'active');
+        });
+        
+        // For other highlight spans, unwrap them
+        const highlights = container.querySelectorAll('.content-search-highlight:not(.placeholder-marker)');
+        highlights.forEach((span) => {
+            const parent = span.parentNode;
+            if (!parent) return;
+            while (span.firstChild) parent.insertBefore(span.firstChild, span);
+            parent.removeChild(span);
+        });
+        container.normalize();
+    });
+}
+
+// Remove highlight wrappers inside a single container element
+function clearHighlightsInElement(container) {
+    if (!container) return;
+    
+    // Special handling for Preview area - remove highlight classes from placeholder spans
+    if (container === elements.previewArea) {
+        const placeholderSpans = container.querySelectorAll('.placeholder-marker');
+        placeholderSpans.forEach(span => {
+            span.classList.remove('content-search-highlight', 'active');
+        });
+    }
+    
+    const highlights = container.querySelectorAll('.content-search-highlight:not(.placeholder-marker)');
+    highlights.forEach((span) => {
+        const parent = span.parentNode;
+        if (!parent) return;
+        while (span.firstChild) parent.insertBefore(span.firstChild, span);
+        parent.removeChild(span);
+    });
+    container.normalize();
+}
+
+// Apply non-destructive highlights for a given element using provided matches
+function applyHighlightsInElement(element, matches, activeIndex) {
+    if (!element || !Array.isArray(matches) || element.tagName === 'TEXTAREA') return;
+    
+    // Check if this element contains placeholder spans (Template or Preview)
+    const placeholderSpans = element.querySelectorAll('.placeholder-marker');
+    if (placeholderSpans.length > 0) {
+        // Use the specialized function for elements with placeholder spans
+        applyHighlightsInPreview(element, matches, activeIndex);
+        return;
+    }
+    
+    // Apply in reverse order so offsets remain valid (for plain text elements)
+    const matchesDesc = [...matches].sort((a, b) => b.start - a.start);
+    matchesDesc.forEach((match, idxDesc) => {
+        try {
+            const startPos = findTextNodeAndOffset(element, match.start);
+            const endPos = findTextNodeAndOffset(element, match.end);
+            if (!startPos.node || !endPos.node) return;
+            const range = document.createRange();
+            range.setStart(startPos.node, Math.max(0, startPos.offset));
+            range.setEnd(endPos.node, Math.max(0, endPos.offset));
+            const wrapper = document.createElement('span');
+            wrapper.className = 'content-search-highlight';
+            // Determine actual index from ascending order for active logic
+            // Compute ascending index by counting items with smaller start
+            const ascIndex = matches.filter(m => m.start < match.start).length;
+            if (typeof activeIndex === 'number' && ascIndex === activeIndex) wrapper.classList.add('active');
+            range.surroundContents(wrapper);
+        } catch (_) { /* ignore unwrappable ranges */ }
+    });
+}
+
+// Apply highlights in Preview area which has placeholder-marker spans
+function applyHighlightsInPreview(element, matches, activeIndex) {
+    if (!element || !Array.isArray(matches)) return;
+    
+    const fullText = element.textContent || '';
+    const placeholderSpans = element.querySelectorAll('.placeholder-marker');
+    
+    // Build a precise map of where each element is in the document
+    const spanRanges = [];
+    let currentPos = 0;
+    
+    // Walk through all child nodes to find exact positions
+    function walkNodes(node) {
+        if (node.nodeType === Node.TEXT_NODE) {
+            currentPos += node.textContent.length;
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+            if (node.classList && node.classList.contains('placeholder-marker')) {
+                const startPos = currentPos;
+                const endPos = currentPos + node.textContent.length;
+                spanRanges.push({
+                    element: node,
+                    start: startPos,
+                    end: endPos,
+                    text: node.textContent
+                });
+                currentPos = endPos;
+            } else {
+                for (let child of node.childNodes) {
+                    walkNodes(child);
+                }
+            }
+        }
+    }
+    
+    for (let child of element.childNodes) {
+        walkNodes(child);
+    }
+    
+    // Track which matches have been handled
+    const handledMatches = new Set();
+    
+    // For each match, determine if it's within a placeholder span or regular text
+    matches.forEach((match, idx) => {
+        const isActive = idx === activeIndex;
+        
+        // Check if this match is within any placeholder span
+        let foundInPlaceholder = false;
+        for (const spanInfo of spanRanges) {
+            // Check if match is completely within this span's range
+            if (match.start >= spanInfo.start && match.end <= spanInfo.end) {
+                // Only highlight this span if we haven't already handled this match
+                if (!handledMatches.has(idx)) {
+                    // Highlight only the matched portion inside this placeholder span
+                    const innerStart = match.start - spanInfo.start;
+                    const innerEnd = match.end - spanInfo.start;
+                    try {
+                        const startPos = findTextNodeAndOffset(spanInfo.element, innerStart);
+                        const endPos = findTextNodeAndOffset(spanInfo.element, innerEnd);
+                        if (startPos.node && endPos.node) {
+                            const range = document.createRange();
+                            range.setStart(startPos.node, Math.max(0, startPos.offset));
+                            range.setEnd(endPos.node, Math.max(0, endPos.offset));
+                            const wrapper = document.createElement('span');
+                            wrapper.className = 'content-search-highlight';
+                            if (isActive) wrapper.classList.add('active');
+                            range.surroundContents(wrapper);
+                        }
+                    } catch (_) { /* ignore errors during partial highlight */ }
+                    handledMatches.add(idx);
+                }
+                foundInPlaceholder = true;
+                break;
+            }
+        }
+        
+        // If not in a placeholder, try to highlight in regular text nodes
+        if (!foundInPlaceholder && !handledMatches.has(idx)) {
+            try {
+                // Find the correct text node for this match
+                const walker = document.createTreeWalker(
+                    element,
+                    NodeFilter.SHOW_TEXT,
+                    {
+                        acceptNode: function(node) {
+                            // Skip text nodes inside placeholder spans
+                            let parent = node.parentNode;
+                            while (parent && parent !== element) {
+                                if (parent.classList && parent.classList.contains('placeholder-marker')) {
+                                    return NodeFilter.FILTER_REJECT;
+                                }
+                                parent = parent.parentNode;
+                            }
+                            return NodeFilter.FILTER_ACCEPT;
+                        }
+                    },
+                    false
+                );
+                
+                let currentPos = 0;
+                let textNode;
+                while (textNode = walker.nextNode()) {
+                    const nodeLength = textNode.textContent.length;
+                    const nodeEnd = currentPos + nodeLength;
+                    
+                    // Check if match is within this text node
+                    if (match.start >= currentPos && match.end <= nodeEnd) {
+                        const range = document.createRange();
+                        range.setStart(textNode, match.start - currentPos);
+                        range.setEnd(textNode, match.end - currentPos);
+                        
+                        const wrapper = document.createElement('span');
+                        wrapper.className = 'content-search-highlight';
+                        if (isActive) wrapper.classList.add('active');
+                        
+                        range.surroundContents(wrapper);
+                        handledMatches.add(idx);
+                        break;
+                    }
+                    
+                    currentPos = nodeEnd;
+                }
+            } catch (err) { 
+                console.debug('Could not highlight match in preview:', err);
+            }
+        }
+    });
+}
+
+function navigateToNextMatch() {
+    if (allSearchMatches.length === 0) return;
+    
+    // Handle initial state (-1) or wrap around properly
+    if (currentGlobalMatchIndex < 0) {
+        currentGlobalMatchIndex = 0;
+    } else {
+        currentGlobalMatchIndex = (currentGlobalMatchIndex + 1) % allSearchMatches.length;
+    }
+    
+    focusGlobalMatch(currentGlobalMatchIndex);
+    updateMatchCount();
+}
+
+function navigateToPreviousMatch() {
+    if (allSearchMatches.length === 0) return;
+    
+    // Handle initial state (-1) or wrap around properly
+    if (currentGlobalMatchIndex < 0) {
+        currentGlobalMatchIndex = allSearchMatches.length - 1;
+    } else {
+        currentGlobalMatchIndex = currentGlobalMatchIndex === 0 ? allSearchMatches.length - 1 : currentGlobalMatchIndex - 1;
+    }
+    
+    focusGlobalMatch(currentGlobalMatchIndex);
+    updateMatchCount();
+}
+
+function updateActiveMatch(targetElement = elements.promptArea) {
+    // Remove active class from all highlights
+    const highlights = targetElement.querySelectorAll('.content-search-highlight');
+    highlights.forEach((highlight, index) => {
+        if (index === currentMatchIndex) {
+            highlight.classList.add('active');
+        } else {
+            highlight.classList.remove('active');
+        }
+    });
+}
+
+function scrollToMatch(matchIndex, targetElement = elements.promptArea) {
+    const highlights = targetElement.querySelectorAll('.content-search-highlight');
+    const highlight = highlights[matchIndex];
+    let rect = null;
+    if (highlight) {
+        rect = highlight.getBoundingClientRect();
+    } else if (currentSearchMatches[matchIndex]) {
+        // Fallback: compute bounding rect from text range
+        try {
+            const m = currentSearchMatches[matchIndex];
+            const startPos = findTextNodeAndOffset(targetElement, m.start);
+            const endPos = findTextNodeAndOffset(targetElement, m.end);
+            const range = document.createRange();
+            range.setStart(startPos.node, Math.max(0, startPos.offset));
+            range.setEnd(endPos.node, Math.max(0, endPos.offset));
+            rect = range.getBoundingClientRect();
+        } catch (_) {}
+    }
+    if (!rect) return;
+    const targetRect = targetElement.getBoundingClientRect();
+    const relativeTop = rect.top - targetRect.top;
+    const targetHeight = targetElement.clientHeight;
+    const targetScrollTop = targetElement.scrollTop + relativeTop - (targetHeight / 2);
+    targetElement.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+}
+
+
+function updateMatchCount() {
+    if (!elements.searchMatchCount) return;
+    const total = allSearchMatches.length;
+    const hasQuery = elements.globalSearchInput.value.trim().length > 0;
+    if (!hasQuery) {
+        elements.searchMatchCount.textContent = '';
+    } else if (total > 0 && currentGlobalMatchIndex >= 0) {
+        elements.searchMatchCount.textContent = `${currentGlobalMatchIndex + 1}/${total}`;
+    } else if (total > 0) {
+        elements.searchMatchCount.textContent = `1/${total}`;
+    } else {
+        elements.searchMatchCount.textContent = '0/0';
+    }
+    const enabled = total > 0;
+    elements.searchNext.disabled = !enabled;
+    elements.searchPrevious.disabled = !enabled;
+}
+
+// If finder is open and has a query, re-run the search to keep results fresh
+function refreshSearchIfActive() {
+    if (!elements.globalSearchInput) return;
+    const q = elements.globalSearchInput.value.trim();
+    if (q) performContentSearch(q);
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // --- UI State Management Functions ---
@@ -1020,18 +1782,33 @@ function loadTemplates(query = "", showDropdown = false) {
 
         // Remove obsolete pre-built defaults that no longer exist (renamed/removed) to avoid duplicates
         // Keep all user templates (type !== 'pre-built') and pre-built that still exist by name
-        const kept = stored.filter(t => t && (t.type !== 'pre-built' || defaultNames.has(t.name)));
+        const kept = stored.filter(t => t && t.type !== 'pre-built');
+        const existingPreBuilt = stored.filter(t => t && t.type === 'pre-built' && defaultNames.has(t.name));
 
         const keptNames = new Set(kept.map(t => t.name));
+        const existingPreBuiltNames = new Set(existingPreBuilt.map(t => t.name));
 
-        // Add any new defaults not present in kept
+        // Update existing pre-built templates with latest content from defaults
+        const updatedPreBuilt = existingPreBuilt.map(stored => {
+            const defaultTemplate = defaults.find(dt => dt.name === stored.name);
+            if (defaultTemplate) {
+                // Preserve stored properties like index, but update content and other properties from default
+                return { 
+                    ...defaultTemplate, 
+                    index: next++
+                };
+            }
+            return stored;
+        });
+
+        // Add any new defaults not present in kept or existing pre-built
         const newDefaults = defaults
-            .filter(dt => dt && !keptNames.has(dt.name))
-            .map((dt) => ({ ...dt, index: next++ }));
+            .filter(dt => dt && !keptNames.has(dt.name) && !existingPreBuiltNames.has(dt.name))
+            .map((dt, i) => ({ ...dt, index: next++ }));
+        next += newDefaults.length;
 
         // If no stored, initialize from defaults with stable indices
-        const merged = (stored.length > 0) ? [...kept, ...newDefaults] : defaults.map((t, i) => ({ ...t, index: i }));
-
+        const merged = (stored.length > 0) ? [...kept, ...updatedPreBuilt, ...newDefaults] : defaults.map((t, i) => ({ ...t, index: i }));
         // Persist if we normalized tags, removed obsolete defaults, or added new defaults
         const changed = (storedRaw.length !== merged.length)
             || storedRaw.some((t, i) => {
@@ -1529,6 +2306,7 @@ function renderPlaceholdersInTemplate() {
         });
         element.setAttribute('contenteditable', 'false');
     });
+    try { refreshSearchIfActive(); } catch (_) {}
 }
 
 function updatePlaceholder(type, value) {
@@ -1542,18 +2320,9 @@ function updatePlaceholder(type, value) {
     }
     updateTabTitle(type, value.trim() !== '');
     renderPlaceholdersInTemplate();
-    updatePreviewArea(); // Update preview when placeholder values change
-    saveState(); // Ensure state is saved whenever a placeholder is updated
-}
-
-function switchToPlaceholderTab(placeholder) {
-    const tabId = `placeholder-${placeholder.replace(/\s+/g, '-').toLowerCase()}`;
-    const tabButton = document.getElementById(tabId);
-    if (tabButton) {
-        new bootstrap.Tab(tabButton).show();
-        const textarea = document.getElementById(`${tabId}-textarea`);
-        if (textarea) setTimeout(() => textarea.focus(), 100);
-    }
+    updatePreviewArea();
+    saveState();
+    try { refreshSearchIfActive(); } catch (_) {}
 }
 
 function updateTabTitle(placeholder, hasValue) {
@@ -1589,16 +2358,38 @@ function generatePreviewContent() {
     // Sort positions in descending order to avoid index shifting issues
     allPositions.sort((a, b) => b.start - a.start);
 
+    // Replace placeholders with styled spans
     allPositions.forEach(pos => {
         const { placeholder, start, end, original } = pos;
         const hasValue = tabsState.placeholderValues[placeholder]?.trim();
         // Show value if available, otherwise show placeholder
         const displayContent = hasValue ? tabsState.placeholderValues[placeholder] : original;
-        const spanHtml = `<span class="placeholder-marker ${hasValue ? 'placeholder-filled' : 'placeholder-empty'}" data-type="${placeholder}" title="${placeholder}: ${hasValue ? displayContent : 'No value set'}">${displayContent}</span>`;
+        const escapedContent = escapeHtml(displayContent);
+        const spanHtml = `<span class="placeholder-marker ${hasValue ? 'placeholder-filled' : 'placeholder-empty'}" data-type="${placeholder}" title="${placeholder}: ${hasValue ? displayContent : 'No value set'}">${escapedContent}</span>`;
         htmlContent = htmlContent.slice(0, start) + spanHtml + htmlContent.slice(end);
     });
     
-    return htmlContent;
+    // Escape HTML for the non-placeholder text parts
+    // We need to escape the regular text but preserve our placeholder spans
+    const parts = [];
+    let lastEnd = 0;
+    const placeholderRegex = /<span class="placeholder-marker[^>]*>.*?<\/span>/g;
+    let match;
+    while ((match = placeholderRegex.exec(htmlContent)) !== null) {
+        // Add escaped text before the placeholder
+        if (match.index > lastEnd) {
+            parts.push(escapeHtml(htmlContent.slice(lastEnd, match.index)));
+        }
+        // Add the placeholder span as-is
+        parts.push(match[0]);
+        lastEnd = match.index + match[0].length;
+    }
+    // Add any remaining text after the last placeholder
+    if (lastEnd < htmlContent.length) {
+        parts.push(escapeHtml(htmlContent.slice(lastEnd)));
+    }
+    
+    return parts.join('');
 }
 
 function updatePreviewArea() {
@@ -1606,11 +2397,26 @@ function updatePreviewArea() {
         // Only update preview content if we're in preview mode or have placeholders
         if (tabsState.previewMode && tabsState.currentTemplate) {
             elements.previewArea.innerHTML = generatePreviewContent();
-            // Make preview read-only: no interactive handlers, normal text cursor
+            // Keep placeholder styling in preview (CSS handles cursor)
             elements.previewArea.querySelectorAll('.placeholder-marker').forEach(element => {
                 element.setAttribute('contenteditable', 'false');
-                element.style.cursor = 'text';
             });
+            // If Finder is open, render highlights for the Preview panel
+            try {
+                if (isGlobalSearchVisible && elements.globalSearchInput && elements.globalSearchInput.value.trim()) {
+                    const previewMatches = getContainerMatches('preview');
+                    clearHighlightsInElement(elements.previewArea);
+                    // Active index within preview if the global active match belongs here
+                    let activeIndex = -1;
+                    if (currentGlobalMatchIndex >= 0 && allSearchMatches[currentGlobalMatchIndex] && allSearchMatches[currentGlobalMatchIndex].containerId === 'preview') {
+                        const active = allSearchMatches[currentGlobalMatchIndex];
+                        activeIndex = previewMatches.findIndex(m => m.start === active.start && m.end === active.end);
+                    }
+                    applyHighlightsInElement(elements.previewArea, previewMatches, activeIndex);
+                } else {
+                    clearHighlightsInElement(elements.previewArea);
+                }
+            } catch (_) {}
         } else {
             // Clear preview area when not in preview mode
             elements.previewArea.innerHTML = '';
@@ -2419,9 +3225,12 @@ function handleImportFile(event) {
                 showToast("Invalid YAML: Expected a list of prompts or a single template.", 3000, "red");
                 return;
             }
-            chrome.storage.local.get(["templates"], (result) => {
+            chrome.storage.local.get(["templates", "userPlaceholders"], (result) => {
                 let templates = result.templates || [];
-                let added = 0, overwritten = 0;
+                let userPlaceholders = Array.isArray(result.userPlaceholders) ? result.userPlaceholders : [];
+                let added = 0, overwritten = 0, skipped = 0;
+                let newPlaceholdersFound = [];
+                let skippedDefaultTemplates = [];
                 list.forEach((imp) => {
                     // Normalize shape
                     if (typeof imp !== 'object' || !imp) imp = {};
@@ -2435,10 +3244,50 @@ function handleImportFile(event) {
                     if (!imp.name || typeof imp.name !== "string" || !imp.name.trim()) {
                         imp.name = `Imported Prompt ${templates.length + 1}`;
                     }
+                    
+                    // Extract placeholders from imported template content
+                    if (imp.content && typeof imp.content === 'string') {
+                        const placeholderRegex = /\{\{([^}]+)\}\}/g;
+                        let match;
+                        while ((match = placeholderRegex.exec(imp.content)) !== null) {
+                            const placeholder = match[1].trim();
+                            if (placeholder) {
+                                // Check if placeholder already exists in allowed placeholders or user placeholders
+                                const alreadyExists = ALLOWED_PLACEHOLDERS.includes(placeholder) || 
+                                                   userPlaceholders.includes(placeholder);
+                                
+                                if (!alreadyExists) {
+                                    // Check if this is a default template - don't add new placeholders to default templates
+                                    const existingTemplate = templates.find(t => t.name === imp.name);
+                                    const isDefaultTemplate = existingTemplate && existingTemplate.type === 'pre-built';
+                                    
+                                    // Only add placeholder if:
+                                    // 1. It's a new template (not existing)
+                                    // 2. It's an existing custom template
+                                    // 3. It's an existing default template that was renamed (becomes custom)
+                                    if (!isDefaultTemplate) {
+                                        if (!newPlaceholdersFound.includes(placeholder)) {
+                                            newPlaceholdersFound.push(placeholder);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
                     const existingIdx = templates.findIndex(t => t.name === imp.name);
                     if (existingIdx !== -1) {
-                        templates[existingIdx] = { ...templates[existingIdx], ...imp };
-                        overwritten++;
+                        const existingTemplate = templates[existingIdx];
+                        // Check if existing template is a default/pre-built template
+                        if (existingTemplate.type === 'pre-built') {
+                            // Don't overwrite default templates, skip this import
+                            skipped++;
+                            skippedDefaultTemplates.push(imp.name);
+                        } else {
+                            // Safe to overwrite user-created templates
+                            templates[existingIdx] = { ...templates[existingIdx], ...imp };
+                            overwritten++;
+                        }
                     } else {
                         if (typeof imp.index !== "number") {
                             imp.index = templates.length ? Math.max(...templates.map(t => t.index || 0)) + 1 : 0;
@@ -2447,10 +3296,41 @@ function handleImportFile(event) {
                         added++;
                     }
                 });
-                chrome.storage.local.set({ templates }, () => {
-                    loadTemplates();
-                    showToast(`Imported: ${added} new, ${overwritten} overwritten.`, 4000, "green");
-                });
+                
+                // Add new placeholders to user placeholders and runtime allowed list
+                if (newPlaceholdersFound.length > 0) {
+                    const updatedUserPlaceholders = [...userPlaceholders, ...newPlaceholdersFound];
+                    // Add to runtime allowed list
+                    newPlaceholdersFound.forEach(ph => {
+                        if (!ALLOWED_PLACEHOLDERS.includes(ph)) {
+                            ALLOWED_PLACEHOLDERS.push(ph);
+                        }
+                    });
+                    
+                    chrome.storage.local.set({ 
+                        templates, 
+                        userPlaceholders: updatedUserPlaceholders 
+                    }, () => {
+                        loadTemplates();
+                        const placeholderMessage = newPlaceholdersFound.length > 0 
+                            ? ` New placeholders added: ${newPlaceholdersFound.join(', ')}.`
+                            : '';
+                        const skippedMessage = skipped > 0 
+                            ? ` ${skipped} default template(s) skipped (cannot overwrite): ${skippedDefaultTemplates.join(', ')}.`
+                            : '';
+                        const toastType = skipped > 0 ? "orange" : "green";
+                        showToast(`Imported: ${added} new, ${overwritten} overwritten.${placeholderMessage}${skippedMessage}`, 7000, toastType);
+                    });
+                } else {
+                    chrome.storage.local.set({ templates }, () => {
+                        loadTemplates();
+                        const skippedMessage = skipped > 0 
+                            ? ` ${skipped} default template(s) skipped (cannot overwrite): ${skippedDefaultTemplates.join(', ')}.`
+                            : '';
+                        const toastType = skipped > 0 ? "orange" : "green";
+                        showToast(`Imported: ${added} new, ${overwritten} overwritten.${skippedMessage}`, 7000, toastType);
+                    });
+                }
             });
         } catch (err) {
             showToast("Failed to import: " + err.message, 4000, "red");
@@ -2467,7 +3347,7 @@ function handleExportAll() {
       // Export templates as-is from storage, without processing placeholder values
       const yaml = promptsToYAML(templates);
       downloadFile(yaml, "promptstash_export_all.yaml", "text/yaml");
-      showToast("All saved templates exported!", 2000, "green", [], "exportAll");
+      showToast("All saved templates exported!", 5000, "green", [], "exportAll");
   });
 }
 
@@ -2496,7 +3376,7 @@ function handleExportSingle() {
                            `content: |\n  ${content.replace(/\n/g, '\n  ')}`;
 
         downloadFile(yamlString, `${name}.yaml`, "text/yaml");
-        showToast(`Template '${name}' exported successfully.`, 3000, "green", [], "exportSingle");
+        showToast(`Template '${name}' exported successfully.`, 5000, "green", [], "exportSingle");
     });
 }
 
@@ -2524,12 +3404,22 @@ function handleGlobalClick(event) {
 
 function handleGlobalKeydown(event) {
     if (event.key === "Escape") {
+        // Close global search if it's open
+        if (isGlobalSearchVisible) {
+            hideGlobalSearch();
+            return;
+        }
         if (isToastShowing && elements.toast.className.includes("confirmation")) {
             const noButton = toastQueue[0].buttons.find(b => b.text === "No");
             closeToast(noButton?.callback);
         } else {
             handleCloseWithUnsavedCheck();
         }
+    } else if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "f") {
+        // Ctrl+Shift+F: Toggle global search
+        event.preventDefault();
+        toggleGlobalSearch();
+        return;
     } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
         const ae = document.activeElement;
 
@@ -3059,7 +3949,6 @@ function handleUnindent() {
 function handlePromptKeydown(event) {
     // Handle Tab key for indentation
     if (event.key === "Tab") {
-    event.preventDefault();
     handleTabKey(event);
     return;
     }
@@ -3067,7 +3956,7 @@ function handlePromptKeydown(event) {
     // Handle Enter key for line breaks
     if (event.key === "Enter") {
     event.preventDefault();
-    document.execCommand('insertLineBreak');
+    insertLineBreak();
     return;
     }
 

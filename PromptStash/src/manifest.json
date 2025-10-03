@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "PromptStash - Prompt Template Assistant for ChatGPT, Perplexity & More by lowtouch.ai",
-  "version": "2.3.2",
-  "description": " Chrome extension to manage and deploy AI prompt templates for ChatGPT, Perplexity & More.",
+  "name": "PromptStash - Prompt Template Assistant for ChatGPT, Perplexity, Copilot, DeepSeek & More by lowtouch.ai",
+  "version": "2.3.3",
+  "description": " Chrome extension to manage and deploy AI prompt templates for ChatGPT, Perplexity, Microsoft Copilot, DeepSeek & More.",
   "permissions": [
     "storage",
     "tabs",
@@ -15,7 +15,9 @@
     "https://chatgpt.com/*",
     "https://gemini.google.com/*",
     "https://claude.ai/*",
-    "https://labs.google/*"
+    "https://labs.google/*",
+    "https://copilot.microsoft.com/*",
+    "https://chat.deepseek.com/*"
   ],
   "action": {
     "default_icon": {
@@ -35,7 +37,9 @@
         "https://chatgpt.com/*",
         "https://gemini.google.com/*",
         "https://claude.ai/*",
-        "https://labs.google/*"
+        "https://labs.google/*",
+        "https://copilot.microsoft.com/*",
+        "https://chat.deepseek.com/*"
       ],
       "js": ["content.js"],
       "run_at": "document_idle"
@@ -57,7 +61,9 @@
         "https://chatgpt.com/*",
         "https://gemini.google.com/*",
         "https://claude.ai/*",
-        "https://labs.google/*"
+        "https://labs.google/*",
+        "https://copilot.microsoft.com/*",
+        "https://chat.deepseek.com/*"
       ]
     }
   ],

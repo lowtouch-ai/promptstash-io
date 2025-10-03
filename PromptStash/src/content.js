@@ -74,6 +74,16 @@ const SUPPORTED_HOSTS = {
     primarySelector: "textarea[placeholder*='Generate a video with text'], div[contenteditable='true'][role='textbox']",
     previousPromptSelector: "textarea",
     name: "Google Labs"
+  },
+  "copilot.microsoft.com": {
+    primarySelector: "textarea[placeholder*='Ask me anything'], div[contenteditable='true'][role='textbox'], textarea[aria-label*='message' i], div.input-area textarea, #userInput",
+    previousPromptSelector: "textarea:not(#userInput)",
+    name: "Microsoft Copilot"
+  },
+  "chat.deepseek.com": {
+    primarySelector: "textarea[placeholder*='Send a message'], div[contenteditable='true'][role='textbox'], textarea[aria-label*='message' i], div.input-area textarea, #chat-input",
+    previousPromptSelector: "textarea:not(#chat-input)",
+    name: "DeepSeek Chat"
   }
 };
 
@@ -183,6 +193,42 @@ function isPromptRelatedField(element) {
     'instruction', 'command', 'tell', 'generate' // Added instruction for Grok
   ];
   
+  // Special handling for Microsoft Copilot
+  if (hostname.includes('copilot.microsoft.com')) {
+    // Be permissive for Copilot input fields
+    for (const keyword of promptKeywords) {
+      if (attributesText.includes(keyword)) {
+        return true;
+      }
+    }
+    // Show widget on reasonably sized textareas
+    if (element.tagName === 'TEXTAREA' && element.offsetHeight > 40) {
+      return true;
+    }
+    // Show on contenteditable divs that look like input areas
+    if (element.tagName === 'DIV' && element.contentEditable === 'true' && role === 'textbox') {
+      return true;
+    }
+  }
+  
+  // Special handling for DeepSeek Chat
+  if (hostname.includes('chat.deepseek.com')) {
+    // Be permissive for DeepSeek input fields
+    for (const keyword of promptKeywords) {
+      if (attributesText.includes(keyword)) {
+        return true;
+      }
+    }
+    // Show widget on reasonably sized textareas
+    if (element.tagName === 'TEXTAREA' && element.offsetHeight > 40) {
+      return true;
+    }
+    // Show on contenteditable divs that look like input areas
+    if (element.tagName === 'DIV' && element.contentEditable === 'true' && role === 'textbox') {
+      return true;
+    }
+  }
+
   // Platform-specific permissiveness
   if (hostname.includes('grok.com') || hostname.includes('gemini.google.com')) {
     for (const keyword of promptKeywords) {
@@ -217,7 +263,7 @@ function isPromptRelatedField(element) {
       const buttonText = (button.textContent || '').toLowerCase();
       const buttonAriaLabel = (button.getAttribute('aria-label') || '').toLowerCase();
       
-      const validButtonKeywords = (hostname.includes('grok.com') || hostname.includes('gemini.google.com'))
+      const validButtonKeywords = (hostname.includes('grok.com') || hostname.includes('gemini.google.com') || hostname.includes('copilot.microsoft.com') || hostname.includes('chat.deepseek.com'))
         ? ['send', 'submit', 'save', 'generate', 'create', 'update', 'run', 'test']
         : ['send', 'submit', 'generate', 'ask'];
       
@@ -233,7 +279,7 @@ function isPromptRelatedField(element) {
   if (element.tagName === 'TEXTAREA') {
     const rows = parseInt(element.getAttribute('rows') || '1');
     const height = element.offsetHeight;
-    const minHeight = (hostname.includes('grok.com') || hostname.includes('gemini.google.com')) ? 40 : 60;
+    const minHeight = (hostname.includes('grok.com') || hostname.includes('gemini.google.com') || hostname.includes('copilot.microsoft.com') || hostname.includes('chat.deepseek.com')) ? 40 : 60;
     
     if (rows <= 1 || height < minHeight) {
       return false;
@@ -1015,3 +1061,21 @@ observer.observe(document.body, {
   attributes: true,
   attributeFilter: ['class', 'style', 'aria-label', 'placeholder'] // Include 'style' to catch position-related changes
 });
+
+// Ensure Ctrl+Shift+F works immediately by listening on the host page and forwarding to the iframe
+if (!window.__promptstashFindShortcutBound) {
+  window.__promptstashFindShortcutBound = true;
+  document.addEventListener('keydown', (e) => {
+    try {
+      const key = (e.key || '').toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && key === 'f') {
+        const frame = document.querySelector('#promptstash-popup iframe');
+        if (frame && frame.contentWindow) {
+          // Prevent site-level shortcuts only when our popup is open
+          e.preventDefault();
+          frame.contentWindow.postMessage({ type: 'promptstash:toggleFind' }, '*');
+        }
+      }
+    } catch (_) {}
+  }, { capture: true });
+}

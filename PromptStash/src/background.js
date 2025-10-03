@@ -4,14 +4,15 @@ const supportedHosts = [
   "https://www.perplexity.ai/",
   "https://gemini.google.com/",
   "https://claude.ai/",
-  "https://labs.google/"
+  "https://labs.google/",
+  "https://copilot.microsoft.com/",
+  "https://chat.deepseek.com/"
 ];
-const supportedHostsString = "grok.com, chatgpt.com, perplexity.ai, gemini.google.com, claude.ai, and labs.google";
+const supportedHostsString = "grok.com, chatgpt.com, perplexity.ai, gemini.google.com, claude.ai, labs.google, copilot.microsoft.com, and chat.deepseek.com";
 
 const LARGE_SCREEN_MIN = 767;
 const SMALL_SCREEN_MAX = 400; // Half of LARGE_SCREEN_MIN + padding on both sides
 const defaultWidthRatio = 0.5;
-
 // Periodic check to ensure content script is active
 setInterval(() => {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
