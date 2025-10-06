@@ -940,8 +940,10 @@ function collectSearchContainers() {
         });
     }
 
-    // Preview container
-    if (elements.previewArea) {
+    // Preview container - only include if template has placeholders (preview tab should be available)
+    // Check if current template has any placeholders that would make preview tab relevant
+    const hasPlaceholders = tabsState.placeholders && tabsState.placeholders.length > 0;
+    if (elements.previewArea && hasPlaceholders) {
         containers.push({
             id: 'preview',
             type: 'div',
@@ -998,11 +1000,14 @@ function focusGlobalMatch(globalIndex) {
     // Apply per-container focus/highlight behavior
     if (container.type === 'textarea' && container.element) {
         // Textarea: do not move focus into the editor; only update overlay highlight
-        // Optionally, we could setSelectionRange without focusing, but avoid to prevent caret jump
-        // Highlight ONLY the active match, not all matches in this container
-        currentSearchMatches = [match];  // Only the single active match
-        currentMatchIndex = 0;  // It's the only match we're showing
-        // Build/update overlay highlight for the textarea (with only active match)
+        // Highlight ALL matches in this container, with the current one as active
+        const containerMatches = getContainerMatches(container.id);
+        currentSearchMatches = containerMatches;
+        // Find the index of the current active match within this container's matches
+        currentMatchIndex = containerMatches.findIndex(m => m.start === match.start && m.end === match.end);
+        if (currentMatchIndex === -1) currentMatchIndex = 0;
+        
+        // Build/update overlay highlight for the textarea (with all matches)
         try {
             const ta = container.element;
             ensureTextareaHighlightOverlay(ta);
@@ -1014,13 +1019,17 @@ function focusGlobalMatch(globalIndex) {
         return;
     }
 
-    // Contenteditable/div containers: highlight ONLY the active match
-    currentSearchMatches = [match];  // Only the single active match
-    currentMatchIndex = 0;  // It's the only match we're showing
+    // Contenteditable/div containers: highlight ALL matches in this container
+    const containerMatches = getContainerMatches(container.id);
+    currentSearchMatches = containerMatches;
+    // Find the index of the current active match within this container's matches
+    currentMatchIndex = containerMatches.findIndex(m => m.start === match.start && m.end === match.end);
+    if (currentMatchIndex === -1) currentMatchIndex = 0;
+    
     if (container.element) {
         // Clear highlights only in the target container to preserve others
         clearHighlightsInElement(container.element);
-        // Highlight only the active match in this container
+        // Highlight all matches in this container, with the current one as active
         applyHighlightsInElement(container.element, currentSearchMatches, currentMatchIndex);
         scrollToMatch(currentMatchIndex, container.element);
     }
@@ -3346,100 +3355,8 @@ function handleSaveTemplate() {
                 updateDeleteButtonState();
             }, isNewTemplate);
         };
-        // Directly save without warnings
-        saveAction();
-    });
-}
-
-function handleSaveAsTemplate() {
-    chrome.storage.local.get(["templates"], (result) => {
-        const templates = result.templates || [];
-        const nameValidation = validateTemplateName(elements.templateName.value, templates, true);
-        if (!nameValidation.isValid) return;
-        const name = nameValidation.sanitizedName;
-        const tags = sanitizeTags(elements.templateTags.value);
-        if (tags === null) return;
-
-        let content = getContentWithPlaceholders();
-        if (!content.trim()) {
-            showToast("Prompt content is required.", 3000, "error", [], "saveAs");
-            elements.promptArea.focus();
-            return;
-        }
-
-        // Detect and persist any new user placeholders
-        const regex = /\{\{([^}]+)\}\}/g;
-        const found = new Set();
-        let m;
-        while ((m = regex.exec(content)) !== null) {
-            const ph = m[1].trim();
-            if (ph) found.add(ph);
-        }
-        const unknown = Array.from(found).filter(ph => !ALLOWED_PLACEHOLDERS.includes(ph));
-        if (unknown.length > 0) {
-            chrome.storage.local.get(["userPlaceholders"], (r2) => {
-                const existing = Array.isArray(r2.userPlaceholders) ? r2.userPlaceholders : [];
-                const merged = Array.from(new Set([...existing, ...unknown]));
-                unknown.forEach(ph => { if (!ALLOWED_PLACEHOLDERS.includes(ph)) ALLOWED_PLACEHOLDERS.push(ph); });
-                chrome.storage.local.set({ userPlaceholders: merged });
-            });
-        }
-
-        // Create a processed copy with placeholder values filled for SAVE AS
-        let contentWithValues = content;
-        for (const placeholder in tabsState.placeholderValues) {
-            const value = tabsState.placeholderValues[placeholder];
-            if (value && value.trim() !== '') {
-                const regex = new RegExp(`\\{\\{${placeholder.replace(/[-\\/\\^$*+?.()|[\\]{}]/g, '\\$&')}\\}\\}`, 'g');
-                contentWithValues = contentWithValues.replace(regex, value);
-            }
-        }
-
-        const saveAction = () => {
-            // Re-enable undo for Save As: snapshot current UI and templates before saving
-            storeLastState();
-            if (lastState) {
-                lastState.actionType = 'saveAs';
-                lastState.templates = deepClone(templates);
-            }
-            const now = Date.now();
-            const newTemplate = { name, tags, content: contentWithValues, type: "custom", favorite: false, index: nextIndex, createdAt: now, updatedAt: now };
-            templates.push(newTemplate);
-            updateRecentIndices(nextIndex);
-            nextIndex++;
-            saveTemplates(templates, () => {
-                // Select the newly saved template, but do not reload content
-                // to preserve editor undo history and current UI edits.
-                selectedTemplateName = name;
-                editingTargetName = name;
-                
-                // Clear session data after successful save as
-                clearSessionForTemplate(name);
-                
-                loadTemplates();
-                // Update the editor to the value-filled content and rebuild tabs (placeholders removed)
-                try {
-                    isUpdatingContent = true;
-                    tabsState.currentTemplate = contentWithValues;
-                    elements.promptArea.textContent = contentWithValues;
-                    destroyTabs();
-                    buildTabsFromTemplate(contentWithValues, true); // isFromSave = true
-                    renderPlaceholdersInTemplate();
-                    elements.fetchBtn2.style.display = elements.promptArea.textContent.trim() ? "none" : "block";
-                    updateClearButtonState();
-                } finally {
-                    isUpdatingContent = false;
-                }
-                saveState();
-                saveNextIndex();
-                // After save as completes, show tags in view mode (clickable)
-                switchToTagsViewMode();
-                updateExportSingleBtnState();
-                updateSaveButtonState();
-                updateDeleteButtonState();
-            }, true);
-        };
-
+        
+        // Check for tags and show warning if none
         const hasNoTags = tags.length === 0;
         if (hasNoTags) {
             showModal(
@@ -3642,6 +3559,7 @@ function handleImportFile(event) {
                 let added = 0, overwritten = 0, skipped = 0;
                 let newPlaceholdersFound = [];
                 let skippedDefaultTemplates = [];
+                let currentTemplateUpdated = false; // Track if currently loaded template was updated
                 list.forEach((imp) => {
                     // Normalize shape
                     if (typeof imp !== 'object' || !imp) imp = {};
@@ -3696,8 +3614,22 @@ function handleImportFile(event) {
                             skippedDefaultTemplates.push(imp.name);
                         } else {
                             // Safe to overwrite user-created templates
-                            templates[existingIdx] = { ...templates[existingIdx], ...imp };
+                            // Preserve important existing properties but allow content and metadata updates
+                            const existingTemplate = templates[existingIdx];
+                            templates[existingIdx] = {
+                                ...existingTemplate, // Keep existing properties like index, createdAt
+                                ...imp, // Apply imported changes
+                                type: existingTemplate.type || 'custom', // Preserve template type
+                                index: existingTemplate.index, // Preserve original index
+                                createdAt: existingTemplate.createdAt, // Preserve creation date
+                                updatedAt: Date.now() // Update modification time
+                            };
                             overwritten++;
+                            
+                            // Check if this is the currently loaded template
+                            if (selectedTemplateName === imp.name) {
+                                currentTemplateUpdated = true;
+                            }
                         }
                     } else {
                         if (typeof imp.index !== "number") {
@@ -3723,6 +3655,37 @@ function handleImportFile(event) {
                         userPlaceholders: updatedUserPlaceholders 
                     }, () => {
                         loadTemplates();
+                        
+                        // If the currently loaded template was updated, refresh the UI
+                        if (currentTemplateUpdated && selectedTemplateName) {
+                            const updatedTemplate = templates.find(t => t.name === selectedTemplateName);
+                            if (updatedTemplate) {
+                                // Update the UI with the imported content
+                                elements.templateName.value = updatedTemplate.name;
+                                const tagsArray = Array.isArray(updatedTemplate.tags) ? updatedTemplate.tags : [];
+                                elements.templateTags.value = tagsArray.join(", ");
+                                tabsState.currentTemplate = updatedTemplate.content;
+                                elements.promptArea.textContent = updatedTemplate.content;
+                                
+                                // Clear placeholder values since this is imported content
+                                tabsState.placeholderValues = {};
+                                
+                                // Update existing tab placeholders and rebuild tabs
+                                const { placeholders } = parsePlaceholders(updatedTemplate.content, false);
+                                tabsState.existingTabPlaceholders = [...placeholders];
+                                buildTabsFromTemplate(updatedTemplate.content, true);
+                                renderPlaceholdersInTemplate();
+                                
+                                // Update tags display
+                                if (tagsArray.length > 0) {
+                                    switchToTagsViewMode();
+                                } else {
+                                    switchToTagsEditMode();
+                                }
+                                
+                                saveState();
+                            }
+                        }
                         const placeholderMessage = newPlaceholdersFound.length > 0 
                             ? ` New placeholders added: ${newPlaceholdersFound.join(', ')}.`
                             : '';
@@ -3737,6 +3700,37 @@ function handleImportFile(event) {
                 } else {
                     chrome.storage.local.set({ templates }, () => {
                         loadTemplates();
+                        
+                        // If the currently loaded template was updated, refresh the UI
+                        if (currentTemplateUpdated && selectedTemplateName) {
+                            const updatedTemplate = templates.find(t => t.name === selectedTemplateName);
+                            if (updatedTemplate) {
+                                // Update the UI with the imported content
+                                elements.templateName.value = updatedTemplate.name;
+                                const tagsArray = Array.isArray(updatedTemplate.tags) ? updatedTemplate.tags : [];
+                                elements.templateTags.value = tagsArray.join(", ");
+                                tabsState.currentTemplate = updatedTemplate.content;
+                                elements.promptArea.textContent = updatedTemplate.content;
+                                
+                                // Clear placeholder values since this is imported content
+                                tabsState.placeholderValues = {};
+                                
+                                // Update existing tab placeholders and rebuild tabs
+                                const { placeholders } = parsePlaceholders(updatedTemplate.content, false);
+                                tabsState.existingTabPlaceholders = [...placeholders];
+                                buildTabsFromTemplate(updatedTemplate.content, true);
+                                renderPlaceholdersInTemplate();
+                                
+                                // Update tags display
+                                if (tagsArray.length > 0) {
+                                    switchToTagsViewMode();
+                                } else {
+                                    switchToTagsEditMode();
+                                }
+                                
+                                saveState();
+                            }
+                        }
                         const skippedMessage = skipped > 0 
                             ? ` ${skipped} skipped — default templates can't be overwritten.`
                             : '';
