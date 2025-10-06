@@ -21,72 +21,298 @@ header, .search-select, #template, #buttons {
   flex-shrink: 0;
 }
 
-/* Toast notification styles */
-.toast {
+/* Toast notification styles - Top right aligned, non-blocking */
+.ps-toast {
   position: fixed;
   top: 20px;
   right: 20px;
-  padding: 6px 12px;
-  border-radius: 4px;
-  box-shadow: 0 3px 5px -1px rgba(0, 0, 0, 0.2),
-              0 6px 10px 0 rgba(0, 0, 0, 0.14),
-              0 1px 18px 0 rgba(0, 0, 0, 0.12);
+  padding: 12px 16px;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   font-family: 'Roboto', sans-serif;
-  font-size: 10px;
-  line-height: 15px;
+  font-size: 13px;
+  line-height: 1.4;
   max-width: 320px;
+  min-width: 260px;
   z-index: 99999;
   opacity: 0;
   transform: translateY(-20px);
   transition: opacity 0.3s ease, transform 0.3s ease;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: flex-start;
   gap: 8px;
-  white-space: pre-line; /* Support multi-line messages */
+  white-space: pre-line;
+  text-align: left;
+  pointer-events: none; /* Don't block clicks when hidden */
 }
 
 /* Toast show/hide states */
-.toast.show {
+.ps-toast.ps-show {
   opacity: 1;
   transform: translateY(0);
+  pointer-events: auto; /* Enable clicks when visible */
 }
 
-.toast.hide {
+.ps-toast.ps-hide {
   opacity: 0;
   transform: translateY(-20px);
 }
 
-/* Error toast (red) */
-.toast.red {
-  background: #ffa8a8; /* Material Design red 700 */
-  color: #7e1717;
+/* Toast content wrapper - wraps message text */
+.toast-content-wrapper {
+  flex: 1;
+  padding-left: 0; /* Remove left padding */
+  padding-right: 4px; /* Small space before close button */
+  display: flex;
+  align-items: flex-start;
+  gap: 4px; /* Small gap between icon and text */
+}
+
+/* Toast icon - moved inside content wrapper on the left */
+.toast-content-wrapper.success::before {
+  content: '✔';
+  color: #34A853;
+  width: 18px;
+  height: 18px;
+  font-size: 16px;
+  line-height: 18px;
+  flex-shrink: 0;
+}
+
+.toast-content-wrapper.error::before {
+  content: '✖';
+  color: #D93025;
+  width: 18px;
+  height: 18px;
+  font-size: 16px;
+  line-height: 18px;
+  flex-shrink: 0;
+}
+
+.toast-content-wrapper.warning::before {
+  content: '⚠';
+  color: #FBBC04;
+  width: 18px;
+  height: 18px;
+  font-size: 16px;
+  line-height: 18px;
+  flex-shrink: 0;
+}
+
+.toast-content-wrapper.info::before {
+  content: 'ℹ';
+  color: #4285F4;
+  width: 18px;
+  height: 18px;
+  font-size: 16px;
+  line-height: 18px;
+  flex-shrink: 0;
 }
 
 /* Success toast (green) */
-.toast.green {
-  background: #c7ffc9; /* Material Design green 500 */
-  color: #006417;
+.ps-toast.success {
+  background: #E6F4EA;
+  color: #1E4620;
+  border: 1px solid #34A853;
 }
 
-/* Neutral toast (gray) */
-.toast.gray {
-  background: #eeeeee; /* Material Design gray 700 */
-  color: #000;
+/* Error toast (red) */
+.ps-toast.error {
+  background: #FDECEA;
+  color: #611A15;
+  border: 1px solid #D93025;
+}
+
+/* Warning toast (amber) */
+.ps-toast.warning {
+  background: #FFF4E5;
+  color: #663C00;
+  border: 1px solid #FBBC04;
+}
+
+/* Information toast (blue) */
+.ps-toast.info {
+  background: #E8F0FE;
+  color: #174EA6;
+  border: 1px solid #4285F4;
+}
+
+.toast-content-wrapper.info::before {
+  content: 'ℹ';
+  color: #4285F4;
+  width: 18px;
+  height: 18px;
+  font-size: 16px;
+  line-height: 18px;
+  flex-shrink: 0;
+}
+
+/* Legacy color support (maps old colors to new system) */
+.toast-content-wrapper.green::before { /* Map to success */
+  content: '✔';
+  color: #34A853;
+  width: 18px;
+  height: 18px;
+  font-size: 16px;
+  line-height: 18px;
+  flex-shrink: 0;
+}
+
+.toast-content-wrapper.red::before { /* Map to error */
+  content: '✖';
+  color: #D93025;
+  width: 18px;
+  height: 18px;
+  font-size: 16px;
+  line-height: 18px;
+  flex-shrink: 0;
+}
+
+.toast-content-wrapper.gray::before { /* Map to info */
+  content: 'ℹ';
+  color: #4285F4;
+  width: 18px;
+  height: 18px;
+  font-size: 16px;
+  line-height: 18px;
+  flex-shrink: 0;
+}
+
+.ps-toast.gray { /* Map to info */
+  background: #E8F0FE;
+  color: #174EA6;
+  border: 1px solid #4285F4;
 }
 
 /* Dark mode adjustments */
-body.dark .toast.red {
-  background: #570404; /* Darker red for contrast */
-  color: #f4afaf;
+body.dark .ps-toast.success,
+body.dark .ps-toast.green {
+  background: #1E4620;
+  color: #E6F4EA;
+  border-color: #34A853;
 }
 
-body.dark .toast.green {
-  background: #044207; /* Darker green for contrast */
-  color: #a3f4b1;
+body.dark .ps-toast.error,
+body.dark .ps-toast.red {
+  background: #611A15;
+  color: #FDECEA;
+  border-color: #D93025;
 }
-body.dark .toast.gray {
-  background: #444; /* Darker gray for contrast */
-  color: #fff;
+
+body.dark .ps-toast.warning {
+  background: #663C00;
+  color: #FFF4E5;
+  border-color: #FBBC04;
+}
+
+body.dark .ps-toast.info,
+body.dark .ps-toast.gray {
+  background: #174EA6;
+  color: #E8F0FE;
+  border-color: #4285F4;
+}
+
+/* Modal notification styles - Center aligned, blocking */
+.ps-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 14px 16px 12px 16px;
+  border-radius: 7px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  font-family: 'Roboto', sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  max-width: 420px;
+  min-width: 320px;
+  z-index: 100001;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.9);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  white-space: pre-line;
+  text-align: left;
+}
+
+.ps-modal.ps-show {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.ps-modal.ps-hide {
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.9);
+}
+
+/* Modal icon */
+.ps-modal::before {
+  content: '';
+  position: absolute;
+  left: 12px;
+  top: 14px;
+  width: 18px;
+  height: 18px;
+  font-size: 16px;
+  line-height: 18px;
+}
+
+/* Modal variants */
+.ps-modal.warning {
+  background: #FFF4E5;
+  color: #663C00;
+  border: 1px solid #F0A202;
+}
+
+.ps-modal.warning::before {
+  content: '⚠';
+  color: #F0A202;
+}
+
+.ps-modal.error {
+  background: #FDECEA;
+  color: #5F2120;
+  border: 1px solid #D93025;
+}
+
+.ps-modal.error::before {
+  content: '✖';
+  color: #D93025;
+  font-size: 16px;
+}
+
+/* Modal overlay - dimmed background */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 100000;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  display: none;
+}
+
+.modal-overlay.show {
+  opacity: 1;
+}
+
+/* Dark mode for modals */
+body.dark .ps-modal.warning {
+  background: #663C00;
+  color: #FFF4E5;
+  border-color: #F0A202;
+}
+
+body.dark .ps-modal.error {
+  background: #5F2120;
+  color: #FDECEA;
+  border-color: #D93025;
 }
 
 /* Global Search Widget Styles */
@@ -340,29 +566,32 @@ body.dark .global-search-container {
   border-color: #555;
 }
 
-body.dark .global-search-icon {
-  fill: #ccc;
+body.dark .toast-content-wrapper.success::before {
+  color: #E6F4EA;
 }
 
-body.dark .global-search-input {
-  color: #e8eaed;
+body.dark .toast-content-wrapper.error::before {
+  color: #FDECEA;
 }
 
-body.dark .global-search-input::placeholder {
-  color: #8a94a0;
+body.dark .toast-content-wrapper.warning::before {
+  color: #FFF4E5;
 }
 
-body.dark .global-search-close {
-  fill: #ccc;
+body.dark .toast-content-wrapper.info::before {
+  color: #E8F0FE;
 }
 
-body.dark .global-search-close:hover {
-  background: #444;
-  fill: #fff;
+body.dark .toast-content-wrapper.green::before {
+  color: #E6F4EA;
 }
 
-body.dark .search-nav-btn {
-  fill: #ccc;
+body.dark .toast-content-wrapper.red::before {
+  color: #FDECEA;
+}
+
+body.dark .toast-content-wrapper.gray::before {
+  color: #E8F0FE;
 }
 
 body.dark .search-nav-btn:hover:not(:disabled) {
@@ -399,67 +628,209 @@ body.dark .global-search-result-preview {
   color: #ccc;
 }
 
-/* Toast close button */
+/* Toast close button (X) - Always visible */
 .toast-close-btn {
-  position: absolute;
-  top: 4px;
-  right: 8px;
   background: none;
   border: none;
-  font-size: 14px;
+  font-size: 16px;
   cursor: pointer;
-  color: #444;
+  color: inherit;
   padding: 0;
   line-height: 1;
-}
-
-body.dark .toast-close-btn {
-  color: #e0e0e0;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: -2px;
 }
 
 .toast-close-btn:hover,
 .toast-close-btn:focus {
-  color: #000;
+  opacity: 1;
 }
 
-body.dark .toast-close-btn:hover,
-body.dark .toast-close-btn:focus {
-  color: #fff;
+/* Modal content wrapper - wraps message text with proper padding */
+.modal-content-wrapper {
+  padding-left: 24px; /* Space for icon */
+  padding-right: 24px; /* Space to avoid close button */
+  flex: 1;
 }
 
-/* Toast action buttons */
-.toast-button-container {
+/* Modal close button */
+.modal-close-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: inherit;
+  padding: 4px;
+  line-height: 1;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+  width: 22px;
+  height: 22px;
   display: flex;
-  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  z-index: 10; /* Ensure it stays above message text */
 }
 
-.toast-action-btn {
-  padding: 4px 8px;
+.modal-close-btn:hover,
+.modal-close-btn:focus {
+  opacity: 1;
+}
+
+/* Button container for modal actions */
+.modal-button-container {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+/* Primary buttons (for primary actions) */
+.modal-primary-btn {
+  padding: 6px 16px;
   border: none;
   border-radius: 4px;
-  background: #bbb3; /* Semi-transparent white */
-  color: #212121;
   cursor: pointer;
   font-family: 'Roboto', sans-serif;
-  font-size: 8px;
-  text-transform: uppercase;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background-color 0.2s ease;
 }
 
-body.dark .toast-action-btn {
-  background: #ffffff1a; /* Adjusted for dark mode */
+/* Save button - context-dependent */
+/* Green save for success contexts */
+.modal-primary-btn.save {
+  background: #34A853;
+  color: #FFFFFF;
+}
+
+.modal-primary-btn.save:hover {
+  background: #2d8e47;
+}
+
+/* Amber save for warning modals (no tags and close without saving) */
+.ps-modal.warning .modal-primary-btn.save,
+.ps-modal.warning .modal-primary-btn[data-text*="close without saving"] {
+  background: #F0A202;
+  color: #FFFFFF;
+}
+
+.ps-modal.warning .modal-primary-btn.save:hover,
+.ps-modal.warning .modal-primary-btn[data-text*="close without saving"]:hover {
+  background: #d68f02;
+}
+
+/* Delete/Confirm button - red */
+.modal-primary-btn.delete,
+.modal-primary-btn.confirm {
+  background: #D93025;
+  color: #FFFFFF;
+}
+
+.modal-primary-btn.delete:hover,
+.modal-primary-btn.confirm:hover {
+  background: #b8271e;
+}
+
+/* OK button - blue */
+.modal-primary-btn.ok {
+  background: #4285F4;
+  color: #FFFFFF;
+}
+
+.modal-primary-btn.ok:hover {
+  background: #3367d6;
+}
+
+/* Secondary buttons (for cancel actions) */
+.modal-secondary-btn {
+  padding: 6px 16px;
+  border: 1px solid #DADCE0;
+  border-radius: 4px;
+  background: #F1F3F4;
+  color: #202124;
+  cursor: pointer;
+  font-family: 'Roboto', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background-color 0.2s ease;
+}
+
+.modal-secondary-btn:hover {
+  background: #E0E0E0;
+}
+
+/* Dark mode button adjustments */
+body.dark .modal-primary-btn.save {
+  background: #2d8e47;
+}
+
+body.dark .modal-primary-btn.save:hover {
+  background: #34A853;
+}
+
+/* Amber save for warning modals in dark mode */
+body.dark .ps-modal.warning .modal-primary-btn.save,
+body.dark .ps-modal.warning .modal-primary-btn[data-text*="close without saving"] {
+  background: #d68f02;
+}
+
+body.dark .ps-modal.warning .modal-primary-btn.save:hover,
+body.dark .ps-modal.warning .modal-primary-btn[data-text*="close without saving"]:hover {
+  background: #F0A202;
+}
+
+body.dark .modal-primary-btn.delete,
+body.dark .modal-primary-btn.confirm {
+  background: #b8271e;
+}
+
+body.dark .modal-primary-btn.delete:hover,
+body.dark .modal-primary-btn.confirm:hover {
+  background: #D93025;
+}
+
+body.dark .modal-primary-btn.ok {
+  background: #3367d6;
+}
+
+body.dark .modal-primary-btn.ok:hover {
+  background: #4285F4;
+}
+
+body.dark .modal-secondary-btn {
+  background: #3c4043;
   color: #e8eaed;
+  border-color: #5f6368;
 }
 
-.toast-action-btn:hover {
-  background: #bbb5;
+body.dark .modal-secondary-btn:hover {
+  background: #4b4f57;
 }
 
-body.dark .toast-action-btn:hover {
-  background: #ffffff33;
+/* Bold key action words in messages */
+.ps-toast strong,
+.ps-modal strong {
+  font-weight: 600;
 }
 
 /* Accessibility enhancements */
-.toast[role="alertdialog"] {
+.ps-toast[role="alert"] {
+  outline: none;
+}
+
+.ps-modal[role="alertdialog"] {
   outline: none;
 }
 

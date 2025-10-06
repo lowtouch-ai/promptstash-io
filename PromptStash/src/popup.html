@@ -238,8 +238,13 @@
   </div>
 
   <div class="position-absolute top-0 start-0" id="searchOverlay" style="width: 100%; height: 100%; background: inherit; z-index: 0; display: none;"></div>
-  <div class="position-absolute top-0 start-0" id="toastOverlay" style="width: 100%; height: 100%; background: inherit; opacity: 0.2; z-index: 9999; display: none;"></div>
-  <div id="toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true"></div>
+  
+  <!-- Toast notification (top-right, non-blocking) -->
+  <div id="toast" class="ps-toast" role="alert" aria-live="polite" aria-atomic="true"></div>
+  
+  <!-- Modal notification system (center, blocking) -->
+  <div id="modalOverlay" class="modal-overlay"></div>
+  <div id="modalNotification" class="ps-modal" role="alertdialog" aria-live="assertive" aria-atomic="true"></div>
 
   <script src="bootstrap.bundle.min.js"></script>
   <script type="module" src="popup.js"></script>

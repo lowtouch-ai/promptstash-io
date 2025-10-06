@@ -5,6 +5,123 @@ const EXTENSION_VERSION = "1.1.0";
 
 // --- Utility Functions ---
 
+// --- Session Storage Functions ---
+// These functions handle unsaved changes persistence across reloads/tab switches
+// Data persists within the same Chrome session but is cleared when Chrome closes
+
+function saveToSession() {
+    // Save current unsaved state to session storage
+    const sessionData = {
+        templateName: elements.templateName.value,
+        templateTags: elements.templateTags.value,
+        templateContent: tabsState.currentTemplate,
+        placeholderValues: tabsState.placeholderValues,
+        selectedTemplateName: selectedTemplateName,
+        editingTargetName: editingTargetName,
+        timestamp: Date.now(),
+        // Store which placeholders have tabs
+        existingTabPlaceholders: tabsState.existingTabPlaceholders || [],
+        // Store preview mode state
+        previewMode: tabsState.previewMode || false
+    };
+    
+    // Create a key based on the current template context
+    const sessionKey = selectedTemplateName ? `unsaved_${selectedTemplateName}` : 'unsaved_draft';
+    
+    chrome.storage.session.set({ 
+        [sessionKey]: sessionData,
+        currentSessionKey: sessionKey // Track which template we're working on
+    });
+}
+
+function loadFromSession(callback) {
+    // Load unsaved changes from session storage
+    // First check if we closed with X button - if so, don't restore but keep the data
+    chrome.storage.session.get(['closedWithX', 'currentSessionKey'], (result) => {
+        if (result.closedWithX) {
+            // We closed with X, so show new template but keep session data
+            chrome.storage.session.remove(['closedWithX', 'currentSessionKey']);
+            if (callback) callback(null);
+            return;
+        }
+        
+        if (!result.currentSessionKey) {
+            if (callback) callback(null);
+            return;
+        }
+        
+        chrome.storage.session.get([result.currentSessionKey], (sessionResult) => {
+            const sessionData = sessionResult[result.currentSessionKey];
+            if (callback) callback(sessionData);
+        });
+    });
+}
+
+function clearSessionForTemplate(templateName) {
+    // Clear session data for a specific template after successful save
+    const sessionKey = templateName ? `unsaved_${templateName}` : 'unsaved_draft';
+    chrome.storage.session.remove([sessionKey]);
+    
+    // If this was the current session, also clear the current key
+    chrome.storage.session.get(['currentSessionKey'], (result) => {
+        if (result.currentSessionKey === sessionKey) {
+            chrome.storage.session.remove(['currentSessionKey']);
+        }
+    });
+}
+
+async function saveSessionOnTemplateSwitch() {
+    // Save current template's unsaved changes before switching
+    try {
+        const hasChanges = await hasUnsavedChanges();
+        if (hasChanges) {
+            saveToSession();
+        }
+    } catch (e) {
+        // If check fails, save anyway to be safe
+        saveToSession();
+    }
+}
+
+function loadSessionForTemplate(templateName) {
+    // Load session data for a specific template
+    const sessionKey = templateName ? `unsaved_${templateName}` : 'unsaved_draft';
+    
+    chrome.storage.session.get([sessionKey], (result) => {
+        const sessionData = result[sessionKey];
+        if (sessionData && sessionData.timestamp) {
+            // Apply the session data if it exists
+            applySessionData(sessionData);
+        }
+    });
+}
+
+function applySessionData(sessionData) {
+    // Apply session data to the UI
+    if (!sessionData) return;
+    
+    elements.templateName.value = sessionData.templateName || '';
+    elements.templateTags.value = sessionData.templateTags || '';
+    tabsState.currentTemplate = sessionData.templateContent || '';
+    elements.promptArea.textContent = sessionData.templateContent || '';
+    tabsState.placeholderValues = sessionData.placeholderValues || {};
+    tabsState.existingTabPlaceholders = sessionData.existingTabPlaceholders || [];
+    tabsState.previewMode = sessionData.previewMode || false;
+    
+    // Rebuild tabs with the session data
+    if (sessionData.templateContent) {
+        buildTabsFromTemplate(sessionData.templateContent, false);
+        renderPlaceholdersInTemplate();
+    }
+    
+    // Restore preview mode if it was active
+    if (sessionData.previewMode) {
+        setTimeout(() => {
+            togglePreviewTab(true);
+        }, 100);
+    }
+}
+
 function debounce(func, wait) {
     let timeout;
     return function (...args) {
@@ -79,23 +196,27 @@ document.addEventListener('shown.bs.tab', () => {
 function validateTemplateName(name, templates, isSaveAs = false) {
     const trimmedName = name.trim();
     if (!trimmedName) {
-        showToast("Template name is required.", 3000, "red", [], "save");
+        showToast("Template name is required.", 3000, "error", [], "save");
         return { isValid: false, sanitizedName: null };
     }
     if (trimmedName.length > 50) {
-        showToast("Template name must be 50 characters or less.", 3000, "red", [], "nameLength");
+        showToast("Template name must be 50 characters or less.", 3000, "error", [], "nameLength");
         return { isValid: false, sanitizedName: null };
     }
     const sanitizedName = trimmedName.replace(/[^a-zA-Z0-9-_.@\s]/g, "");
     if (sanitizedName !== trimmedName) {
-        showToast("Template name can only contain letters, numbers, underscores(_), hyphens(-), periods(.), at(@), and spaces.", 3000, "red", [], "nameChar");
+        showToast("Template name can include only letters, numbers, underscores (_), hyphens (-), periods (.), at (@), or spaces.", 4000, "error", [], "nameChar");
         return { isValid: false, sanitizedName: null };
     }
     // Allow updating the same template even when selectedTemplateName is null (draft after undo)
     const currentTarget = selectedTemplateName || editingTargetName || null;
     const isDuplicate = templates.some(t => t.name === sanitizedName && (isSaveAs || t.name !== currentTarget));
     if (isDuplicate) {
-        showToast("Template name must be unique.", 3000, "red", [], "save");
+        showModal(
+            "Template name must be unique. Please choose a different name.",
+            [{ text: "OK", callback: () => {} }],
+            "error"
+        );
         return { isValid: false, sanitizedName: null };
     }
     return { isValid: true, sanitizedName };
@@ -105,25 +226,25 @@ function sanitizeTags(input) {
     if (!input) return [];
     const tags = input.split(",").map(tag => tag.trim()).filter(tag => tag);
     if (tags.length > 5) {
-        showToast("Maximum of 5 tags allowed per template.", 3000, "red", [], "tagsLength");
+        showToast("Maximum of 5 tags allowed per template.", 4000, "error", [], "tagsLength");
         return null;
     }
     const sanitizedTags = tags.map(tag => tag.replace(/[^a-zA-Z0-9-_.@\s]/g, "").slice(0, 20));
     if (sanitizedTags.some(tag => tag.length === 0)) {
-        showToast("Each tag must contain only letters, numbers, underscores(_), hyphens(-), periods(.), at(@), or spaces, and be 20 characters or less.", 3000, "red", [], "save");
+        showToast("Each tag must contain only letters, numbers, underscores(_), hyphens(-), periods(.), at(@), or spaces, and be 20 characters or less.", 3000, "error", [], "save");
         return null;
     }
     return sanitizedTags;
 }
 
-function parsePlaceholders(templateContent) {
+function parsePlaceholders(templateContent, onlyExistingTabs = false) {
     const placeholderRegex = /\{\{([^}]+)\}\}/g;
     const placeholders = [];
     const placeholderPositions = new Map();
     let match;
 
     // Use the runtime-merged allowed list (defaults + user-defined)
-    const allowedPlaceholders = ALLOWED_PLACEHOLDERS;
+    const allowedPlaceholders = onlyExistingTabs ? tabsState.existingTabPlaceholders : ALLOWED_PLACEHOLDERS;
     while ((match = placeholderRegex.exec(templateContent)) !== null) {
         const placeholder = match[1].trim();
         if (allowedPlaceholders.includes(placeholder)) {
@@ -201,10 +322,12 @@ function deepClone(obj) {
 function hasUnsavedChanges() {
     if (!selectedTemplateName) {
         // For new templates, check if there's any meaningful content
-        const hasName = elements.templateName.value.trim() !== getDefaultTemplateName();
+        const defaultName = getDefaultTemplateName();
+        const hasName = elements.templateName.value.trim() !== defaultName && elements.templateName.value.trim() !== "";
         const hasTags = elements.templateTags.value.trim() !== "";
-        const hasContent = elements.promptArea.textContent.trim() !== `# Your Role\n*\n\n# Background Information\n*\n\n# Your Task\n*`;
-        const hasPlaceholderValues = Object.values(tabsState.placeholderValues).some(value => value.trim() !== "");
+        const hasContent = elements.promptArea.textContent.trim() !== "" && 
+                          elements.promptArea.textContent.trim() !== `# Your Role\n*\n\n# Background Information\n*\n\n# Your Task\n*`;
+        const hasPlaceholderValues = Object.values(tabsState.placeholderValues).some(value => value && value.trim() !== "");
         
         return hasName || hasTags || hasContent || hasPlaceholderValues;
     }
@@ -243,11 +366,14 @@ let isUpdatingContent = false;
 let toastQueue = [];
 let isToastShowing = false;
 let autoHideTimeout = null;
-let outsideClickListener = null;
 let currentOperationId = null;
 let nextToastTimeout = null;
 const toastTimestamps = {};
 let isUndoToastVisible = false; // Track if an undo-eligible toast is currently visible
+
+// Modal notification state
+let isModalShowing = false;
+let modalCloseCallback = null;
 
 // Track the logical template we are editing (even if we temporarily mark the UI as unsaved/draft)
 let editingTargetName = null;
@@ -291,7 +417,8 @@ const tabsState = {
     placeholders: [],
     placeholderValues: {},
     currentTemplate: "",
-    previewMode: false
+    previewMode: false,
+    existingTabPlaceholders: [] // Track which placeholders already have tabs
 };
 
 // --- Initialization and Core Logic ---
@@ -300,14 +427,14 @@ document.addEventListener("DOMContentLoaded", () => {
     ['searchBox', 'dropdownResults', 'template', 'templateName', 'templateTags', 'tagsDisplay', 'tagsView', 'editTagsBtn', 'cancelTagsEditBtn',
      'promptArea', 'previewArea', 'buttons', 'fetchBtn', 'fetchBtn2', 'saveBtn', 'saveAsBtn', 'deleteBtn', 'clearSearch', 'clearPrompt',
      'clearAllBtn', 'findBtn', 'sendBtn', 'favoriteSuggestions', 'fullscreenToggle', 'closeBtn', 'newBtn', 'searchOverlay',
-     'toastOverlay', 'toast', 'themeToggle', 'importBtn', 'importFileInput', 'exportAllBtn', 'exportSingleBtn', 'scroll-left-btn', 'scroll-right-btn',
+     'toast', 'modalOverlay', 'modalNotification', 'themeToggle', 'importBtn', 'importFileInput', 'exportAllBtn', 'exportSingleBtn', 'scroll-left-btn', 'scroll-right-btn',
      'globalSearchWidget', 'globalSearchInput', 'globalSearchClose', 'searchMatchCount', 'searchPrevious', 'searchNext'].forEach(id => {
         elements[id] = document.getElementById(id);
     });
 
     const missingElements = Object.entries(elements).filter(([key, value]) => !value).map(([key]) => key);
     if (missingElements.length > 0) {
-        showToast("Error: Extension UI failed to load. Please reload the extension.", 3000, "red", [], "init");
+        showToast("Error: Extension UI failed to load. Please reload the extension.", 3000, "error", [], "init");
     } else {
         initializeState();
         setupEventListeners();
@@ -321,7 +448,9 @@ function initializeState() {
     // Initialize allowed placeholders from default templates
     ALLOWED_PLACEHOLDERS.push(...extractAllowedPlaceholdersFromDefaults());
 
-    chrome.storage.local.get(["popupState", "theme", "extensionVersion", "recentIndices", "templates", "nextIndex", "isFullscreen", "placeholderValues", "userPlaceholders"], (result) => {
+    // First, try to load any unsaved changes from session storage
+    loadFromSession((sessionData) => {
+        chrome.storage.local.get(["popupState", "theme", "extensionVersion", "recentIndices", "templates", "nextIndex", "isFullscreen", "placeholderValues", "userPlaceholders"], (result) => {
         const userPlaceholders = Array.isArray(result.userPlaceholders) ? result.userPlaceholders : [];
         // Merge user-defined placeholders into the allowed list (dedupe)
         userPlaceholders.forEach(ph => {
@@ -350,21 +479,32 @@ function initializeState() {
         const isTagsInEditMode = state.isTagsInEditMode === undefined ? true : state.isTagsInEditMode;
 
         const defaultText = `# Your Role\n*\n\n# Background Information\n*\n\n# Your Task\n*`;
-        selectedTemplateName = state.selectedName || null;
-        editingTargetName = state.editingTargetName || selectedTemplateName || null;
         
-        // If we have a selected template, use its name, otherwise use saved name or default
-        if (selectedTemplateName) {
-            elements.templateName.value = selectedTemplateName;
+        // Check if we have session data to restore
+        if (sessionData && sessionData.timestamp) {
+            // Session exists - restore from session (same Chrome session)
+            elements.templateName.value = sessionData.templateName || state.name || getDefaultTemplateName();
+            elements.templateTags.value = sessionData.templateTags || state.tags || "";
+            tabsState.currentTemplate = sessionData.templateContent || state.content || defaultText;
+            elements.promptArea.textContent = tabsState.currentTemplate;
+            tabsState.placeholderValues = sessionData.placeholderValues || result.placeholderValues || {};
+            tabsState.previewMode = sessionData.previewMode || state.previewMode || false;
+            tabsState.existingTabPlaceholders = sessionData.existingTabPlaceholders || [];
+            selectedTemplateName = sessionData.selectedTemplateName || state.selectedName || null;
+            editingTargetName = sessionData.editingTargetName || state.editingTargetName || selectedTemplateName || null;
         } else {
-            elements.templateName.value = state.name || getDefaultTemplateName();
+            // No session data - this is a new Chrome session, start with new template
+            // Don't restore selected template from localStorage
+            selectedTemplateName = null;
+            editingTargetName = null;
+            elements.templateName.value = getDefaultTemplateName();
+            elements.templateTags.value = "";
+            tabsState.currentTemplate = defaultText;
+            elements.promptArea.textContent = defaultText;
+            tabsState.placeholderValues = {};
+            tabsState.previewMode = false;
+            tabsState.existingTabPlaceholders = [];
         }
-        
-        elements.templateTags.value = state.tags || "";
-        tabsState.currentTemplate = state.content || defaultText;
-        elements.promptArea.textContent = tabsState.currentTemplate;
-        tabsState.placeholderValues = result.placeholderValues || {};
-        tabsState.previewMode = state.previewMode || false; // Restore preview mode state
 
         if (!isTagsInEditMode && (state.tags || selectedTemplateName)) {
             switchToTagsViewMode();
@@ -374,9 +514,11 @@ function initializeState() {
 
         elements.fetchBtn2.style.display = elements.promptArea.textContent ? "none" : "block";
         elements.clearPrompt.style.display = elements.promptArea.textContent ? "block" : "none";
-
         if (tabsState.currentTemplate) {
-            buildTabsFromTemplate(tabsState.currentTemplate);
+            // When loading a saved template, parse to get its existing placeholders
+            const { placeholders } = parsePlaceholders(tabsState.currentTemplate, false);
+            tabsState.existingTabPlaceholders = [...placeholders];
+            buildTabsFromTemplate(tabsState.currentTemplate, true); // Allow all placeholders on initial load
             renderPlaceholdersInTemplate(); // Re-render placeholders with saved values
 
             // Restore preview mode with transitions suppressed, then re-enable them
@@ -455,6 +597,7 @@ function initializeState() {
             });
             chrome.storage.local.set({ templates });
         }
+        });
     });
 }
 
@@ -482,7 +625,7 @@ function setupEventListeners() {
         elements.clearPrompt.style.display = "none";
         destroyTabs();
         saveState();
-        showToast("Prompt cleared. Press Ctrl+Z to undo.", 2000, "green", [], "clearPrompt");
+        showToast("Prompt cleared. Use Ctrl+Z/Cmd+Z to undo.", 3000, "info", [], "clearPrompt");
         // Move focus out of the editor so UI-level Ctrl+Z works immediately
         moveFocusOutOfEditor();
     });
@@ -507,6 +650,7 @@ function setupEventListeners() {
         originalTagsBeforeEdit = null;
         switchToTagsEditMode();
         destroyTabs();
+        tabsState.existingTabPlaceholders = []; // Clear existing tabs for new template
         buildTabsFromTemplate(tabsState.currentTemplate);
         elements.fetchBtn2.style.display = "block";
         elements.clearPrompt.style.display = "none";
@@ -515,7 +659,7 @@ function setupEventListeners() {
         updateSaveButtonState();
         updateDeleteButtonState();
         saveState();
-        showToast("All fields cleared. Press Ctrl+Z to undo.", 2000, "green", [], "clearAll");
+        showToast("All fields cleared. Use Ctrl+Z/Cmd+Z to undo.", 3000, "info", [], "clearAll");
     });
     
     elements.findBtn.addEventListener("click", () => {
@@ -612,6 +756,26 @@ function setupGlobalSearchListeners() {
             navigateToPreviousMatch();
         });
     }
+    
+    // Auto-save session when popup loses focus (tab switch, outside click)
+    // This preserves unsaved changes when user switches tabs or clicks outside
+    window.addEventListener('blur', () => {
+        // Save current state to session when window loses focus
+        saveToSession();
+    });
+    
+    // Also save when document visibility changes (tab switch)
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            // Save when tab becomes hidden
+            saveToSession();
+        }
+    });
+    
+    // Save before unload (popup closing naturally, not via X button)
+    window.addEventListener('beforeunload', () => {
+        saveToSession();
+    });
 }
 
 // Receive shortcut forwarded from host page (content script/background) to toggle finder
@@ -1605,6 +1769,9 @@ function saveState() {
         placeholderValues: tabsState.placeholderValues
     };
     chrome.storage.local.set(state);
+    
+    // Also save to session storage for persistence across reloads
+    saveToSession();
 }
 
 function storeLastState() {
@@ -1628,32 +1795,53 @@ function storeLastState() {
     };
 }
 
-// --- Toast Notification System ---
+// --- Toast Notification System (Top-right, non-blocking) ---
 
-function showToast(message, duration = 4000, type = "red", buttons = [], operationId) {
+/**
+ * Shows a toast notification (non-blocking, top-right)
+ * Use for: Success messages, informational updates
+ * @param {string} message - The message to display (can include <strong> for bold)
+ * @param {number} duration - Auto-dismiss duration in ms (default: 4000, range: 3000-5000)
+ * @param {string} type - Type: 'success', 'error', 'warning', 'info', or legacy 'green', 'red', 'gray'
+ * @param {string} operationId - Operation identifier for throttling
+ */
+function showToast(message, duration = 4000, type = "error", buttons = [], operationId) {
+    // Legacy support: if buttons array is provided, redirect to showModal
+    if (buttons && buttons.length > 0) {
+        // Convert to modal - determine modal type based on type parameter or message content
+        const modalType = (type === "warning" || message.toLowerCase().includes("warning")) ? "warning" : "error";
+        showModal(message, buttons, modalType);
+        return;
+    }
+
     const toastKey = `${message}|${operationId}`;
     const now = Date.now();
+    
     // Determine undo eligibility up front from message text
-    const undoEligible = message.includes("Press Ctrl+Z to undo");
+    const undoEligible = message.includes("Ctrl+Z") || message.includes("Cmd+Z") || message.includes("undo");
+    
     // Throttle only non-undo toasts; allow consecutive undo-eligible toasts
-    if (!undoEligible && buttons.length === 0 && toastTimestamps[toastKey] && now - toastTimestamps[toastKey] < 1010) {
+    if (!undoEligible && toastTimestamps[toastKey] && now - toastTimestamps[toastKey] < 1010) {
         return;
     }
     toastTimestamps[toastKey] = now;
-    if (operationId !== currentOperationId) {
+    
+    // If operation changed, clear queue and close current toast
+    if (operationId && operationId !== currentOperationId) {
         if (isToastShowing) {
             closeToast();
         }
         toastQueue = [];
         currentOperationId = operationId;
     }
-    if (operationId === currentOperationId) {
-        // Use computed undoEligible to flag the toast
-        const isUndoEligible = undoEligible;
-        toastQueue.push({ message, duration, type, buttons, operationId, isUndoEligible });
-        if (!isToastShowing) {
-            displayNextToast();
-        }
+    
+    // Queue the toast
+    const isUndoEligible = undoEligible;
+    toastQueue.push({ message, duration, type, isUndoEligible });
+    
+    // Display immediately if no toast is showing
+    if (!isToastShowing) {
+        displayNextToast();
     }
 }
 
@@ -1661,100 +1849,228 @@ function closeToast(onClose) {
     clearTimeout(autoHideTimeout);
     autoHideTimeout = null;
     clearTimeout(nextToastTimeout);
-    if (outsideClickListener) {
-        document.removeEventListener("click", outsideClickListener);
-        outsideClickListener = null;
-    }
+    
     elements.toast.classList.remove("show");
-    elements.toast.classList.add("hide");
-    elements.toastOverlay.style.display = "none";
+    elements.toast.classList.remove("ps-show");
+    elements.toast.classList.add("ps-hide");
     
     // Clear undo availability when toast closes
     isUndoToastVisible = false;
     
     setTimeout(() => {
         elements.toast.classList.remove("hide");
+        elements.toast.classList.remove("ps-hide");
         elements.toast.innerHTML = "";
         isToastShowing = false;
         if (onClose) onClose();
         nextToastTimeout = setTimeout(displayNextToast, 10);
-    }, 10);
+    }, 300); // Match CSS transition duration
 }
 
 function displayNextToast() {
-    // If a toast is already visible, don't touch the flags or try to show another
     if (isToastShowing) return;
     if (toastQueue.length === 0) return;
 
     clearTimeout(autoHideTimeout);
     isToastShowing = true;
 
-    const { message, duration, type, buttons, isUndoEligible } = toastQueue.shift();
+    const { message, duration, type, isUndoEligible } = toastQueue.shift();
 
     // Set undo availability based on toast content
     isUndoToastVisible = !!isUndoEligible;
 
-    elements.toast.innerHTML = message;
+    // Clear any existing content
+    elements.toast.innerHTML = "";
 
+    // Create content wrapper (for message, separate from close button)
+    const contentWrapper = document.createElement("div");
+    contentWrapper.className = `toast-content-wrapper ${type}`;
+    
+    // Create message content
+    const messageEl = document.createElement("div");
+    messageEl.innerHTML = message;
+    contentWrapper.appendChild(messageEl);
+    elements.toast.appendChild(contentWrapper);
+
+    // Create close button (always visible)
     const closeBtn = document.createElement("button");
     closeBtn.textContent = "×";
     closeBtn.className = "toast-close-btn";
-    closeBtn.setAttribute("aria-label", "Close toast");
+    closeBtn.setAttribute("aria-label", "Close notification");
     closeBtn.addEventListener("click", (event) => {
         event.stopPropagation();
         closeToast();
     });
     elements.toast.appendChild(closeBtn);
 
+    // Auto-dismiss after duration (3-5 seconds as per guidelines)
+    const safeDuration = Math.max(3000, Math.min(5000, duration));
+    autoHideTimeout = setTimeout(() => closeToast(), safeDuration);
+
+    // Apply type class and show
+    elements.toast.className = `ps-toast ${type}`;
+    // Force reflow to ensure transition works
+    void elements.toast.offsetHeight;
+    elements.toast.classList.add("ps-show");
+}
+
+// --- Modal Notification System (Center, blocking) ---
+
+/**
+ * Shows a modal notification (blocking, centered)
+ * Use for: Warnings, errors requiring decisions
+ * @param {string} message - The message to display
+ * @param {Array} buttons - Array of {text, callback, type} objects
+ *   type can be: 'save', 'delete', 'confirm', 'ok' (primary) or 'cancel', 'discard', 'no' (secondary)
+ * @param {string} modalType - 'warning' or 'error'
+ */
+function showModal(message, buttons = [], modalType = "warning") {
+    if (isModalShowing) {
+        closeModal();
+    }
+
+    isModalShowing = true;
+    
+    // Store modal type for button styling
+    const currentModalType = modalType;
+
+    // Create content wrapper (for message, separate from buttons)
+    const contentWrapper = document.createElement("div");
+    contentWrapper.className = "modal-content-wrapper";
+    
+    // Create message content
+    const messageEl = document.createElement("div");
+    messageEl.innerHTML = message;
+    contentWrapper.appendChild(messageEl);
+    elements.modalNotification.appendChild(contentWrapper);
+
+    // Create close button
+    const closeBtn = document.createElement("button");
+    closeBtn.textContent = "×";
+    closeBtn.className = "modal-close-btn";
+    closeBtn.setAttribute("aria-label", "Close");
+    closeBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        // Find cancel/no button callback
+        const cancelBtn = buttons.find(b => 
+            b.text.toLowerCase() === 'cancel' || 
+            b.text.toLowerCase() === 'no' || 
+            b.text.toLowerCase() === 'discard'
+        );
+        closeModal(cancelBtn?.callback);
+    });
+    elements.modalNotification.appendChild(closeBtn);
+
+    // Create button container (outside content wrapper, justified end)
     if (buttons.length > 0) {
         const buttonContainer = document.createElement("div");
-        buttonContainer.className = "toast-button-container";
-        buttons.forEach(({ text, callback }) => {
+        buttonContainer.className = "modal-button-container";
+        
+        buttons.forEach(({ text, callback, type: btnType }) => {
             const btn = document.createElement("button");
             btn.textContent = text;
-            btn.className = "toast-action-btn";
-            btn.setAttribute("aria-label", text === "Yes" ? "Confirm action" : "Cancel action");
+            
+            // Determine button style based on text or explicit type
+            const lowerText = text.toLowerCase();
+            const isPrimary = btnType === 'primary' || 
+                lowerText === 'save' || lowerText === 'delete' || 
+                lowerText === 'confirm' || lowerText === 'yes' || lowerText === 'ok' || 
+                lowerText === 'close without saving';
+            
+            if (isPrimary) {
+                btn.className = "modal-primary-btn";
+                // Add specific class for color based on modal type and button text
+                if (lowerText === 'save') btn.classList.add('save');
+                else if (lowerText === 'delete' || lowerText === 'confirm' || lowerText === 'yes') btn.classList.add('confirm');
+                else if (lowerText === 'ok' && currentModalType === 'error') btn.classList.add('confirm'); // Red OK for error modals
+                else if (lowerText === 'ok') btn.classList.add('ok');
+                else if (lowerText === 'close without saving' && currentModalType === 'warning') btn.classList.add('save'); // Amber for warning modals
+                else btn.classList.add('ok'); // Default for other primary buttons
+            } else {
+                btn.className = "modal-secondary-btn";
+            }
+            
+            btn.setAttribute("aria-label", text);
+            btn.setAttribute("data-text", lowerText);
             btn.addEventListener("click", (event) => {
                 event.stopPropagation();
-                closeToast(callback);
+                closeModal(callback);
             });
             buttonContainer.appendChild(btn);
         });
-        elements.toast.appendChild(buttonContainer);
-        elements.toastOverlay.style.display = "block";
-        outsideClickListener = (event) => {
-            if (!elements.toast.contains(event.target)) {
-                closeToast(buttons.find(b => b.text === "No")?.callback);
-            }
-        };
-        setTimeout(() => document.addEventListener("click", outsideClickListener), 50);
-    } else {
-        autoHideTimeout = setTimeout(() => closeToast(), duration);
+        
+        elements.modalNotification.appendChild(buttonContainer);
     }
 
-    elements.toast.className = `toast ${type} ${buttons.length > 0 ? 'confirmation' : ''}`;
-    elements.toast.classList.add("show");
+    // Show overlay
+    elements.modalOverlay.style.display = "block";
+    requestAnimationFrame(() => {
+        elements.modalOverlay.classList.add("show");
+    });
+
+    // Apply type class and show modal
+    elements.modalNotification.className = `ps-modal ${modalType}`;
+    requestAnimationFrame(() => {
+        elements.modalNotification.classList.add("ps-show");
+    });
+
+    // Handle overlay click to close
+    const overlayClickHandler = (event) => {
+        if (event.target === elements.modalOverlay) {
+            const cancelBtn = buttons.find(b => 
+                b.text.toLowerCase() === 'cancel' || 
+                b.text.toLowerCase() === 'no' || 
+                b.text.toLowerCase() === 'discard'
+            );
+            closeModal(cancelBtn?.callback);
+        }
+    };
+    elements.modalOverlay.addEventListener("click", overlayClickHandler);
+    modalCloseCallback = overlayClickHandler;
+}
+
+function closeModal(onClose) {
+    if (!isModalShowing) return;
+
+    // Remove overlay click listener
+    if (modalCloseCallback) {
+        elements.modalOverlay.removeEventListener("click", modalCloseCallback);
+        modalCloseCallback = null;
+    }
+
+    elements.modalNotification.classList.remove("show");
+    elements.modalNotification.classList.remove("ps-show");
+    elements.modalNotification.classList.add("ps-hide");
+    elements.modalOverlay.classList.remove("show");
+
+    setTimeout(() => {
+        elements.modalNotification.classList.remove("ps-hide");
+        elements.modalNotification.innerHTML = "";
+        elements.modalOverlay.style.display = "none";
+        isModalShowing = false;
+        if (onClose) onClose();
+    }, 300); // Match CSS transition duration
 }
 
 // --- Template and Data Management ---
 
 function saveTemplates(templates, callback, isNewTemplate) {
     const timeout = setTimeout(() => {
-        showToast("Operation timed out. Please try again.", 5000, "red", [], "save");
+        showToast("Operation timed out. Please try again.", 5000, "error", [], "save");
     }, 5000);
     chrome.storage.local.set({ templates }, () => {
         clearTimeout(timeout);
         if (chrome.runtime.lastError) {
-            const msg = chrome.runtime.lastError.message.includes("QUOTA") ? "Storage limit exceeded." : "Failed to save.";
-            showToast(msg, 5000, "red", [], "save");
+            const msg = chrome.runtime.lastError.message.includes("QUOTA") ? "<strong>Storage limit exceeded.</strong>" : "<strong>Failed to save.</strong>";
+            showToast(msg, 5000, "error", [], "save");
             console.error("Local storage error:", chrome.runtime.lastError.message);
         } else {
             callback();
-            showToast(isNewTemplate ? "Template saved. Press Ctrl+Z to undo." : "Template updated. Press Ctrl+Z to undo.", 3000, "green", [], "save");
+            showToast(isNewTemplate ? "Template saved. Use Ctrl+Z/Cmd+Z to undo." : "Template updated. Use Ctrl+Z/Cmd+Z to undo.", 3000, "success", [], "save");
             chrome.storage.local.get(null, (items) => {
                 const totalSizeInBytes = new TextEncoder().encode(JSON.stringify(items)).length;
                 if (totalSizeInBytes > 0.9 * (10 * 1024 * 1024)) {
-                    showToast("Warning: Storage is nearly full.", 5000, "red", [], "save");
+                    showToast("Warning: Storage is nearly full.", 5000, "warning", [], "save");
                 }
             });
         }
@@ -1894,72 +2210,120 @@ function renderFavoriteSuggestions(favorites) {
 }
 
 function loadTemplateFromSelection(tmpl) {
+    // Save current template's unsaved changes before switching (if any)
+    // IMPORTANT: Do this BEFORE changing selectedTemplateName
+    if (selectedTemplateName || elements.promptArea.textContent.trim()) {
+        saveToSession(); // Save with the current template name before switching
+    }
+    
+    // Now switch to the new template
     // New template context: bump serial to isolate undo stacks
     contextSerial++;
-    selectedTemplateName = tmpl.name;
-    editingTargetName = tmpl.name;
-    elements.templateName.value = tmpl.name;
-    updateExportSingleBtnState();
-    const tagsArray = Array.isArray(tmpl.tags) ? tmpl.tags : [];
-    elements.templateTags.value = tagsArray.join(", ");
-    // Reset name/tags undo-redo stacks for the newly selected template
-    try {
-        nameUndoStack = [];
-        nameRedoStack = [];
-        nameLastSnapshot = elements.templateName.value || '';
-        nameLastCaret = 0;
-        nameStackContextSerial = contextSerial;
+    
+    // Check if this template has unsaved changes in session storage
+    const sessionKey = `unsaved_${tmpl.name}`;
+    chrome.storage.session.get([sessionKey], (result) => {
+        const sessionData = result[sessionKey];
+        
+        if (sessionData && sessionData.timestamp) {
+            // This template has unsaved changes - restore them
+            selectedTemplateName = sessionData.selectedTemplateName || tmpl.name;
+            editingTargetName = sessionData.editingTargetName || tmpl.name;
+            elements.templateName.value = sessionData.templateName || tmpl.name;
+            const tagsArray = Array.isArray(tmpl.tags) ? tmpl.tags : [];
+            elements.templateTags.value = sessionData.templateTags || tagsArray.join(", ");
+            tabsState.currentTemplate = sessionData.templateContent || tmpl.content;
+            elements.promptArea.textContent = tabsState.currentTemplate;
+            tabsState.placeholderValues = sessionData.placeholderValues || {};
+            tabsState.existingTabPlaceholders = sessionData.existingTabPlaceholders || [];
+            tabsState.previewMode = sessionData.previewMode || false;
+            
+            // Update the current session key
+            chrome.storage.session.set({ currentSessionKey: sessionKey });
+        } else {
+            // No unsaved changes - load the clean template
+            selectedTemplateName = tmpl.name;
+            editingTargetName = tmpl.name;
+            elements.templateName.value = tmpl.name;
+            const tagsArray = Array.isArray(tmpl.tags) ? tmpl.tags : [];
+            elements.templateTags.value = tagsArray.join(", ");
+            tabsState.currentTemplate = tmpl.content; // Set the raw template content
+            elements.promptArea.textContent = tmpl.content;
+            tabsState.placeholderValues = {}; // Clear placeholder values for the new template
+            
+            // Update the current session key
+            chrome.storage.session.set({ currentSessionKey: sessionKey });
+        }
+        
+        updateExportSingleBtnState();
+        // Reset name/tags undo-redo stacks for the newly selected template
+        try {
+            nameUndoStack = [];
+            nameRedoStack = [];
+            nameLastSnapshot = elements.templateName.value || '';
+            nameLastCaret = 0;
+            nameStackContextSerial = contextSerial;
 
-        tagsUndoStack = [];
-        tagsRedoStack = [];
-        tagsLastSnapshot = elements.templateTags.value || '';
-        tagsLastCaret = 0;
-        tagsStackContextSerial = contextSerial;
-    } catch (_) {}
-    if (tagsArray.length > 0) {
-        switchToTagsViewMode();
-    } else {
-        switchToTagsEditMode();
-    }
-    tabsState.currentTemplate = tmpl.content; // Set the raw template content
-    elements.promptArea.textContent = tmpl.content;
-    // Reset scroll to top when switching templates
-    try { elements.promptArea.scrollTop = 0; } catch (_) {}
-    // When switching templates, exit preview mode and hide preview UI
-    tabsState.previewMode = false;
-    const previewTabItem = document.getElementById('preview-tab-item');
-    const previewPanel = document.getElementById('preview-panel');
-    if (previewTabItem) previewTabItem.style.display = 'none';
-    if (previewPanel) {
-        previewPanel.classList.remove('active', 'show');
-        previewPanel.classList.add('fade');
-    }
-    if (elements.previewArea) elements.previewArea.innerHTML = '';
-    // Reset editor undo/redo stacks to this template's content to avoid undoing into previous screens
-    editorUndoStack = [];
-    editorRedoStack = [];
-    editorLastSnapshot = tmpl.content || '';
-    editorLastCaret = 0;
-    tabsState.placeholderValues = {}; // Clear placeholder values for the new template
-    const templateTabButton = document.getElementById('template-tab');
-    if (templateTabButton) {
-        new bootstrap.Tab(templateTabButton).show();
-    }
-    // Ensure both editors start at top after building tabs
-    try { elements.promptArea.scrollTop = 0; } catch (_) {}
-    try { if (elements.previewArea) elements.previewArea.scrollTop = 0; } catch (_) {}
-    buildTabsFromTemplate(tmpl.content);
-    renderPlaceholdersInTemplate(); // Ensure styles are applied
-    elements.searchBox.value = "";
-    elements.clearSearch.style.display = "none";
-    elements.searchOverlay.style.display = 'none';
-    elements.dropdownResults.classList.remove("show");
-    elements.fetchBtn2.style.display = "none";
-    updateClearButtonState();
-    updateSaveButtonState();
-    updateDeleteButtonState();
-    saveState();
-    elements.promptArea.focus();
+            tagsUndoStack = [];
+            tagsRedoStack = [];
+            tagsLastSnapshot = elements.templateTags.value || '';
+            tagsLastCaret = 0;
+            tagsStackContextSerial = contextSerial;
+        } catch (_) {}
+        
+        const tags = elements.templateTags.value || '';
+        if (tags) {
+            switchToTagsViewMode();
+        } else {
+            switchToTagsEditMode();
+        }
+        
+        // Reset scroll to top when switching templates
+        try { elements.promptArea.scrollTop = 0; } catch (_) {}
+        // When switching templates, exit preview mode and hide preview UI
+        if (!tabsState.previewMode) {
+            const previewTabItem = document.getElementById('preview-tab-item');
+            const previewPanel = document.getElementById('preview-panel');
+            if (previewTabItem) previewTabItem.style.display = 'none';
+            if (previewPanel) {
+                previewPanel.classList.remove('active', 'show');
+                previewPanel.classList.add('fade');
+            }
+            if (elements.previewArea) elements.previewArea.innerHTML = '';
+        }
+        
+        // Reset editor undo/redo stacks
+        editorUndoStack = [];
+        editorRedoStack = [];
+        editorLastSnapshot = tabsState.currentTemplate || '';
+        editorLastCaret = 0;
+        
+        const templateTabButton = document.getElementById('template-tab');
+        if (templateTabButton) {
+            new bootstrap.Tab(templateTabButton).show();
+        }
+        
+        // Ensure both editors start at top after building tabs
+        try { elements.promptArea.scrollTop = 0; } catch (_) {}
+        try { if (elements.previewArea) elements.previewArea.scrollTop = 0; } catch (_) {}
+        
+        // When loading a template, get its placeholders and set them as existing tabs
+        const { placeholders: loadedPlaceholders } = parsePlaceholders(tabsState.currentTemplate, false);
+        tabsState.existingTabPlaceholders = [...loadedPlaceholders];
+        buildTabsFromTemplate(tabsState.currentTemplate, true); // Allow all placeholders from the loaded template
+        renderPlaceholdersInTemplate(); // Ensure styles are applied
+        
+        elements.searchBox.value = "";
+        elements.clearSearch.style.display = "none";
+        elements.searchOverlay.style.display = 'none';
+        elements.dropdownResults.classList.remove("show");
+        elements.fetchBtn2.style.display = "none";
+        updateClearButtonState();
+        updateSaveButtonState();
+        updateDeleteButtonState();
+        saveState();
+        elements.promptArea.focus();
+    }); // Close the chrome.storage.session.get callback
 }
 
 function updateRecentIndices(index) {
@@ -2050,10 +2414,16 @@ function setupTabSlider() {
     updateArrows(); // Initial check
 }
 
-function buildTabsFromTemplate(templateContent) {
-    const { placeholders } = parsePlaceholders(templateContent);
+function buildTabsFromTemplate(templateContent, isFromSave = false) {
+    // When not saving, only build tabs for placeholders that already exist as tabs
+    const { placeholders } = parsePlaceholders(templateContent, !isFromSave);
     tabsState.placeholders = placeholders;
     tabsState.currentTemplate = templateContent;
+    
+    // Update existing tab placeholders list if this is from a save operation
+    if (isFromSave) {
+        tabsState.existingTabPlaceholders = [...placeholders];
+    }
 
     const tabsList = document.getElementById("editorTabs");
     const tabPanels = document.getElementById("tabPanels");
@@ -2237,7 +2607,8 @@ function renderPlaceholdersInTemplate() {
 
     // Create a document fragment to safely build the content
     const fragment = document.createDocumentFragment();
-    const { placeholderPositions } = parsePlaceholders(tabsState.currentTemplate);
+    // Only parse and style placeholders that have existing tabs
+    const { placeholderPositions } = parsePlaceholders(tabsState.currentTemplate, true);
     
     let lastIndex = 0;
     const allPositions = [];
@@ -2302,7 +2673,10 @@ function renderPlaceholdersInTemplate() {
             e.preventDefault();
             e.stopPropagation();
             const placeholderType = e.target.getAttribute('data-type');
-            if (placeholderType) switchToPlaceholderTab(placeholderType);
+            // Only switch to tab if it exists
+            if (placeholderType && tabsState.existingTabPlaceholders.includes(placeholderType)) {
+                switchToPlaceholderTab(placeholderType);
+            }
         });
         element.setAttribute('contenteditable', 'false');
     });
@@ -2311,6 +2685,10 @@ function renderPlaceholdersInTemplate() {
 
 function updatePlaceholder(type, value) {
     tabsState.placeholderValues[type] = value;
+    
+    // Save to session on placeholder value change
+    saveToSession();
+    
     const textarea = document.getElementById(`placeholder-${type.replace(/\s+/g, '-').toLowerCase()}-textarea`);
     if (textarea && textarea.value !== value) {
         const start = textarea.selectionStart;
@@ -2342,10 +2720,33 @@ function updateTabTitle(placeholder, hasValue) {
     }
 }
 
+function switchToPlaceholderTab(placeholder) {
+    // Exit preview mode if we're in it
+    if (tabsState.previewMode) {
+        togglePreviewTab(false);
+    }
+    
+    // Construct the tab ID and switch to it
+    const tabId = `placeholder-${placeholder.replace(/\s+/g, '-').toLowerCase()}`;
+    const tabButton = document.getElementById(tabId);
+    
+    if (tabButton) {
+        new bootstrap.Tab(tabButton).show();
+        
+        // Focus the textarea in the placeholder tab
+        const textareaId = `${tabId}-textarea`;
+        const textarea = document.getElementById(textareaId);
+        if (textarea) {
+            setTimeout(() => textarea.focus(), 100);
+        }
+    }
+}
+
 function generatePreviewContent() {
     if (!tabsState.currentTemplate) return '';
     
-    const { placeholderPositions } = parsePlaceholders(tabsState.currentTemplate);
+    // For preview, only show placeholders that have tabs
+    const { placeholderPositions } = parsePlaceholders(tabsState.currentTemplate, true);
     let htmlContent = tabsState.currentTemplate;
     
     const allPositions = [];
@@ -2397,9 +2798,10 @@ function updatePreviewArea() {
         // Only update preview content if we're in preview mode or have placeholders
         if (tabsState.previewMode && tabsState.currentTemplate) {
             elements.previewArea.innerHTML = generatePreviewContent();
-            // Keep placeholder styling in preview (CSS handles cursor)
+            // Keep placeholder styling in preview but don't make them clickable
             elements.previewArea.querySelectorAll('.placeholder-marker').forEach(element => {
                 element.setAttribute('contenteditable', 'false');
+                // No click handler - placeholders in preview mode are just for viewing
             });
             // If Finder is open, render highlights for the Preview panel
             try {
@@ -2468,8 +2870,9 @@ function getPreviewTextContent() {
     
     let previewContent = tabsState.currentTemplate;
     
-    // Replace all placeholders with their values (plain text, no HTML)
-    Object.entries(tabsState.placeholderValues).forEach(([placeholder, value]) => {
+    // Only replace placeholders that have tabs (plain text, no HTML)
+    tabsState.existingTabPlaceholders.forEach(placeholder => {
+        const value = tabsState.placeholderValues[placeholder];
         if (value && value.trim()) {
             const placeholderRegex = new RegExp(`\\{\\{\\s*${placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\}\\}`, 'g');
             previewContent = previewContent.replace(placeholderRegex, value);
@@ -2738,19 +3141,19 @@ function validateTagsInput() {
   
       // Validate tag count
       if (tags.length > 5) {
-        showToast("Maximum of 5 tags allowed per template.", 3000, "red", [], "tagsLength");
+        showToast("Maximum of 5 tags allowed per template.", 4000, "error", [], "tagsLength");
         value = tags.slice(0, 5).join(", ");
       }
   
       // Validate and sanitize tags
       if (tags.some(tag => tag.length > 20)) {
-        showToast("Each tag must be 20 characters or less.", 3000, "red", [], "tagLength");
+        showToast("Each tag must be 20 characters or fewer.", 4000, "error", [], "tagLength");
       }
       const trimmedTags = tags.map(tag => tag.slice(0, 20));
   
       const sanitizedTags = trimmedTags.map(tag => tag.replace(/[^a-zA-Z0-9-_.@\s]/g, ""));
       if (sanitizedTags.some((tag, i) => tag !== trimmedTags[i])) {
-        showToast("Each tag must contain only letters, numbers, underscores(_), hyphens(-), periods(.), at(@), or spaces.", 3000, "red", [], "tagChar");
+        showToast("Each tag can include only letters, numbers, underscores (_), hyphens (-), periods (.), at (@), or spaces.", 4000, "error", [], "tagChar");
       }
   
       // Update input value with sanitized tags
@@ -2769,12 +3172,22 @@ function validateTemplateNameInput() {
 
 function handleNewTemplate(options = {}) {
     const { skipStore = false, suppressToast = false, skipSaveState = false } = options;
+    
+    // Save current template's unsaved changes before creating new
+    // IMPORTANT: Do this BEFORE changing selectedTemplateName
+    if (selectedTemplateName || elements.promptArea.textContent.trim()) {
+        saveToSession(); // Save with the current template name before switching
+    }
+    
     if (!skipStore) storeLastState();
     // New template context: bump serial to isolate undo stacks
     contextSerial++;
     selectedTemplateName = null;
     editingTargetName = null;
     originalTagsBeforeEdit = null;
+    
+    // Update the current session key to draft mode
+    chrome.storage.session.set({ currentSessionKey: 'unsaved_draft' });
     elements.templateName.value = getDefaultTemplateName();
     elements.templateTags.value = "";
     const defaultContent = `# Your Role\n*\n\n# Background Information\n*\n\n# Your Task\n*`;
@@ -2815,6 +3228,7 @@ function handleNewTemplate(options = {}) {
     // Reset preview mode before destroying tabs
     tabsState.previewMode = false;
     destroyTabs();
+    tabsState.existingTabPlaceholders = []; // Clear existing tabs for new template
     buildTabsFromTemplate(defaultContent); // Build tabs from the default content
     // Ensure scroll stays at the top after layout updates
     try { elements.promptArea.scrollTop = 0; } catch (_) {}
@@ -2824,7 +3238,7 @@ function handleNewTemplate(options = {}) {
         saveState();
     }
     if (!suppressToast) {
-        showToast("New template created.", 2000, "green", [], "new");
+        showToast("New template created.", 3000, "success", [], "new");
     }
 }
 
@@ -2851,7 +3265,7 @@ function handleSaveTemplate() {
         // Use the raw content with placeholder tokens restored from the editor
         let content = getContentWithPlaceholders();
         if (!content.trim()) {
-            showToast("Prompt content is required.", 3000, "red", [], "save");
+            showToast("Prompt content is required.", 3000, "error", [], "save");
             elements.promptArea.focus();
             return;
         }
@@ -2869,7 +3283,7 @@ function handleSaveTemplate() {
                 content !== template.content ||
                 hasPlaceholderValuesAll;
             if (!isEdited) {
-                showToast("No changes to save.", 3000, "red", [], "save");
+                showToast("No changes to save.", 3000, "info", [], "save");
                 return;
             }
         }
@@ -2916,12 +3330,14 @@ function handleSaveTemplate() {
                 selectedTemplateName = name;
                 editingTargetName = name;
                 
+                // Clear session data after successful save
+                clearSessionForTemplate(name);
+                
                 // Update UI with raw content (placeholders retained)
                 tabsState.currentTemplate = content;
                 elements.promptArea.textContent = content;
-                // Reset placeholder values after SAVE for reusability
-                tabsState.placeholderValues = {};
-                buildTabsFromTemplate(content);
+                // Keep placeholder values after SAVE (no longer reset)
+                buildTabsFromTemplate(content, true); // isFromSave = true
                 
                 loadTemplates();
                 saveState();
@@ -2930,27 +3346,8 @@ function handleSaveTemplate() {
                 updateDeleteButtonState();
             }, isNewTemplate);
         };
-        const hasNoTags = tags.length === 0;
-        const proceedAfterTagsCheck = () => {
-            if (hasNoTags) {
-                showToast("⚠️ No tags added. Save template?", 0, "red", [
-                    { text: "Yes", callback: saveAction },
-                    { text: "No", callback: () => elements.templateTags.focus() }
-                ], "save-no-tags");
-            } else {
-                saveAction();
-            }
-        };
-
-        // If user has filled placeholder values, warn that saving will reset them to placeholders
-        if (hasPlaceholderValuesAll) {
-            showToast("Saving will reset values to placeholders. Use ‘Save As’ to keep them. Do you want to proceed?.", 0, "red", [
-                { text: "Yes", callback: proceedAfterTagsCheck },
-                { text: "No", callback: () => {} }
-            ], "save-ph-reset");
-        } else {
-            proceedAfterTagsCheck();
-        }
+        // Directly save without warnings
+        saveAction();
     });
 }
 
@@ -2965,7 +3362,7 @@ function handleSaveAsTemplate() {
 
         let content = getContentWithPlaceholders();
         if (!content.trim()) {
-            showToast("Prompt content is required.", 3000, "red", [], "saveAs");
+            showToast("Prompt content is required.", 3000, "error", [], "saveAs");
             elements.promptArea.focus();
             return;
         }
@@ -3015,6 +3412,10 @@ function handleSaveAsTemplate() {
                 // to preserve editor undo history and current UI edits.
                 selectedTemplateName = name;
                 editingTargetName = name;
+                
+                // Clear session data after successful save as
+                clearSessionForTemplate(name);
+                
                 loadTemplates();
                 // Update the editor to the value-filled content and rebuild tabs (placeholders removed)
                 try {
@@ -3022,7 +3423,7 @@ function handleSaveAsTemplate() {
                     tabsState.currentTemplate = contentWithValues;
                     elements.promptArea.textContent = contentWithValues;
                     destroyTabs();
-                    buildTabsFromTemplate(contentWithValues);
+                    buildTabsFromTemplate(contentWithValues, true); // isFromSave = true
                     renderPlaceholdersInTemplate();
                     elements.fetchBtn2.style.display = elements.promptArea.textContent.trim() ? "none" : "block";
                     updateClearButtonState();
@@ -3041,10 +3442,14 @@ function handleSaveAsTemplate() {
 
         const hasNoTags = tags.length === 0;
         if (hasNoTags) {
-            showToast("⚠️ No tags provided. Save without tags?", 0, "red", [
-                { text: "Yes", callback: saveAction },
-                { text: "No", callback: () => elements.templateTags.focus() }
-            ], "saveAs-no-tags");
+            showModal(
+                "No tags have been added. Confirm saving this template without tags.",
+                [
+                    { text: "Cancel", callback: () => elements.templateTags.focus() },
+                    { text: "Save", callback: saveAction }
+                ],
+                "warning"
+            );
         } else {
             saveAction();
         }
@@ -3053,7 +3458,7 @@ function handleSaveAsTemplate() {
 
 function handleDeleteTemplate() {
     if (!selectedTemplateName) {
-        showToast("Please select a template to delete.", 3000, "red", [], "delete");
+        showToast("Please select a template to delete.", 3000, "error", [], "delete");
         return;
     }
     chrome.storage.local.get(["templates", "recentIndices"], (result) => {
@@ -3061,45 +3466,49 @@ function handleDeleteTemplate() {
         const storedRecentIndices = result.recentIndices || [];
         const template = templates.find(t => t.name === selectedTemplateName);
         if (!template) {
-            showToast("Template not found.", 3000, "red", [], "delete");
+            showToast("Template not found.", 3000, "error", [], "delete");
             return;
         }
         if (template.type === "pre-built") {
-            showToast("Cannot delete a default template.", 3000, "red", [], "delete");
+            showToast("Cannot delete a default template.", 3000, "error", [], "delete");
             return;
         }
 
-        showToast(
-            `Are you sure you want to delete "${selectedTemplateName}"?`,
-            0, "red",
-            [{ text: "Yes", callback: () => {
-                const templateIndex = templates.findIndex(t => t.name === selectedTemplateName);
-                const deletedTemplate = templates[templateIndex] ? { ...templates[templateIndex] } : null;
-                
-                storeLastState();
-                if (lastState) {
-                    lastState.actionType = 'delete';
-                    lastState.templates = deepClone(templates);
-                    lastState.recentIndicesSnapshot = [...storedRecentIndices];
-                    lastState.nextIndexSnapshot = nextIndex;
-                    lastState.deletedTemplate = deletedTemplate;
-                }
-                const deletedIndex = templates[templateIndex].index;
-                templates.splice(templateIndex, 1);
-                const updatedRecentIndices = storedRecentIndices.filter(idx => idx !== deletedIndex);
-                
-                chrome.storage.local.set({ templates, recentIndices: updatedRecentIndices }, () => {
-                    if (chrome.runtime.lastError) {
-                        showToast("Failed to delete.", 3000, "red", [], "delete");
-                    } else {
-                        if (lastState && deletedTemplate) {
-                            lastState.selectedName = deletedTemplate.name;
-                        }
-                        // Update global variables to match storage
-                        recentIndices = updatedRecentIndices;
-                        
-                        handleNewTemplate({ skipStore: true, suppressToast: true, skipSaveState: true });
-                        showToast("Template deleted. Press Ctrl+Z to undo.", 3000, "green", [], "delete");
+        showModal(
+            `<strong>Confirm deletion</strong><br><br>Deleting '${selectedTemplateName}' is permanent. You cannot undo this action.`,
+            [
+                { text: "Cancel", callback: () => {} },
+                { text: "Delete", callback: () => {
+                    const templateIndex = templates.findIndex(t => t.name === selectedTemplateName);
+                    const deletedTemplate = templates[templateIndex] ? { ...templates[templateIndex] } : null;
+                    
+                    storeLastState();
+                    if (lastState) {
+                        lastState.actionType = 'delete';
+                        lastState.templates = deepClone(templates);
+                        lastState.recentIndicesSnapshot = [...storedRecentIndices];
+                        lastState.nextIndexSnapshot = nextIndex;
+                        lastState.deletedTemplate = deletedTemplate;
+                    }
+                    const deletedIndex = templates[templateIndex].index;
+                    templates.splice(templateIndex, 1);
+                    const updatedRecentIndices = storedRecentIndices.filter(idx => idx !== deletedIndex);
+                    
+                    chrome.storage.local.set({ templates, recentIndices: updatedRecentIndices }, () => {
+                        if (chrome.runtime.lastError) {
+                            showToast("Failed to delete.", 3000, "error", [], "delete");
+                        } else {
+                            if (lastState && deletedTemplate) {
+                                lastState.selectedName = deletedTemplate.name;
+                            }
+                            // Update global variables to match storage
+                            recentIndices = updatedRecentIndices;
+                            
+                            // Clear session data for the deleted template
+                            clearSessionForTemplate(deletedTemplate.name);
+                            
+                            handleNewTemplate({ skipStore: true, suppressToast: true, skipSaveState: true });
+                            showToast("Template deleted.", 3000, "success", [], "delete");
                         // Ensure focus is moved out of all inputs immediately
                         setTimeout(() => {
                             moveFocusOutOfEditor();
@@ -3112,9 +3521,10 @@ function handleDeleteTemplate() {
                         }, 0);
                     }
                 });
-            }},
-            { text: "No", callback: () => {} }
-            ], "delete-confirm");
+                }}
+            ],
+            "warning"
+        );
     });
 }
 
@@ -3141,8 +3551,9 @@ function processFetchedContent(fetchedPrompt) {
     tabsState.currentTemplate = fetchedPrompt;
     elements.promptArea.textContent = fetchedPrompt;
     
-    // Rebuild tabs from the new content
+    // Rebuild tabs from the new content - don't create new tabs until saved
     destroyTabs();
+    // Keep existing tab placeholders, don't add new ones from fetched content
     buildTabsFromTemplate(fetchedPrompt);
     renderPlaceholdersInTemplate();
     
@@ -3169,13 +3580,13 @@ function handleFetchPrompt() {
                     if (res && res.prompt) {
                         processFetchedContent(res.prompt);
                     } else {
-                        showToast("No text found.", 3000, "red", [], "fetch");
+                        showToast("No text found.", 3000, "error", [], "fetch");
                     }
                 });
             } else if (response && response.prompt) {
                 processFetchedContent(response.prompt);
             } else {
-                showToast("No text found. Please select a field that contains text.", 3000, "red", [], "fetch");
+                showToast("No text found. Please select a field that contains text.", 3000, "error", [], "fetch");
             }
         });
     });
@@ -3189,12 +3600,12 @@ function handleSendPrompt() {
         chrome.tabs.sendMessage(tabId, { action: "sendPrompt", prompt: promptToSend }, (response) => {
             if (chrome.runtime.lastError) {
                 console.error("Send prompt error:", chrome.runtime.lastError.message);
-                showToast("Failed to send prompt. Please try again.", 3000, "red", [], "send");
+                showToast("Failed to send prompt. Please try again.", 3000, "error", [], "send");
             } else if (response && response.success) {
                 // Close but preserve popup position/size so it remains for next open
                 closePopupAndClearState(false, { preservePosition: true });
             } else {
-                showToast("Failed to send prompt. Target chat not found.", 3000, "red", [], "send");
+                showToast("Failed to send prompt. Target chat not found.", 3000, "error", [], "send");
             }
         });
     });
@@ -3207,7 +3618,7 @@ function reInjectAndRetry(tabId, action, callback) {
                 chrome.tabs.sendMessage(tabId, { action }, callback);
             }, 100);
         } else {
-            showToast("Failed to connect to the page. Please try again or refresh the page.", 3000, "red", [], action);
+            showToast("Failed to connect to the page. Please try again or refresh the page.", 3000, "error", [], action);
         }
     });
 }
@@ -3222,7 +3633,7 @@ function handleImportFile(event) {
             // Accept either a list of templates or a single template object
             const list = Array.isArray(imported) ? imported : (imported && typeof imported === 'object' ? [imported] : null);
             if (!list) {
-                showToast("Invalid YAML: Expected a list of prompts or a single template.", 3000, "red");
+                showToast("Invalid YAML: Expected a list of prompts or a single template.", 3000, "error");
                 return;
             }
             chrome.storage.local.get(["templates", "userPlaceholders"], (result) => {
@@ -3316,24 +3727,28 @@ function handleImportFile(event) {
                             ? ` New placeholders added: ${newPlaceholdersFound.join(', ')}.`
                             : '';
                         const skippedMessage = skipped > 0 
-                            ? ` ${skipped} default template(s) skipped (cannot overwrite): ${skippedDefaultTemplates.join(', ')}.`
+                            ? ` ${skipped} skipped — default templates can't be overwritten.`
                             : '';
-                        const toastType = skipped > 0 ? "orange" : "green";
-                        showToast(`Imported: ${added} new, ${overwritten} overwritten.${placeholderMessage}${skippedMessage}`, 7000, toastType);
+                        const newText = added === 0 ? 'none new' : (added === 1 ? '1 new' : `${added} new`);
+                        const overwrittenText = overwritten === 0 ? 'none overwritten' : (overwritten === 1 ? '1 overwritten' : `${overwritten} overwritten`);
+                        const toastType = skipped > 0 ? "warning" : "info";
+                        showToast(`Templates imported: ${newText}, ${overwrittenText}.${placeholderMessage}${skippedMessage}`, 5000, toastType);
                     });
                 } else {
                     chrome.storage.local.set({ templates }, () => {
                         loadTemplates();
                         const skippedMessage = skipped > 0 
-                            ? ` ${skipped} default template(s) skipped (cannot overwrite): ${skippedDefaultTemplates.join(', ')}.`
+                            ? ` ${skipped} skipped — default templates can't be overwritten.`
                             : '';
-                        const toastType = skipped > 0 ? "orange" : "green";
-                        showToast(`Imported: ${added} new, ${overwritten} overwritten.${skippedMessage}`, 7000, toastType);
+                        const newText = added === 0 ? 'none new' : (added === 1 ? '1 new' : `${added} new`);
+                        const overwrittenText = overwritten === 0 ? 'none overwritten' : (overwritten === 1 ? '1 overwritten' : `${overwritten} overwritten`);
+                        const toastType = skipped > 0 ? "warning" : "info";
+                        showToast(`<strong>Templates imported:</strong> ${newText}, ${overwrittenText}.${skippedMessage}`, 5000, toastType);
                     });
                 }
             });
         } catch (err) {
-            showToast("Failed to import: " + err.message, 4000, "red");
+            showToast(`Failed to import: ${err.message}`, 4000, "error");
         }
     };
     reader.readAsText(file);
@@ -3347,13 +3762,13 @@ function handleExportAll() {
       // Export templates as-is from storage, without processing placeholder values
       const yaml = promptsToYAML(templates);
       downloadFile(yaml, "promptstash_export_all.yaml", "text/yaml");
-      showToast("All saved templates exported!", 5000, "green", [], "exportAll");
+      showToast("All templates exported successfully.", 5000, "info", [], "exportAll");
   });
 }
 
 function handleExportSingle() {
     if (!selectedTemplateName) {
-        showToast("No saved template selected to export.", 3000, "red", [], "exportSingle");
+        showToast("No saved template selected to export.", 3000, "error", [], "exportSingle");
         return;
     }
 
@@ -3362,7 +3777,7 @@ function handleExportSingle() {
         const template = templates.find(t => t.name === selectedTemplateName);
         
         if (!template) {
-            showToast("Template not found.", 3000, "red", [], "exportSingle");
+            showToast("<strong>Template not found.</strong>", 3000, "error", [], "exportSingle");
             return;
         }
 
@@ -3376,7 +3791,7 @@ function handleExportSingle() {
                            `content: |\n  ${content.replace(/\n/g, '\n  ')}`;
 
         downloadFile(yamlString, `${name}.yaml`, "text/yaml");
-        showToast(`Template '${name}' exported successfully.`, 5000, "green", [], "exportSingle");
+        showToast(`Template '${name}' exported successfully.`, 5000, "success", [], "exportSingle");
     });
 }
 
@@ -3392,7 +3807,7 @@ function handleGlobalClick(event) {
             const template = templates.find(t => t.name === name);
             if (template) {
                 if (!template.favorite && templates.filter(t => t.favorite).length >= 10) {
-                    showToast("Maximum of 10 favorite templates allowed.", 3000, "red", [], "favorite");
+                    showToast("Maximum of 10 favorite templates allowed.", 3000, "warning", [], "favorite");
                     return;
                 }
                 template.favorite = !template.favorite;
@@ -3578,7 +3993,10 @@ function undoLastAction() {
         }
         elements.promptArea.textContent = content;
         destroyTabs();
-        buildTabsFromTemplate(content);
+        // For undo operations, restore the exact tabs that existed before
+        const { placeholders: undoPlaceholders } = parsePlaceholders(content, false);
+        tabsState.existingTabPlaceholders = [...undoPlaceholders];
+        buildTabsFromTemplate(content, true);
         renderPlaceholdersInTemplate();
         // Ensure fetch hint and clear button reflect restored content
         elements.fetchBtn2.style.display = elements.promptArea.textContent.trim() ? "none" : "block";
@@ -3608,8 +4026,11 @@ function undoLastAction() {
                     action === 'saveNew' ? 'Template save undone.' :
                     action === 'saveAs' ? 'Template save undone.' :
                     'Undone.';
-        showToast(msg, 2000, "green", [], "undo");
+        showToast(msg, 3000, "success", [], "undo");
         lastState = null;
+        
+        // Don't focus on any inputs after undo
+        moveFocusOutOfEditor();
     };
 
     if (lastState.templates) {
@@ -3651,7 +4072,10 @@ function undoLastAction() {
                         }
                         elements.promptArea.textContent = raw;
                         destroyTabs();
-                        buildTabsFromTemplate(raw);
+                        // For redo operations, restore the exact tabs that existed
+                        const { placeholders: redoPlaceholders } = parsePlaceholders(raw, false);
+                        tabsState.existingTabPlaceholders = [...redoPlaceholders];
+                        buildTabsFromTemplate(raw, true);
                         renderPlaceholdersInTemplate();
                         elements.fetchBtn2.style.display = elements.promptArea.textContent.trim() ? "none" : "block";
                         updateClearButtonState();
@@ -3670,14 +4094,21 @@ function undoLastAction() {
                             try { handlePromptInput(); } catch (_) {}
                         }, 0);
 
-                        // Keep tags editable after undoing a save action
-                        switchToTagsEditMode();
+                        // Restore tags to appropriate mode based on content
+                        if (elements.templateTags.value.trim()) {
+                            switchToTagsViewMode();
+                        } else {
+                            switchToTagsEditMode();
+                        }
 
                         updateExportSingleBtnState();
                         updateSaveButtonState();
                         updateDeleteButtonState();
                         saveState();
                         loadTemplates();
+                        
+                        // Don't focus on any inputs after undo
+                        moveFocusOutOfEditor();
                     } finally {
                         isUpdatingContent = false;
                     }
@@ -3691,8 +4122,12 @@ function undoLastAction() {
                     updateExportSingleBtnState();
                     updateSaveButtonState();
                     updateDeleteButtonState();
-                    // Revert tags to edit mode (plain text) after undoing a save action
-                    switchToTagsEditMode();
+                    // Keep tags in view mode if they have content, otherwise edit mode
+                    if (elements.templateTags.value.trim()) {
+                        switchToTagsViewMode();
+                    } else {
+                        switchToTagsEditMode();
+                    }
                     // Revert allowed placeholders to the snapshot so newly added ones are removed
                     try {
                         const defaults = extractAllowedPlaceholdersFromDefaults();
@@ -3708,11 +4143,15 @@ function undoLastAction() {
                     // Rebuild tabs and rendering based on current content so unknown placeholders are plain text
                     try {
                         destroyTabs();
+                        // For undo, preserve only existing tabs
                         buildTabsFromTemplate(tabsState.currentTemplate || elements.promptArea.textContent || '');
                         renderPlaceholdersInTemplate();
                     } catch (_) {}
                     // Persist current UI as-is; preserve name/tags undo stacks so Ctrl+Z works
                     saveState();
+                    
+                    // Don't focus on any inputs after undo
+                    moveFocusOutOfEditor();
                 } else {
                     const tmpl = templates.find(t => t.name === lastState.selectedName);
                     if (tmpl) {
@@ -3731,8 +4170,11 @@ function undoLastAction() {
                             action === 'saveNew' ? 'Template save undone.' :
                             action === 'saveAs' ? 'Template save undone.' :
                             'Undone.';
-                showToast(msg, 2000, "green", [], "undo");
+                showToast(msg, 3000, "success", [], "undo");
                 lastState = null;
+                
+                // Don't focus on any inputs after undo
+                moveFocusOutOfEditor();
             });
         });
     } else {
@@ -3767,7 +4209,7 @@ function handlePromptInput() {
         return;
     }
 
-    buildTabsFromTemplate(templateContent);
+    buildTabsFromTemplate(templateContent); // Use existing tabs only during regular input
 
     elements.fetchBtn2.style.display = elements.promptArea.textContent.trim() ? "none" : "block";
     
@@ -4003,7 +4445,7 @@ function handlePaste(event) {
       const sanitizedContent = sanitizeTemplateInput(content);
       if (sanitizedContent !== content) {
           elements.promptArea.textContent = sanitizedContent;
-          showToast("Pasted content had invalid placeholders.", 3000, "orange", [], "paste-restriction");
+          showToast("Pasted content had invalid placeholders.", 3000, "warning", [], "paste-restriction");
       }
       handlePromptInput();
   }, 0);
@@ -4012,17 +4454,23 @@ function handlePaste(event) {
 async function handleCloseWithUnsavedCheck() {
     const unsaved = await hasUnsavedChanges();
     if (unsaved) {
-        showToast(
-            "You have unsaved changes. Are you sure you want to close?",
-            -1, // Persist until user action
-            "red", // Use red for a warning confirmation
+        // When user explicitly clicks X, show warning but KEEP unsaved changes in session
+        showModal(
+            "You have unsaved changes. Confirm closing without saving.",
             [
-                { text: "Yes", callback: () => closePopupAndClearState(true) },
-                { text: "No", callback: () => {} }
+                { text: "Cancel", callback: () => {} },
+                { text: "Close Without Saving", callback: () => {
+                    // Don't clear session data - just mark that we closed with X
+                    // This will show new template on reopen but keep the unsaved changes
+                    chrome.storage.session.set({ closedWithX: true });
+                    closePopupAndClearState(true); // Clear localStorage state to show new template
+                }}
             ],
-            "closeConfirm"
+            "warning"
         );
     } else {
+        // Even without unsaved changes, mark that we closed with X to show new template
+        chrome.storage.session.set({ closedWithX: true });
         closePopupAndClearState(true);
     }
 }
@@ -4119,7 +4567,10 @@ function editorUndo() {
     tabsState.currentTemplate = prevContent;
     elements.promptArea.textContent = prevContent;
     destroyTabs();
-    buildTabsFromTemplate(prevContent);
+    // For editor undo, preserve the tabs that existed at that point
+    const { placeholders: prevPlaceholders } = parsePlaceholders(prevContent, false);
+    tabsState.existingTabPlaceholders = [...prevPlaceholders];
+    buildTabsFromTemplate(prevContent, true);
     renderPlaceholdersInTemplate();
     // Update fetch hint / clear button based on content
     elements.fetchBtn2.style.display = elements.promptArea.textContent.trim() ? "none" : "block";
@@ -4140,7 +4591,10 @@ function editorRedo() {
     tabsState.currentTemplate = nextContent;
     elements.promptArea.textContent = nextContent;
     destroyTabs();
-    buildTabsFromTemplate(nextContent);
+    // For editor redo, preserve the tabs that existed at that point
+    const { placeholders: nextPlaceholders } = parsePlaceholders(nextContent, false);
+    tabsState.existingTabPlaceholders = [...nextPlaceholders];
+    buildTabsFromTemplate(nextContent, true);
     renderPlaceholdersInTemplate();
     elements.fetchBtn2.style.display = elements.promptArea.textContent.trim() ? "none" : "block"; // Update fetch hint
     updateClearButtonState();
