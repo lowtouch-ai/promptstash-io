@@ -839,7 +839,7 @@ function hideGlobalSearch() {
 }
 
 function performContentSearch(query) {
-    // Clear previous search
+    // Clear previous search highlights completely
     clearSearchHighlights();
     currentSearchMatches = [];
     currentMatchIndex = -1;
@@ -848,6 +848,11 @@ function performContentSearch(query) {
     
     const cleanQuery = (query || '').trim();
     if (!cleanQuery) {
+        // Ensure all textarea overlays are cleared when search is empty
+        const overlayContents = document.querySelectorAll('.ps-highlight-content');
+        overlayContents.forEach(content => {
+            content.innerHTML = '';
+        });
         updateMatchCount();
         return;
     }
@@ -855,21 +860,25 @@ function performContentSearch(query) {
     // Build container scope in desired order: Template -> Placeholder tabs -> Preview
     searchContainers = collectSearchContainers();
 
-    // Build flexible whitespace regex
-    const queryNormalized = cleanQuery.replace(/\s+/g, ' ');
-    const escaped = queryNormalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const pattern = escaped.replace(/\s+/g, '\\s+');
-    const regex = new RegExp(pattern, 'gi');
+    // Escape special regex characters and create pattern for exact matches only
+    const escaped = cleanQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Use word boundary or case-insensitive flag for exact character/word matching
+    const regex = new RegExp(escaped, 'gi');
 
     // Aggregate matches across all containers
     searchContainers.forEach((c) => {
         const text = c.getText();
         if (!text) return;
         let m;
+        regex.lastIndex = 0; // Reset regex before each container
         while ((m = regex.exec(text)) !== null) {
             allSearchMatches.push({ containerId: c.id, start: m.index, end: m.index + m[0].length, text: m[0] });
-            // Reset lastIndex to just after match start to find overlapping/consecutive matches
-            regex.lastIndex = m.index + 1;
+            // Don't manually reset lastIndex - let regex advance naturally
+            // This prevents overlapping matches for single characters
+            if (m[0].length === 0) {
+                // Only handle zero-length matches to avoid infinite loop
+                regex.lastIndex = m.index + 1;
+            }
         }
     });
 
@@ -915,7 +924,11 @@ function collectSearchContainers() {
             type: 'contenteditable',
             element: elements.promptArea,
             panelId: 'template-panel',
-            getText: () => elements.promptArea.textContent || ''
+            getText: () => {
+                // Get text from the DOM as it's rendered, not the raw template
+                // This ensures search matches align with what's actually displayed
+                return elements.promptArea.textContent || '';
+            }
         });
     }
 
@@ -941,7 +954,6 @@ function collectSearchContainers() {
     }
 
     // Preview container - only include if template has placeholders (preview tab should be available)
-    // Check if current template has any placeholders that would make preview tab relevant
     const hasPlaceholders = tabsState.placeholders && tabsState.placeholders.length > 0;
     if (elements.previewArea && hasPlaceholders) {
         containers.push({
@@ -1164,23 +1176,32 @@ function highlightMatches(searchTerm, targetElement = elements.promptArea, origi
 }
 
 function clearSearchHighlights() {
-    // Remove only the highlight wrappers in all relevant containers
-    const containers = [elements.promptArea, elements.previewArea].filter(Boolean);
-    containers.forEach((container) => {
-        // For placeholder spans, just remove highlight classes
-        const placeholderHighlights = container.querySelectorAll('.placeholder-marker.content-search-highlight');
-        placeholderHighlights.forEach(span => {
+    // Clear ALL search highlights from the entire document
+    
+    // 1. Clear all highlight spans everywhere in the document
+    const allHighlights = document.querySelectorAll('.content-search-highlight');
+    allHighlights.forEach((span) => {
+        // If it's a placeholder marker with highlight classes, just remove the classes
+        if (span.classList.contains('placeholder-marker')) {
             span.classList.remove('content-search-highlight', 'active');
-        });
-        
-        // For other highlight spans, unwrap them
-        const highlights = container.querySelectorAll('.content-search-highlight:not(.placeholder-marker)');
-        highlights.forEach((span) => {
+        } else {
+            // Otherwise, unwrap the highlight span
             const parent = span.parentNode;
             if (!parent) return;
             while (span.firstChild) parent.insertBefore(span.firstChild, span);
             parent.removeChild(span);
-        });
+        }
+    });
+    
+    // 2. Clear highlights in placeholder textarea overlays
+    const overlayContents = document.querySelectorAll('.ps-highlight-content');
+    overlayContents.forEach(content => {
+        content.innerHTML = '';
+    });
+    
+    // 3. Normalize text nodes in main containers
+    const containers = [elements.promptArea, elements.previewArea].filter(Boolean);
+    containers.forEach((container) => {
         container.normalize();
     });
 }
@@ -1196,6 +1217,15 @@ function clearHighlightsInElement(container) {
             span.classList.remove('content-search-highlight', 'active');
         });
     }
+    
+    // Clear any nested highlights inside placeholder markers
+    const nestedHighlights = container.querySelectorAll('.placeholder-marker .content-search-highlight');
+    nestedHighlights.forEach((span) => {
+        const parent = span.parentNode;
+        if (!parent) return;
+        while (span.firstChild) parent.insertBefore(span.firstChild, span);
+        parent.removeChild(span);
+    });
     
     const highlights = container.querySelectorAll('.content-search-highlight:not(.placeholder-marker)');
     highlights.forEach((span) => {
@@ -1226,13 +1256,29 @@ function applyHighlightsInElement(element, matches, activeIndex) {
             const startPos = findTextNodeAndOffset(element, match.start);
             const endPos = findTextNodeAndOffset(element, match.end);
             if (!startPos.node || !endPos.node) return;
+            
+            // Ensure we're not crossing text node boundaries incorrectly
+            if (startPos.node !== endPos.node) {
+                // For now, skip matches that span multiple text nodes
+                // This prevents incorrect highlighting
+                return;
+            }
+            
             const range = document.createRange();
             range.setStart(startPos.node, Math.max(0, startPos.offset));
             range.setEnd(endPos.node, Math.max(0, endPos.offset));
+            
+            // Verify the range contains exactly what we expect
+            const rangeText = range.toString();
+            const expectedText = element.textContent.substring(match.start, match.end);
+            if (rangeText !== expectedText) {
+                // Range doesn't match expected text, skip this highlight
+                return;
+            }
+            
             const wrapper = document.createElement('span');
             wrapper.className = 'content-search-highlight';
             // Determine actual index from ascending order for active logic
-            // Compute ascending index by counting items with smaller start
             const ascIndex = matches.filter(m => m.start < match.start).length;
             if (typeof activeIndex === 'number' && ascIndex === activeIndex) wrapper.classList.add('active');
             range.surroundContents(wrapper);
@@ -1244,10 +1290,8 @@ function applyHighlightsInElement(element, matches, activeIndex) {
 function applyHighlightsInPreview(element, matches, activeIndex) {
     if (!element || !Array.isArray(matches)) return;
     
-    const fullText = element.textContent || '';
+    // Build a precise map of where each placeholder span is in the document
     const placeholderSpans = element.querySelectorAll('.placeholder-marker');
-    
-    // Build a precise map of where each element is in the document
     const spanRanges = [];
     let currentPos = 0;
     
@@ -1281,24 +1325,26 @@ function applyHighlightsInPreview(element, matches, activeIndex) {
     // Track which matches have been handled
     const handledMatches = new Set();
     
+    // Apply in reverse order to preserve offsets
+    const matchesDesc = [...matches].sort((a, b) => b.start - a.start);
+    
     // For each match, determine if it's within a placeholder span or regular text
-    matches.forEach((match, idx) => {
-        const isActive = idx === activeIndex;
+    matchesDesc.forEach((match, idx) => {
+        const ascIndex = matches.filter(m => m.start < match.start).length;
+        const isActive = ascIndex === activeIndex;
         
         // Check if this match is within any placeholder span
         let foundInPlaceholder = false;
         for (const spanInfo of spanRanges) {
-            // Check if match is completely within this span's range
             if (match.start >= spanInfo.start && match.end <= spanInfo.end) {
-                // Only highlight this span if we haven't already handled this match
+                // Match is inside a placeholder - highlight just the matched text within it
                 if (!handledMatches.has(idx)) {
-                    // Highlight only the matched portion inside this placeholder span
                     const innerStart = match.start - spanInfo.start;
                     const innerEnd = match.end - spanInfo.start;
                     try {
                         const startPos = findTextNodeAndOffset(spanInfo.element, innerStart);
                         const endPos = findTextNodeAndOffset(spanInfo.element, innerEnd);
-                        if (startPos.node && endPos.node) {
+                        if (startPos.node && endPos.node && startPos.node === endPos.node) {
                             const range = document.createRange();
                             range.setStart(startPos.node, Math.max(0, startPos.offset));
                             range.setEnd(endPos.node, Math.max(0, endPos.offset));
@@ -1318,37 +1364,25 @@ function applyHighlightsInPreview(element, matches, activeIndex) {
         // If not in a placeholder, try to highlight in regular text nodes
         if (!foundInPlaceholder && !handledMatches.has(idx)) {
             try {
-                // Find the correct text node for this match
-                const walker = document.createTreeWalker(
-                    element,
-                    NodeFilter.SHOW_TEXT,
-                    {
-                        acceptNode: function(node) {
-                            // Skip text nodes inside placeholder spans
-                            let parent = node.parentNode;
-                            while (parent && parent !== element) {
-                                if (parent.classList && parent.classList.contains('placeholder-marker')) {
-                                    return NodeFilter.FILTER_REJECT;
-                                }
-                                parent = parent.parentNode;
-                            }
-                            return NodeFilter.FILTER_ACCEPT;
-                        }
-                    },
-                    false
-                );
+                const startPos = findTextNodeAndOffset(element, match.start);
+                const endPos = findTextNodeAndOffset(element, match.end);
                 
-                let currentPos = 0;
-                let textNode;
-                while (textNode = walker.nextNode()) {
-                    const nodeLength = textNode.textContent.length;
-                    const nodeEnd = currentPos + nodeLength;
+                if (startPos.node && endPos.node) {
+                    // Check if this is crossing into a placeholder span
+                    let parent = startPos.node.parentNode;
+                    let isInPlaceholder = false;
+                    while (parent && parent !== element) {
+                        if (parent.classList && parent.classList.contains('placeholder-marker')) {
+                            isInPlaceholder = true;
+                            break;
+                        }
+                        parent = parent.parentNode;
+                    }
                     
-                    // Check if match is within this text node
-                    if (match.start >= currentPos && match.end <= nodeEnd) {
+                    if (!isInPlaceholder && startPos.node === endPos.node) {
                         const range = document.createRange();
-                        range.setStart(textNode, match.start - currentPos);
-                        range.setEnd(textNode, match.end - currentPos);
+                        range.setStart(startPos.node, Math.max(0, startPos.offset));
+                        range.setEnd(endPos.node, Math.max(0, endPos.offset));
                         
                         const wrapper = document.createElement('span');
                         wrapper.className = 'content-search-highlight';
@@ -1356,13 +1390,10 @@ function applyHighlightsInPreview(element, matches, activeIndex) {
                         
                         range.surroundContents(wrapper);
                         handledMatches.add(idx);
-                        break;
                     }
-                    
-                    currentPos = nodeEnd;
                 }
-            } catch (err) { 
-                console.debug('Could not highlight match in preview:', err);
+            } catch (err) {
+                console.debug('Could not highlight match:', err);
             }
         }
     });
@@ -2120,7 +2151,8 @@ function loadTemplates(query = "", showDropdown = false) {
                 // Preserve stored properties like index, but update content and other properties from default
                 return { 
                     ...defaultTemplate, 
-                    index: next++
+                    index: next++,
+                    favorite: stored.favorite || false  // Preserve user's favorite setting
                 };
             }
             return stored;
@@ -2215,6 +2247,37 @@ function renderFavoriteSuggestions(favorites) {
         });
     } else {
         elements.favoriteSuggestions.classList.add("d-none");
+    }
+     // Update prompt area height when favorites visibility changes
+    updatePromptAreaHeight();
+}
+
+function updatePromptAreaHeight() {
+    const tabsList = document.getElementById('editorTabs');
+    const hasPlaceholderTabs = tabsList && tabsList.style.display !== 'none';
+    const hasFavorites = elements.favoriteSuggestions && !elements.favoriteSuggestions.classList.contains('d-none');
+    
+    let height;
+    if (hasPlaceholderTabs && hasFavorites) {
+        // Both placeholder tabs and favorites are visible
+        height = 'calc(100vh - 395px)';
+    } else if (hasPlaceholderTabs) {
+        // Only placeholder tabs are visible
+        height = 'calc(100vh - 360px)';  // This is the one you want to change to 390px
+    } else if (hasFavorites) {
+        // Only favorites are visible
+        height = 'calc(100vh - 355px)';
+    } else {
+        // Neither are visible
+        height = 'calc(100vh - 320px)';
+    }
+    
+    // Apply the height to both prompt area and preview area
+    elements.promptArea.style.height = height;
+    elements.promptArea.style.minHeight = height; // Add this line to set min-height as well
+    if (elements.previewArea) {
+        elements.previewArea.style.height = height;
+        elements.previewArea.style.minHeight = height;
     }
 }
 
@@ -2453,16 +2516,12 @@ function buildTabsFromTemplate(templateContent, isFromSave = false) {
         // Hide Preview tab by default
         const previewTabItem = document.getElementById('preview-tab-item');
         if (previewTabItem) previewTabItem.style.display = 'none';
-        elements.promptArea.style.height = 'calc(100vh - 320px)';
-        if (elements.previewArea) elements.previewArea.style.height = 'calc(100vh - 320px)';
     } else {
         // Show tabs and build placeholder tabs
         tabsList.style.display = 'flex';
         // Hide Preview tab by default - it will be shown when preview icon is clicked
         const previewTabItem = document.getElementById('preview-tab-item');
         if (previewTabItem) previewTabItem.style.display = 'none';
-        elements.promptArea.style.height = 'calc(100vh - 360px)';
-        if (elements.previewArea) elements.previewArea.style.height = 'calc(100vh - 360px)';
         // Do not force-hide clear here; let updateClearButtonState decide based on template type
 
         placeholders.forEach((placeholder) => {
@@ -2489,12 +2548,11 @@ function buildTabsFromTemplate(templateContent, isFromSave = false) {
             tabPanel.setAttribute('role', 'tabpanel');
             
             const panelContentWrapper = document.createElement('div');
-            panelContentWrapper.className = 'position-relative';
+            panelContentWrapper.className = 'position-relative h-100 overflow-auto'; // Add h-100 and overflow-auto to make the textarea inherit the height of its parent container
 
             const textarea = document.createElement('textarea');
-            textarea.className = 'form-control rounded-0 rounded-bottom px-3 py-2';
+            textarea.className = 'form-control rounded-0 rounded-bottom px-3 py-2 h-100';
             textarea.style.resize = 'none';
-            textarea.style.height = 'calc(100vh - 360px)';
             textarea.placeholder = `Enter value for ${placeholder}...`;
             textarea.id = `${tabId}-textarea`;
             textarea.addEventListener('input', () => updatePlaceholder(placeholder, textarea.value));
@@ -2566,6 +2624,8 @@ function buildTabsFromTemplate(templateContent, isFromSave = false) {
     renderPlaceholdersInTemplate();
     updatePreviewArea(); // Update preview area when tabs are built
     // The MutationObserver will handle the arrow updates automatically
+    // Update prompt area height after building tabs
+    updatePromptAreaHeight();
 }
 
 function destroyTabs() {
@@ -2595,8 +2655,8 @@ function destroyTabs() {
     // Clear preview area content
     if (elements.previewArea) elements.previewArea.innerHTML = '';
     
-    elements.promptArea.style.height = 'calc(100vh - 320px)';
-    if (elements.previewArea) elements.previewArea.style.height = 'calc(100vh - 320px)';
+        // Update height after destroying tabs
+        updatePromptAreaHeight();
     updateClearButtonState();
 }
 
@@ -3530,6 +3590,8 @@ function handleDeleteTemplate() {
                             clearSessionForTemplate(deletedTemplate.name);
                             
                             handleNewTemplate({ skipStore: true, suppressToast: true, skipSaveState: true });
+                            // Refresh templates and favorite suggestions after deletion
+                            loadTemplates();
                             showToast("Template deleted.", 3000, "success", [], "delete");
                         // Ensure focus is moved out of all inputs immediately
                         setTimeout(() => {
@@ -3855,14 +3917,27 @@ function handleImportFile(event) {
 }
 
 function handleExportAll() {
-  chrome.storage.local.get(["templates"], (result) => {
-      const templates = result.templates || [];
-      
-      // Export templates as-is from storage, without processing placeholder values
-      const yaml = promptsToYAML(templates);
-      downloadFile(yaml, "promptstash_export_all.yaml", "text/yaml");
-      showToast("All templates exported successfully.", 5000, "info", [], "exportAll");
-  });
+    chrome.storage.local.get(["templates"], (result) => {
+        const templates = result.templates || [];
+        
+        // Create clean template objects for export (exclude internal metadata)
+        const exportTemplates = templates.map(t => ({
+            name: t.name,
+            tags: Array.isArray(t.tags) ? t.tags : [],
+            favorite: t.favorite || false,
+            content: t.content
+        }));
+        
+        const yaml = jsyaml.dump(exportTemplates, {
+            indent: 2,
+            lineWidth: -1, // No line wrapping
+            noRefs: true,
+            sortKeys: false
+        });
+        
+        downloadFile(yaml, "promptstash_export_all.yaml", "text/yaml");
+        showToast("All templates exported successfully.", 5000, "info", [], "exportAll");
+    });
 }
 
 function handleExportSingle() {
@@ -3880,17 +3955,23 @@ function handleExportSingle() {
             return;
         }
 
-        // Use the saved template data, not the current UI content
-        const name = template.name;
-        const content = template.content;
-        const tags = Array.isArray(template.tags) ? template.tags.join(", ") : "";
+        // Create a clean template object for export
+        const exportTemplate = {
+            name: template.name,
+            tags: Array.isArray(template.tags) ? template.tags : [],
+            favorite: template.favorite || false,
+            content: template.content
+        };
 
-        const yamlString = `name: ${name}\n` +
-                           `tags: ${tags}\n` +
-                           `content: |\n  ${content.replace(/\n/g, '\n  ')}`;
+        const yamlString = jsyaml.dump([exportTemplate], {
+            indent: 2,
+            lineWidth: -1, // No line wrapping
+            noRefs: true,
+            sortKeys: false
+        });
 
-        downloadFile(yamlString, `${name}.yaml`, "text/yaml");
-        showToast(`Template '${name}' exported successfully.`, 5000, "success", [], "exportSingle");
+        downloadFile(yamlString, `${template.name}.yaml`, "text/yaml");
+        showToast(`Template '${template.name}' exported successfully.`, 5000, "success", [], "exportSingle");
     });
 }
 
