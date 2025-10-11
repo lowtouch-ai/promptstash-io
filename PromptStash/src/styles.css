@@ -231,21 +231,25 @@ body.dark .ps-toast.gray {
   opacity: 0;
   transform: translate(-50%, -50%) scale(0.9);
   transition: opacity 0.3s ease, transform 0.3s ease;
-  display: flex;
+  display: none; /* Hidden by default - no space taken, no pointer events */
   flex-direction: column;
   gap: 12px;
   white-space: pre-line;
   text-align: left;
+  pointer-events: none; /* Prevent mouse interaction when hidden */
 }
 
 .ps-modal.ps-show {
+  display: flex; /* Show the modal */
   opacity: 1;
   transform: translate(-50%, -50%) scale(1);
+  pointer-events: auto; /* Enable mouse interaction when visible */
 }
 
 .ps-modal.ps-hide {
   opacity: 0;
   transform: translate(-50%, -50%) scale(0.9);
+  pointer-events: none; /* Disable mouse interaction when hiding */
 }
 
 /* Modal icon */

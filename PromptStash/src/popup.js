@@ -2050,6 +2050,7 @@ function showModal(message, buttons = [], modalType = "warning") {
 
     // Apply type class and show modal
     elements.modalNotification.className = `ps-modal ${modalType}`;
+    elements.modalNotification.style.display = "flex"; // Show the modal
     requestAnimationFrame(() => {
         elements.modalNotification.classList.add("ps-show");
     });
@@ -2085,6 +2086,7 @@ function closeModal(onClose) {
 
     setTimeout(() => {
         elements.modalNotification.classList.remove("ps-hide");
+        elements.modalNotification.style.display = "none"; // Hide completely after animation
         elements.modalNotification.innerHTML = "";
         elements.modalOverlay.style.display = "none";
         isModalShowing = false;
