@@ -2233,6 +2233,7 @@ function renderFavoriteSuggestions(favorites) {
     elements.favoriteSuggestions.innerHTML = "";
     if (favorites.length > 0) {
         elements.favoriteSuggestions.classList.remove("d-none");
+        document.body.classList.remove("no-favorites");
         favorites.forEach((tmpl) => {
             const span = document.createElement("span");
             span.textContent = tmpl.name;
@@ -2247,6 +2248,7 @@ function renderFavoriteSuggestions(favorites) {
         });
     } else {
         elements.favoriteSuggestions.classList.add("d-none");
+        document.body.classList.add("no-favorites");
     }
      // Update prompt area height when favorites visibility changes
     updatePromptAreaHeight();
@@ -2259,26 +2261,29 @@ function updatePromptAreaHeight() {
     
     let height;
     if (hasPlaceholderTabs && hasFavorites) {
-        // Both placeholder tabs and favorites are visible
         height = 'calc(100vh - 395px)';
     } else if (hasPlaceholderTabs) {
-        // Only placeholder tabs are visible
-        height = 'calc(100vh - 360px)';  // This is the one you want to change to 390px
+        height = 'calc(100vh - 360px)';
     } else if (hasFavorites) {
-        // Only favorites are visible
         height = 'calc(100vh - 355px)';
     } else {
-        // Neither are visible
         height = 'calc(100vh - 320px)';
     }
     
-    // Apply the height to both prompt area and preview area
+    // Apply height directly without any content manipulation
     elements.promptArea.style.height = height;
-    elements.promptArea.style.minHeight = height; // Add this line to set min-height as well
+    elements.promptArea.style.minHeight = height;
     if (elements.previewArea) {
         elements.previewArea.style.height = height;
         elements.previewArea.style.minHeight = height;
     }
+    
+    // Update placeholder tab textareas
+    const placeholderTextareas = document.querySelectorAll('.tab-pane textarea');
+    placeholderTextareas.forEach(textarea => {
+        textarea.style.height = height;
+        textarea.style.minHeight = height;
+    });
 }
 
 function loadTemplateFromSelection(tmpl) {
@@ -3490,28 +3495,52 @@ function handleSaveAsTemplate() {
             updateRecentIndices(nextIndex);
             nextIndex++;
             saveTemplates(templates, () => {
-                // Select the newly saved template, but do not reload content
-                // to preserve editor undo history and current UI edits.
+                // Store the original template name before changing it
+                const originalTemplateName = selectedTemplateName;
+        
+                // Select the newly saved template
                 selectedTemplateName = name;
                 editingTargetName = name;
-                
+        
                 // Clear session data after successful save as
                 clearSessionForTemplate(name);
+                // Also clear session for the original template to avoid confusion
+                if (originalTemplateName && originalTemplateName !== name) {
+                    clearSessionForTemplate(originalTemplateName);
+                }
                 
                 loadTemplates();
-                // Update the editor to the value-filled content and rebuild tabs (placeholders removed)
+                // Update the editor with the saved content (values filled in)
                 try {
                     isUpdatingContent = true;
-                    tabsState.currentTemplate = contentWithValues;
-                    elements.promptArea.textContent = contentWithValues;
+                    tabsState.currentTemplate = contentWithValues;  // Use the version with values filled in
+                    elements.promptArea.textContent = contentWithValues;  // Show content with values filled in
+                    tabsState.placeholderValues = {};  // Clear placeholder values for the new template
+                    
+                    // Update existing tab placeholders to reflect what's in the new content
+                    const { placeholders } = parsePlaceholders(contentWithValues, false);
+                    tabsState.existingTabPlaceholders = [...placeholders];
+                    
                     destroyTabs();
-                    buildTabsFromTemplate(contentWithValues, true); // isFromSave = true
-                    renderPlaceholdersInTemplate();
+                    buildTabsFromTemplate(contentWithValues, true); // Build tabs only for remaining placeholders
                     elements.fetchBtn2.style.display = elements.promptArea.textContent.trim() ? "none" : "block";
                     updateClearButtonState();
+                    
+                    // Reset editor undo/redo stacks for the new template
+                    editorUndoStack = [];
+                    editorRedoStack = [];
+                    editorLastSnapshot = contentWithValues;
+                    editorLastCaret = 0;
                 } finally {
                     isUpdatingContent = false;
                 }
+                
+                // CHANGED: Render placeholders after isUpdatingContent is set to false
+                // and use setTimeout to ensure DOM is fully updated
+                setTimeout(() => {
+                    renderPlaceholdersInTemplate();
+                }, 0);
+                
                 saveState();
                 saveNextIndex();
                 // After save as completes, show tags in view mode (clickable)
@@ -3537,7 +3566,6 @@ function handleSaveAsTemplate() {
         }
     });
 }
-
 function handleDeleteTemplate() {
     if (!selectedTemplateName) {
         showToast("Please select a template to delete.", 3000, "error", [], "delete");
@@ -3853,18 +3881,16 @@ function handleImportFile(event) {
                                 saveState();
                             }
                         }
-                        const placeholderMessage = newPlaceholdersFound.length > 0 
-                            ? ` New placeholders added: ${newPlaceholdersFound.join(', ')}.`
-                            : '';
                         const skippedMessage = skipped > 0 
                             ? ` ${skipped} skipped — default templates can't be overwritten.`
                             : '';
                         const newText = added === 0 ? 'none new' : (added === 1 ? '1 new' : `${added} new`);
                         const overwrittenText = overwritten === 0 ? 'none overwritten' : (overwritten === 1 ? '1 overwritten' : `${overwritten} overwritten`);
                         const toastType = skipped > 0 ? "warning" : "info";
-                        showToast(`Templates imported: ${newText}, ${overwrittenText}.${placeholderMessage}${skippedMessage}`, 5000, toastType);
+                        showToast(`Templates imported: ${newText}, ${overwrittenText}.${skippedMessage}`, 5000, toastType);
                     });
                 } else {
+                    // No new placeholders found, just save templates
                     chrome.storage.local.set({ templates }, () => {
                         loadTemplates();
                         
@@ -3904,7 +3930,7 @@ function handleImportFile(event) {
                         const newText = added === 0 ? 'none new' : (added === 1 ? '1 new' : `${added} new`);
                         const overwrittenText = overwritten === 0 ? 'none overwritten' : (overwritten === 1 ? '1 overwritten' : `${overwritten} overwritten`);
                         const toastType = skipped > 0 ? "warning" : "info";
-                        showToast(`<strong>Templates imported:</strong> ${newText}, ${overwrittenText}.${skippedMessage}`, 5000, toastType);
+                        showToast(`Templates imported: ${newText}, ${overwrittenText}.${skippedMessage}`, 5000, toastType);
                     });
                 }
             });
