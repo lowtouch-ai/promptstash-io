@@ -1098,7 +1098,7 @@ body.dark .favorite-suggestion:hover, body.dark .favorite-suggestion:focus {
   flex-shrink: 0;
   word-wrap: break-word;
   word-break: break-word;
-  padding-right: 50px !important; /* Add space for clear button */
+  padding-right: 20px !important; /* Add space for clear button */
   height: calc(100vh - 360px);
   overflow-y: auto;
   transition: 0.2s;
@@ -1491,9 +1491,29 @@ body.dark .tab-pane textarea {
   word-wrap: break-word;
   word-break: break-word;
   white-space: pre-wrap;
-  padding-right: 80px !important; /* Add space for clear and preview buttons */
+  padding-right: 20px !important; /* Add space for clear and preview buttons */
+}
+.tab-pane .button-container {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  z-index: 10;
+  pointer-events: none;
 }
 
+.tab-pane .button-container .clrbtn {
+  pointer-events: auto;
+}
+
+/* Prevent scrollbar on button hover */
+.tab-pane .position-relative {
+  overflow: hidden;
+}
 /* Clear button styling for placeholder tabs */
 .tab-pane .btn-outline-secondary {
   border-color: #6c757d;
