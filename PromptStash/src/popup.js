@@ -882,6 +882,51 @@ function setupEventListeners() {
     elements.promptArea.addEventListener("keydown", handlePromptKeydown);
     elements.promptArea.addEventListener("paste", handlePaste);
 
+    // Add auto-scroll on Enter key for promptArea
+    elements.promptArea.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            setTimeout(() => {
+                const selection = window.getSelection();
+                if (selection.rangeCount > 0) {
+                    const range = selection.getRangeAt(0);
+                    
+                    // Create a temporary marker at the cursor position to get its exact location
+                    const marker = document.createElement("span");
+                    marker.style.display = "inline-block";
+                    marker.style.width = "0px";
+                    marker.style.height = "1em";
+                    marker.textContent = "\u200B"; // zero-width space
+                    
+                    const clonedRange = range.cloneRange();
+                    clonedRange.collapse(true);
+                    clonedRange.insertNode(marker);
+                    
+                    // Get the marker's position relative to the editor
+                    const markerRect = marker.getBoundingClientRect();
+                    const editorRect = elements.promptArea.getBoundingClientRect();
+                    const relativeTop = markerRect.top - editorRect.top;
+                    
+                    // Calculate target scroll position (center the cursor line)
+                    const targetScroll = elements.promptArea.scrollTop + relativeTop - (elements.promptArea.clientHeight / 2);
+                    
+                    // Remove the marker and restore the cursor
+                    const afterMarker = document.createRange();
+                    afterMarker.setStartAfter(marker);
+                    afterMarker.collapse(true);
+                    marker.remove();
+                    selection.removeAllRanges();
+                    selection.addRange(afterMarker);
+                    
+                    // Smooth scroll to target
+                    elements.promptArea.scrollTo({
+                        top: Math.max(0, targetScroll),
+                        behavior: 'smooth'
+                    });
+                }
+            }, 10);
+        }
+    });
+
     elements.saveBtn.addEventListener("click", () => handleSaveTemplate());
     elements.saveAsBtn.addEventListener("click", () => handleSaveAsTemplate());
     elements.deleteBtn.addEventListener("click", () => handleDeleteTemplate());
@@ -2866,11 +2911,34 @@ function buildTabsFromTemplate(templateContent, isFromSave = false) {
             panelContentWrapper.className = "position-relative h-100 overflow-auto"; // Add h-100 and overflow-auto to make the textarea inherit the height of its parent container
 
             const textarea = document.createElement("textarea");
-            textarea.className = "form-control rounded-0 rounded-bottom px-3 py-2 h-100";
+            textarea.className = "form-control px-3 py-2 h-100";
             textarea.style.resize = "none";
             textarea.placeholder = `Enter value for ${placeholder}...`;
             textarea.id = `${tabId}-textarea`;
             textarea.addEventListener("input", () => updatePlaceholder(placeholder, textarea.value));
+            textarea.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                setTimeout(() => {
+                    // Get the textarea's scroll metrics
+                    const cursorPos = textarea.selectionStart;
+                    const textBeforeCursor = textarea.value.substring(0, cursorPos);
+                    const lines = textBeforeCursor.split('\n').length;
+                    
+                    // Get line height
+                    const style = window.getComputedStyle(textarea);
+                    const lineHeight = parseInt(style.lineHeight) || parseInt(style.fontSize) * 1.2;
+                    
+                    // Calculate target scroll position
+                    const targetScroll = (lines * lineHeight) - (textarea.clientHeight / 2);
+                    
+                    // Smooth scroll to target
+                    textarea.scrollTo({
+                        top: Math.max(0, targetScroll),
+                        behavior: 'smooth'
+                    });
+                }, 10);
+                }
+            });
             panelContentWrapper.appendChild(textarea);
 
             // Create button container in tab pane
@@ -3931,12 +3999,20 @@ function handleSaveAsTemplate() {
                     selectedTemplateName = name;
                     editingTargetName = name;
 
-                    // Rebuild tabs to show any new placeholders that were added
-                    // Parse placeholders from the original content (before values were filled in)
-                    const { placeholders } = parsePlaceholders(content, false);
+                    // After Save As, update editor with content that has values filled in
+                    tabsState.currentTemplate = contentWithValues;
+                    elements.promptArea.textContent = contentWithValues;
+                    
+                    // Clear placeholder values since they're now part of the content
+                    tabsState.placeholderValues = {};
+                    
+                    // Parse placeholders from the new content (which may have none if all were filled)
+                    const { placeholders } = parsePlaceholders(contentWithValues, false);
                     tabsState.existingTabPlaceholders = [...placeholders];
-                    buildTabsFromTemplate(content, true); // isFromSave = true
-                    renderPlaceholdersInTemplate(); // Render placeholders immediately
+                    
+                    // Rebuild tabs - will destroy all tabs if no placeholders remain
+                    buildTabsFromTemplate(contentWithValues, true);
+                    renderPlaceholdersInTemplate();
 
                     // Switch tags to view mode after Save As to make them clickable
                     if (tags && tags.length > 0) {

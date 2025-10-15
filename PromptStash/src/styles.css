@@ -1102,9 +1102,21 @@ body.dark .favorite-suggestion:hover, body.dark .favorite-suggestion:focus {
   padding-right: 40px !important; /* Add space for clear button */
   height: calc(100vh - 360px);
   overflow-y: auto;
-  transition: 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
   resize: none;
   white-space: pre-wrap;
+}
+
+/* Focus outline for promptArea - matches Bootstrap form-control */
+#promptArea:focus {
+  border-color: #86b7fe;
+  outline: 0;
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+body.dark #promptArea:focus {
+  border-color: #6ea8fe;
+  box-shadow: 0 0 0 0.25rem rgba(110, 168, 254, 0.25);
 }
 #previewArea {
   border: 1px solid #dadce0;
