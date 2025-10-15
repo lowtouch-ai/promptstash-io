@@ -881,52 +881,6 @@ function setupEventListeners() {
     });
     elements.promptArea.addEventListener("keydown", handlePromptKeydown);
     elements.promptArea.addEventListener("paste", handlePaste);
-
-    // Add auto-scroll on Enter key for promptArea
-    elements.promptArea.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-            setTimeout(() => {
-                const selection = window.getSelection();
-                if (selection.rangeCount > 0) {
-                    const range = selection.getRangeAt(0);
-                    
-                    // Create a temporary marker at the cursor position to get its exact location
-                    const marker = document.createElement("span");
-                    marker.style.display = "inline-block";
-                    marker.style.width = "0px";
-                    marker.style.height = "1em";
-                    marker.textContent = "\u200B"; // zero-width space
-                    
-                    const clonedRange = range.cloneRange();
-                    clonedRange.collapse(true);
-                    clonedRange.insertNode(marker);
-                    
-                    // Get the marker's position relative to the editor
-                    const markerRect = marker.getBoundingClientRect();
-                    const editorRect = elements.promptArea.getBoundingClientRect();
-                    const relativeTop = markerRect.top - editorRect.top;
-                    
-                    // Calculate target scroll position (center the cursor line)
-                    const targetScroll = elements.promptArea.scrollTop + relativeTop - (elements.promptArea.clientHeight / 2);
-                    
-                    // Remove the marker and restore the cursor
-                    const afterMarker = document.createRange();
-                    afterMarker.setStartAfter(marker);
-                    afterMarker.collapse(true);
-                    marker.remove();
-                    selection.removeAllRanges();
-                    selection.addRange(afterMarker);
-                    
-                    // Smooth scroll to target
-                    elements.promptArea.scrollTo({
-                        top: Math.max(0, targetScroll),
-                        behavior: 'smooth'
-                    });
-                }
-            }, 10);
-        }
-    });
-
     elements.saveBtn.addEventListener("click", () => handleSaveTemplate());
     elements.saveAsBtn.addEventListener("click", () => handleSaveAsTemplate());
     elements.deleteBtn.addEventListener("click", () => handleDeleteTemplate());
@@ -2917,26 +2871,43 @@ function buildTabsFromTemplate(templateContent, isFromSave = false) {
             textarea.id = `${tabId}-textarea`;
             textarea.addEventListener("input", () => updatePlaceholder(placeholder, textarea.value));
             textarea.addEventListener("keydown", (e) => {
-            if (e.key === "Enter") {
-                setTimeout(() => {
-                    // Get the textarea's scroll metrics
-                    const cursorPos = textarea.selectionStart;
-                    const textBeforeCursor = textarea.value.substring(0, cursorPos);
-                    const lines = textBeforeCursor.split('\n').length;
+                if (e.key === "Enter") {
+                    // Mark that Enter was just pressed
+                    textarea.dataset.justPressedEnter = "true";
                     
-                    // Get line height
-                    const style = window.getComputedStyle(textarea);
-                    const lineHeight = parseInt(style.lineHeight) || parseInt(style.fontSize) * 1.2;
-                    
-                    // Calculate target scroll position
-                    const targetScroll = (lines * lineHeight) - (textarea.clientHeight / 2);
-                    
-                    // Smooth scroll to target
-                    textarea.scrollTo({
-                        top: Math.max(0, targetScroll),
-                        behavior: 'smooth'
-                    });
-                }, 10);
+                    setTimeout(() => {
+                        // Get cursor position
+                        const cursorPos = textarea.selectionStart;
+                        const textBeforeCursor = textarea.value.substring(0, cursorPos);
+                        const lines = textBeforeCursor.split('\n');
+                        
+                        // Get line height
+                        const style = window.getComputedStyle(textarea);
+                        const lineHeight = parseInt(style.lineHeight) || parseInt(style.fontSize) * 1.2;
+                        
+                        // Calculate the position of the cursor line from the top
+                        const cursorLineTop = (lines.length - 1) * lineHeight;
+                        
+                        // Get current scroll position and viewport height
+                        const currentScroll = textarea.scrollTop;
+                        const viewportHeight = textarea.clientHeight;
+                        const cursorLineBottom = cursorLineTop + lineHeight;
+                        
+                        // Scroll to keep cursor visible with more breathing room
+                        if (cursorLineBottom > currentScroll + viewportHeight - (lineHeight * 5)) {
+                            // Keep cursor 5 lines away from bottom
+                            textarea.scrollTop = Math.max(0, cursorLineBottom - viewportHeight + (lineHeight * 6));
+                        }
+                        else if (cursorLineTop < currentScroll + (lineHeight * 2)) {
+                            // Keep cursor 2 lines away from top
+                            textarea.scrollTop = Math.max(0, cursorLineTop - (lineHeight * 2));
+                        }
+                        
+                        // Clear the flag after a short delay
+                        setTimeout(() => {
+                            delete textarea.dataset.justPressedEnter;
+                        }, 100);
+                    }, 10);
                 }
             });
             panelContentWrapper.appendChild(textarea);
@@ -3177,18 +3148,28 @@ function updatePlaceholder(type, value) {
     const isFocusedTextarea = currentlyFocused && currentlyFocused.tagName === 'TEXTAREA';
     let savedCursorStart = 0;
     let savedCursorEnd = 0;
+    let savedScrollTop = 0;
+    let skipScrollRestore = false;
     
     if (isFocusedTextarea && currentlyFocused.selectionStart !== undefined) {
         savedCursorStart = currentlyFocused.selectionStart;
         savedCursorEnd = currentlyFocused.selectionEnd;
+        savedScrollTop = currentlyFocused.scrollTop;
+        // Check if Enter was just pressed - if so, don't restore scroll
+        skipScrollRestore = currentlyFocused.dataset.justPressedEnter === "true";
     }
 
     const textarea = document.getElementById(`placeholder-${type.replace(/\s+/g, "-").toLowerCase()}-textarea`);
     if (textarea && textarea.value !== value) {
         const start = textarea.selectionStart;
         const end = textarea.selectionEnd;
+        const scrollTop = textarea.scrollTop;
         textarea.value = value;
-        setTimeout(() => textarea.setSelectionRange(start, end), 0);
+        // Only restore scroll if Enter wasn't just pressed
+        if (!skipScrollRestore) {
+            textarea.scrollTop = scrollTop;
+        }
+        textarea.setSelectionRange(start, end);
     }
     updateTabTitle(type, value.trim() !== "");
     renderPlaceholdersInTemplate();
@@ -3198,15 +3179,14 @@ function updatePlaceholder(type, value) {
         refreshSearchIfActive();
     } catch (_) {}
     
-    // Restore focus and cursor position to textarea if it was focused before
+    // Restore focus, cursor position, and conditionally restore scroll position
     if (isFocusedTextarea && currentlyFocused && currentlyFocused === textarea) {
-        setTimeout(() => {
-            if (textarea && document.contains(textarea)) {
-                textarea.focus();
-                // Restore the exact cursor position that was saved
-                textarea.setSelectionRange(savedCursorStart, savedCursorEnd);
-            }
-        }, 0);
+        textarea.focus();
+        textarea.setSelectionRange(savedCursorStart, savedCursorEnd);
+        // Only restore scroll if Enter wasn't just pressed
+        if (!skipScrollRestore) {
+            textarea.scrollTop = savedScrollTop;
+        }
     }
 }
 
