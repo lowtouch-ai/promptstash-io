@@ -3252,7 +3252,10 @@ function generatePreviewContent() {
         const hasValue = tabsState.placeholderValues[placeholder]?.trim();
         // Show value if available, otherwise show placeholder
         const displayContent = hasValue ? tabsState.placeholderValues[placeholder] : original;
-        const escapedContent = escapeHtml(displayContent);
+        
+        // Escape HTML but preserve newlines by converting them to <br> tags
+        const escapedContent = escapeHtml(displayContent).replace(/\n/g, '<br>');
+        
         const spanHtml = `<span class="placeholder-marker ${
             hasValue ? "placeholder-filled" : "placeholder-empty"
         }" data-type="${placeholder}" title="${placeholder}: ${
