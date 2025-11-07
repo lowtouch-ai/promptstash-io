@@ -84,6 +84,45 @@ const SUPPORTED_HOSTS = {
     primarySelector: "textarea[placeholder*='Send a message'], div[contenteditable='true'][role='textbox'], textarea[aria-label*='message' i], div.input-area textarea, #chat-input",
     previousPromptSelector: "textarea:not(#chat-input)",
     name: "DeepSeek Chat"
+  },
+  "aistudio.google.com": {
+    primarySelector: "textarea.textarea[aria-label*='Type something'], textarea[placeholder], div.text-wrapper[contenteditable='true']",
+    previousPromptSelector: "textarea, div[contenteditable='true']",
+    shouldShowWidget: (element) => {
+      console.log('AI Studio: Checking element', element, 'tagName:', element.tagName, 'contentEditable:', element.contentEditable);
+      
+      // Check for textarea elements
+      if (element.tagName === 'TEXTAREA') {
+        const ariaLabel = element.getAttribute('aria-label') || '';
+        const hasPlaceholder = element.hasAttribute('placeholder');
+        const isPromptTextarea = ariaLabel.toLowerCase().includes('type') || 
+                                ariaLabel.toLowerCase().includes('prompt') ||
+                                element.classList.contains('textarea');
+        
+        console.log('AI Studio: Textarea check', { ariaLabel, hasPlaceholder, isPromptTextarea });
+        
+        if (isPromptTextarea || hasPlaceholder) {
+          console.log('AI Studio: Matched textarea');
+          return true;
+        }
+      }
+      
+      // Check for text-wrapper (fallback)
+      if (element.classList.contains('text-wrapper') && element.contentEditable === 'true') {
+        console.log('AI Studio: Matched text-wrapper');
+        return true;
+      }
+      
+      // Check if inside text-input-wrapper section
+      if (element.contentEditable === 'true' && element.closest('section.text-input-wrapper')) {
+        console.log('AI Studio: Matched via parent container');
+        return true;
+      }
+      
+      console.log('AI Studio: No match');
+      return false;
+    },
+    name: "Google AI Studio"
   }
 };
 
@@ -122,7 +161,6 @@ function isElementVisible(element) {
   return element.contains(elementAtPoint) || elementAtPoint === element;
 }
 
-
 function isPromptRelatedField(element) {
   const hostname = window.location.hostname;
   const placeholder = (element.getAttribute('placeholder') || '').toLowerCase();
@@ -131,6 +169,35 @@ function isPromptRelatedField(element) {
   const id = (element.id || '').toLowerCase();
   const className = (element.className || '').toLowerCase();
   const attributesText = `${placeholder} ${ariaLabel} ${id} ${className} ${role}`;
+  
+  // Special handling for Google AI Studio
+  if (hostname.includes('aistudio.google.com')) {
+    console.log('AI Studio: isPromptRelatedField checking', element);
+    
+    // Check for textarea elements
+    if (element.tagName === 'TEXTAREA') {
+      const ariaLabel = (element.getAttribute('aria-label') || '').toLowerCase();
+      const hasPlaceholder = element.hasAttribute('placeholder');
+      
+      // Always show on textareas with prompt-related aria-labels or placeholders
+      if (ariaLabel.includes('type') || ariaLabel.includes('prompt') || hasPlaceholder) {
+        console.log('AI Studio: isPromptRelatedField - textarea match');
+        return true;
+      }
+    }
+    
+    // Check for text-wrapper divs
+    if (element.classList.contains('text-wrapper') && element.contentEditable === 'true') {
+      console.log('AI Studio: isPromptRelatedField - text-wrapper match');
+      return true;
+    }
+    
+    // Size-based check for contenteditable divs
+    if (element.contentEditable === 'true' && element.tagName === 'DIV' && element.offsetHeight > 30) {
+      console.log('AI Studio: isPromptRelatedField - size match');
+      return true;
+    }
+  }
   
   // Special handling for Gemini
   if (hostname.includes('gemini.google.com')) {
@@ -342,6 +409,47 @@ function setupFocusTracking() {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // console.log("Received message:", message);
 
+  // Special handling for DeepSeek and Grok - send success immediately for instant popup close
+  if (message.action === "sendPrompt" && window.location.hostname.includes("chat.deepseek.com") || window.location.hostname.includes("grok.com")) {
+    if (!message.prompt || !message.prompt.trim()) {
+      sendResponse({ success: false, error: "Prompt is empty or invalid" });
+      return;
+    }
+    
+    // Send success immediately so popup closes
+    sendResponse({ success: true });
+    
+    // Do the actual text insertion with a small delay to ensure it processes correctly
+    setTimeout(() => {
+      // Try to find a target field
+      let inputField = cachedInputField || findPrimaryInputField();
+      let targetField = lastFocusedField && isFieldValid(lastFocusedField) ? lastFocusedField : inputField;
+      
+      if (targetField && isFieldEditable(targetField)) {
+        // Clear existing content based on field type
+        if (targetField.tagName === "TEXTAREA" || targetField.tagName === "INPUT") {
+          targetField.value = "";
+        } else {
+          targetField.innerHTML = "";
+        }
+        
+        // Insert the new content
+        if (targetField.tagName === "TEXTAREA" || targetField.tagName === "INPUT") {
+          targetField.value = message.prompt;
+        } else if (targetField.tagName === "DIV" && targetField.contentEditable === "true") {
+          targetField.innerHTML = message.prompt.replace(/\n/g, "<br>");
+        }
+        
+        // Dispatch events to trigger platform processing
+        targetField.dispatchEvent(new Event("input", { bubbles: true }));
+        targetField.dispatchEvent(new Event("change", { bubbles: true }));
+        targetField.focus();
+      }
+    }, 100); // Small delay to ensure proper processing
+    
+    return; // Exit early since we already sent response
+  }
+
   // Use cached input field or find new one for widget positioning
   let inputField = cachedInputField || findPrimaryInputField();
   let targetField = lastFocusedField && isFieldValid(lastFocusedField) ? lastFocusedField : inputField;
@@ -412,7 +520,7 @@ function processMessage(message, targetField, sendResponse) {
         const hostname = window.location.hostname;
         // console.log(`Target field innerHTML before clearing:`, targetField.innerHTML);
 
-        // Clear existing content based on field type
+        // Clear existing content based on field type (for non-DeepSeek/Grok platforms)
         if (targetField.tagName === "TEXTAREA" || targetField.tagName === "INPUT") {
           targetField.value = "";
           // console.log(`Target field value after clearing:`, targetField.value);
@@ -527,8 +635,8 @@ function processMessage(message, targetField, sendResponse) {
           targetField.dispatchEvent(new Event("input", { bubbles: true }));
           targetField.dispatchEvent(new Event("change", { bubbles: true }));
         }
-      targetField.focus(); // Restore focus to the target field
-      sendResponse({ success: true });
+        targetField.focus(); // Restore focus to the target field
+        sendResponse({ success: true });
       } else {
         // console.log("Target field is not editable");
         sendResponse({ success: false, error: "Target field is not editable" });
@@ -613,6 +721,28 @@ function findPrimaryInputField() {
 // Find the input container (parent element containing primary input field)
 function findInputContainer(inputField) {
   if (!inputField) return null;
+  
+  // For aistudio.google.com
+  if (window.location.hostname.includes("aistudio.google.com")) {
+    // For textarea elements, find the closest prompt-related container
+    if (inputField.tagName === 'TEXTAREA') {
+      const container = inputField.closest("div[class*='prompt']") || 
+                       inputField.closest("div[class*='input']") ||
+                       inputField.closest("section") ||
+                       inputField.parentElement;
+      console.log('AI Studio: Found container for textarea:', container);
+      return container;
+    }
+    
+    // For contenteditable divs
+    const container = inputField.closest("div.prompt-input-wrapper-container") || 
+                     inputField.closest("section.text-input-wrapper") ||
+                     inputField.closest("div.mat-mdc-tooltip-trigger");
+    if (container) {
+      return container;
+    }
+  }
+
   // For grok.com, use query-bar as the container
   if (window.location.hostname.includes("grok.com")) {
     const queryBar = inputField.closest("div.query-bar");
@@ -768,9 +898,35 @@ function createWidget(inputField, inputContainer) {
     widget.setAttribute('tabindex', '0');
     widget.setAttribute('aria-label', 'Open PromptStash');
 
+    // Prevent click events from propagating to parent elements ONLY for the widget icon
+    // Do NOT stop propagation if the popup is already open (to allow interaction with it)
+    widget.addEventListener('click', (e) => {
+        // Only stop propagation if we're clicking on the widget icon itself
+        // and NOT if the popup is already open (which would interfere with popup interactions)
+        if (!document.getElementById('promptstash-popup')) {
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+        }
+    }, true);
+
+    widget.addEventListener('mousedown', (e) => {
+        // Only stop propagation for the widget icon, not for the popup
+        if (!document.getElementById('promptstash-popup')) {
+            e.stopPropagation();
+        }
+    });
+
+    widget.addEventListener('mouseup', (e) => {
+        // Only stop propagation for the widget icon, not for the popup
+        if (!document.getElementById('promptstash-popup')) {
+            e.stopPropagation();
+        }
+    });
+
     widget.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
+            e.stopPropagation();
             if (!document.getElementById('promptstash-popup')) {
                 if (widget.associatedField && isFieldValid(widget.associatedField)) {
                     widget.associatedField.focus();
@@ -812,6 +968,9 @@ function makeDraggable(widget, container, inputField, onPositionChange) {
         if (document.getElementById('promptstash-popup')) return;
 
         e.preventDefault();
+        // Only stop propagation when we're actually starting a drag on the widget icon
+        // This prevents the Grok modal from closing but allows normal popup interaction
+        e.stopPropagation();
         isDragging = true;
         dragStarted = false;
         startX = e.clientX;
@@ -840,6 +999,7 @@ function makeDraggable(widget, container, inputField, onPositionChange) {
 
         if (dragStarted) {
             e.preventDefault();
+            e.stopPropagation();
             const dx = e.clientX - startX;
             const dy = e.clientY - startY;
 
@@ -856,6 +1016,12 @@ function makeDraggable(widget, container, inputField, onPositionChange) {
 
     const onPointerUp = (e) => {
         if (!isDragging) return;
+        
+        // Only stop propagation if we're ending a drag on the widget icon
+        // Don't interfere with popup interactions
+        if (!document.getElementById('promptstash-popup')) {
+            e.stopPropagation();
+        }
 
         if (dragStarted) {
             const finalLeftPx = parseFloat(widget.style.left) || 0;

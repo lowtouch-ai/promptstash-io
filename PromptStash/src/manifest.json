@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "PromptStash - ChatGPT, Grok & Gemini veo AI Prompt Manager by lowtouch.ai",
-  "version": "3.0.0",
-  "description": "Organize & deploy AI prompts ChatGPT, Gemini, Grok, Perplexity, copilot & deepseek. Create Stunning Visuals with Veo 3 and Flow.",
+  "version": "3.0.1",
+  "description": "Organize & deploy AI prompts across ChatGPT, Gemini, Grok, Perplexity, Copilot, Google AI Studio, and DeepSeek. Create stunning visuals with Veo 3 and Flow.",
   "permissions": [
     "storage",
     "tabs",
@@ -17,7 +17,8 @@
     "https://claude.ai/*",
     "https://labs.google/*",
     "https://copilot.microsoft.com/*",
-    "https://chat.deepseek.com/*"
+    "https://chat.deepseek.com/*",
+    "https://aistudio.google.com/*"
   ],
   "action": {
     "default_icon": {
@@ -39,7 +40,8 @@
         "https://claude.ai/*",
         "https://labs.google/*",
         "https://copilot.microsoft.com/*",
-        "https://chat.deepseek.com/*"
+        "https://chat.deepseek.com/*",
+        "https://aistudio.google.com/*"
       ],
       "js": ["content.js"],
       "run_at": "document_idle"
@@ -63,7 +65,8 @@
         "https://claude.ai/*",
         "https://labs.google/*",
         "https://copilot.microsoft.com/*",
-        "https://chat.deepseek.com/*"
+        "https://chat.deepseek.com/*",
+        "https://aistudio.google.com/*"
       ]
     }
   ],

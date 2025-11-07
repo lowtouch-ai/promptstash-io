@@ -6,9 +6,10 @@ const supportedHosts = [
   "https://claude.ai/",
   "https://labs.google/",
   "https://copilot.microsoft.com/",
-  "https://chat.deepseek.com/"
+  "https://chat.deepseek.com/",
+  "https://aistudio.google.com/"
 ];
-const supportedHostsString = "grok.com, chatgpt.com, perplexity.ai, gemini.google.com, claude.ai, labs.google, copilot.microsoft.com, and chat.deepseek.com";
+const supportedHostsString = "grok.com, chatgpt.com, perplexity.ai, gemini.google.com, claude.ai, labs.google, copilot.microsoft.com, chat.deepseek.com, and aistudio.google.com";
 
 const LARGE_SCREEN_MIN = 767;
 const SMALL_SCREEN_MAX = 400; // Half of LARGE_SCREEN_MIN + padding on both sides
@@ -439,6 +440,8 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
       position: fixed;
       user-select: none;
       will-change: transform, width, height;
+      pointer-events: auto;
+      background: white;
     `;
     
     // Create drag handle with optimized styles
@@ -454,6 +457,7 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
       z-index: 3; /* Above iframe (iframe is z-index: 2) */
       touch-action: none;
       background: transparent;
+      pointer-events: auto;
     `;
     
     const iframe = document.createElement("iframe");
@@ -465,6 +469,7 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
       position: relative; 
       z-index: 2;
       display: block;
+      pointer-events: auto;
     `;
     
     const resizeHandles = createResizeHandles();
@@ -473,6 +478,11 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
     popup.appendChild(iframe);
     popup.appendChild(resizeHandles);
     document.body.appendChild(popup);
+    
+    // Ensure iframe maintains pointer-events after load
+    iframe.addEventListener('load', () => {
+      iframe.style.pointerEvents = 'auto';
+    });
 
     const applyPopupStyles = (isFullscreen, savedPosition) => {
       const isLargeScreen = window.innerWidth > LARGE_SCREEN_MIN;
@@ -532,6 +542,8 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
         overflow: hidden;
         transition: width 0.2s ease-out, height 0.2s ease-out, top 0.2s ease-out, right 0.2s ease-out, left 0.2s ease-out;
         backdrop-filter: blur(1px);
+        pointer-events: auto;
+        background: white;
       `;
     };
 
@@ -557,7 +569,10 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
       if (isDragging || isResizing) return;
       
       const p = document.getElementById(POPUP_ID);
-      if (p && !p.contains(e.target)) {
+      const widget = document.querySelector('.promptstash-widget');
+      
+      // Don't close if clicking on the widget icon or inside the popup
+      if (p && !p.contains(e.target) && (!widget || !widget.contains(e.target))) {
         // Save position on outside click
         const finalRect = p.getBoundingClientRect();
         chrome.storage.local.set({ popupPosition: { 
@@ -568,8 +583,6 @@ function togglePopup(LARGE_SCREEN_MIN = 767, SMALL_SCREEN_MAX = 400, defaultWidt
         }}, () => {
             cleanup();
         });
-      } else if (p && !p.contains(e.target)) {
-          cleanup();
       }
     };
     
@@ -710,7 +723,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   top: "0",
                   borderRadius: "0",
                   boxShadow: "none",
-                  transition: "width 0.3s ease, height 0.3s ease, top 0.3s ease, left 0.3s ease"
+                  transition: "width 0.3s ease, height 0.3s ease, top 0.3s ease, left 0.3s ease",
+                  pointerEvents: "auto",
+                  background: "white"
                 });
               } else {
                 // Exiting fullscreen - restore to default dimensions
@@ -737,7 +752,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   right: '8px',
                   borderRadius: "12px",
                   boxShadow: "0 12px 40px rgba(0, 0, 0, 0.15), 0 4px 12px rgba(0, 0, 0, 0.1)",
-                  transition: "width 0.3s ease, height 0.3s ease, top 0.3s ease, left 0.3s ease, right 0.3s ease"
+                  transition: "width 0.3s ease, height 0.3s ease, top 0.3s ease, left 0.3s ease, right 0.3s ease",
+                  pointerEvents: "auto",
+                  background: "white"
                 };
                 Object.assign(popup.style, styles);
               }

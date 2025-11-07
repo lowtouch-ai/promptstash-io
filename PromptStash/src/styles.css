@@ -32,7 +32,7 @@ header, .search-select, #template, #buttons {
   font-family: 'Roboto', sans-serif;
   font-size: 13px;
   line-height: 1.4;
-  max-width: 320px;
+  max-width: 380px;
   min-width: 260px;
   z-index: 99999;
   opacity: 0;
@@ -595,6 +595,27 @@ body.dark .toast-content-wrapper.red::before {
 
 body.dark .toast-content-wrapper.gray::before {
   color: #E8F0FE;
+}
+
+/* Feedback toast button styles */
+.ps-toast button {
+  transition: transform 0.1s ease, opacity 0.1s ease;
+}
+
+.ps-toast button:hover {
+  transform: scale(1.02);
+  opacity: 0.9;
+}
+
+/* Dark mode adjustments for feedback toast buttons */
+body.dark .ps-toast button[style*="background: rgba(255, 255, 255"] {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #e8eaed !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+body.dark .ps-toast button[style*="background: rgba(255, 255, 255"]:hover {
+  background: rgba(255, 255, 255, 0.2) !important;
 }
 
 body.dark .search-nav-btn:hover:not(:disabled) {
@@ -1781,4 +1802,152 @@ body.dark .scroll-btn:hover {
   opacity: 1 !important;
   transform: scale(1.1);
   font-weight: bold;
+}
+
+/* Update notification banner styles */
+.update-banner {
+  position: fixed;
+  top: 28px;
+  left: 0;
+  right: 0;
+  background: linear-gradient(90deg, #4285F4, #4285F4);
+  color: #FFFFFF;
+  padding: 10px 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  z-index: 100000;
+  animation: slideDown 0.3s ease-out;
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-app-region: no-drag; /* Prevent dragging on banner */
+  user-select: text; /* Allow text selection */
+}
+
+body.dark .update-banner {
+  background: linear-gradient(90deg, #3367d6, #3367d6);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.update-banner-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 800px;
+  margin: 0 auto;
+  gap: 16px;
+  flex-wrap: wrap;
+  -webkit-app-region: no-drag; /* Ensure content is interactive */
+  pointer-events: auto;
+}
+
+.update-banner-text {
+  flex: 1;
+  min-width: 200px;
+  font-weight: 500;
+  -webkit-app-region: no-drag;
+  user-select: text;
+}
+
+.update-banner-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+}
+
+.update-banner-link {
+  color: #FFFFFF;
+  text-decoration: underline;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 13px;
+  -webkit-app-region: no-drag; /* Ensure link is clickable */
+  pointer-events: auto;
+}
+
+.update-banner-link:hover {
+  opacity: 0.8;
+  color: #FFFFFF;
+}
+
+.update-banner-dismiss {
+  background: rgba(255, 255, 255, 0.2);
+  color: #FFFFFF;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.2s, transform 0.2s;
+  font-size: 12px;
+  -webkit-app-region: no-drag; /* Ensure button is clickable */
+  pointer-events: auto;
+}
+
+.update-banner-dismiss:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(1.05);
+}
+
+body.dark .update-banner-dismiss {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+body.dark .update-banner-dismiss:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+}
+
+.update-banner.hiding {
+  animation: slideUp 0.3s ease-out;
+}
+
+/* No body padding adjustment - banner overlays without affecting layout */
+/* Removed body.has-update-banner padding to prevent content push-down */
+
+/* Mobile responsive styles */
+@media (max-width: 400px) {
+  .update-banner {
+    padding: 8px 12px;
+  }
+  
+  .update-banner-content {
+    gap: 8px;
+  }
+  
+  .update-banner-text {
+    font-size: 12px;
+  }
+  
+  .update-banner-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
 }

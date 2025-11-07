@@ -8,6 +8,17 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body class="light">
+  <!-- Update Notification Banner -->
+  <div id="updateBanner" class="update-banner" style="display: none;">
+    <div class="update-banner-content">
+      <span class="update-banner-text">Updated: See what's new in this release.</span>
+      <div class="update-banner-actions">
+        <a href="#" id="whatsNewLink" class="update-banner-link">What's new</a>
+        <button id="dismissBanner" class="update-banner-dismiss">Dismiss</button>
+      </div>
+    </div>
+  </div>
+  
   <div class="top-controls position-absolute top-0 end-0 d-flex align-items-center m-0 py-0 px-2" style="gap: 0.3rem;">
     <button id="themeToggle" class="topbtn m-0" aria-label="Toggle theme" data-bs-toggle="tooltip" data-bs-placement="top" title="Toggle theme">
       <svg width="15" height="15"><use href="sprite.svg#theme"></use></svg>

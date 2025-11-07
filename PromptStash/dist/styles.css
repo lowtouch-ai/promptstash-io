@@ -21,136 +21,840 @@ header, .search-select, #template, #buttons {
   flex-shrink: 0;
 }
 
-/* Toast notification styles */
-.toast {
+/* Toast notification styles - Top right aligned, non-blocking */
+.ps-toast {
   position: fixed;
   top: 20px;
   right: 20px;
-  padding: 6px 12px;
-  border-radius: 4px;
-  box-shadow: 0 3px 5px -1px rgba(0, 0, 0, 0.2),
-              0 6px 10px 0 rgba(0, 0, 0, 0.14),
-              0 1px 18px 0 rgba(0, 0, 0, 0.12);
+  padding: 12px 16px;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   font-family: 'Roboto', sans-serif;
-  font-size: 10px;
-  line-height: 15px;
-  max-width: 320px;
-  z-index: 10000;
+  font-size: 13px;
+  line-height: 1.4;
+  max-width: 380px;
+  min-width: 260px;
+  z-index: 99999;
   opacity: 0;
   transform: translateY(-20px);
   transition: opacity 0.3s ease, transform 0.3s ease;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: flex-start;
   gap: 8px;
-  white-space: pre-line; /* Support multi-line messages */
+  white-space: pre-line;
+  text-align: left;
+  pointer-events: none; /* Don't block clicks when hidden */
 }
 
 /* Toast show/hide states */
-.toast.show {
+.ps-toast.ps-show {
   opacity: 1;
   transform: translateY(0);
+  pointer-events: auto; /* Enable clicks when visible */
 }
 
-.toast.hide {
+.ps-toast.ps-hide {
   opacity: 0;
   transform: translateY(-20px);
 }
 
-/* Error toast (red) */
-.toast.red {
-  background: #ffa8a8; /* Material Design red 700 */
-  color: #7e1717;
+/* Toast content wrapper - wraps message text */
+.toast-content-wrapper {
+  flex: 1;
+  padding-left: 0; /* Remove left padding */
+  padding-right: 4px; /* Small space before close button */
+  display: flex;
+  align-items: flex-start;
+  gap: 4px; /* Small gap between icon and text */
+}
+
+/* Toast icon - moved inside content wrapper on the left */
+.toast-content-wrapper.success::before {
+  content: '✔';
+  color: #34A853;
+  width: 18px;
+  height: 18px;
+  font-size: 16px;
+  line-height: 18px;
+  flex-shrink: 0;
+}
+
+.toast-content-wrapper.error::before {
+  content: '✖';
+  color: #D93025;
+  width: 18px;
+  height: 18px;
+  font-size: 16px;
+  line-height: 18px;
+  flex-shrink: 0;
+}
+
+.toast-content-wrapper.warning::before {
+  content: '⚠';
+  color: #FBBC04;
+  width: 18px;
+  height: 18px;
+  font-size: 16px;
+  line-height: 18px;
+  flex-shrink: 0;
+}
+
+.toast-content-wrapper.info::before {
+  content: 'ℹ';
+  color: #4285F4;
+  width: 18px;
+  height: 18px;
+  font-size: 16px;
+  line-height: 18px;
+  flex-shrink: 0;
 }
 
 /* Success toast (green) */
-.toast.green {
-  background: #c7ffc9; /* Material Design green 500 */
-  color: #006417;
+.ps-toast.success {
+  background: #E6F4EA;
+  color: #1E4620;
+  border: 1px solid #34A853;
 }
 
-/* Neutral toast (gray) */
-.toast.gray {
-  background: #eeeeee; /* Material Design gray 700 */
-  color: #000;
+/* Error toast (red) */
+.ps-toast.error {
+  background: #FDECEA;
+  color: #611A15;
+  border: 1px solid #D93025;
+}
+
+/* Warning toast (amber) */
+.ps-toast.warning {
+  background: #FFF4E5;
+  color: #663C00;
+  border: 1px solid #FBBC04;
+}
+
+/* Information toast (blue) */
+.ps-toast.info {
+  background: #E8F0FE;
+  color: #174EA6;
+  border: 1px solid #4285F4;
+}
+
+.toast-content-wrapper.info::before {
+  content: 'ℹ';
+  color: #4285F4;
+  width: 18px;
+  height: 18px;
+  font-size: 16px;
+  line-height: 18px;
+  flex-shrink: 0;
+}
+
+/* Legacy color support (maps old colors to new system) */
+.toast-content-wrapper.green::before { /* Map to success */
+  content: '✔';
+  color: #34A853;
+  width: 18px;
+  height: 18px;
+  font-size: 16px;
+  line-height: 18px;
+  flex-shrink: 0;
+}
+
+.toast-content-wrapper.red::before { /* Map to error */
+  content: '✖';
+  color: #D93025;
+  width: 18px;
+  height: 18px;
+  font-size: 16px;
+  line-height: 18px;
+  flex-shrink: 0;
+}
+
+.toast-content-wrapper.gray::before { /* Map to info */
+  content: 'ℹ';
+  color: #4285F4;
+  width: 18px;
+  height: 18px;
+  font-size: 16px;
+  line-height: 18px;
+  flex-shrink: 0;
+}
+
+.ps-toast.gray { /* Map to info */
+  background: #E8F0FE;
+  color: #174EA6;
+  border: 1px solid #4285F4;
 }
 
 /* Dark mode adjustments */
-body.dark .toast.red {
-  background: #570404; /* Darker red for contrast */
-  color: #f4afaf;
+body.dark .ps-toast.success,
+body.dark .ps-toast.green {
+  background: #1E4620;
+  color: #E6F4EA;
+  border-color: #34A853;
 }
 
-body.dark .toast.green {
-  background: #044207; /* Darker green for contrast */
-  color: #a3f4b1;
+body.dark .ps-toast.error,
+body.dark .ps-toast.red {
+  background: #611A15;
+  color: #FDECEA;
+  border-color: #D93025;
 }
 
-body.dark .toast.gray {
-  background: #444; /* Darker gray for contrast */
-  color: #fff;
+body.dark .ps-toast.warning {
+  background: #663C00;
+  color: #FFF4E5;
+  border-color: #FBBC04;
 }
 
-/* Toast close button */
-.toast-close-btn {
+body.dark .ps-toast.info,
+body.dark .ps-toast.gray {
+  background: #174EA6;
+  color: #E8F0FE;
+  border-color: #4285F4;
+}
+
+/* Modal notification styles - Center aligned, blocking */
+.ps-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 14px 16px 12px 16px;
+  border-radius: 7px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  font-family: 'Roboto', sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  max-width: 420px;
+  min-width: 320px;
+  z-index: 100001;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.9);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  display: none; /* Hidden by default - no space taken, no pointer events */
+  flex-direction: column;
+  gap: 12px;
+  white-space: pre-line;
+  text-align: left;
+  pointer-events: none; /* Prevent mouse interaction when hidden */
+}
+
+.ps-modal.ps-show {
+  display: flex; /* Show the modal */
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+  pointer-events: auto; /* Enable mouse interaction when visible */
+}
+
+.ps-modal.ps-hide {
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.9);
+  pointer-events: none; /* Disable mouse interaction when hiding */
+}
+
+/* Modal icon */
+.ps-modal::before {
+  content: '';
   position: absolute;
-  top: 4px;
-  right: 8px;
+  left: 12px;
+  top: 14px;
+  width: 18px;
+  height: 18px;
+  font-size: 16px;
+  line-height: 18px;
+}
+
+/* Modal variants */
+.ps-modal.warning {
+  background: #FFF4E5;
+  color: #663C00;
+  border: 1px solid #F0A202;
+}
+
+.ps-modal.warning::before {
+  content: '⚠';
+  color: #F0A202;
+}
+
+.ps-modal.error {
+  background: #FDECEA;
+  color: #5F2120;
+  border: 1px solid #D93025;
+}
+
+.ps-modal.error::before {
+  content: '✖';
+  color: #D93025;
+  font-size: 16px;
+}
+
+/* Modal overlay - dimmed background */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 100000;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  display: none;
+}
+
+.modal-overlay.show {
+  opacity: 1;
+}
+
+/* Dark mode for modals */
+body.dark .ps-modal.warning {
+  background: #663C00;
+  color: #FFF4E5;
+  border-color: #F0A202;
+}
+
+body.dark .ps-modal.error {
+  background: #5F2120;
+  color: #FDECEA;
+  border-color: #D93025;
+}
+
+/* Global Search Widget Styles */
+.global-search-widget {
+  top: 8px;
+  right: 0px;
+  z-index: 10000;
+  width: 280px;
+  opacity: 0;
+  transform: translateY(-10px) scale(0.95);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+.global-search-widget.show {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.global-search-container {
+  background: #ffffff;
+  border: 1px solid #e1e5e9;
+  border-radius: 8px;
+  padding: 8px 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.1);
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  backdrop-filter: blur(10px);
+  transition: box-shadow 0.2s ease, transform 0.1s ease;
+}
+
+.global-search-widget.show .global-search-container {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.global-search-icon {
+  display: flex;
+  align-items: center;
+  fill: #6c757d;
+  flex-shrink: 0;
+}
+
+.global-search-input {
+  border: none;
+  outline: none;
+  background: transparent;
+  flex: 1;
+  font-size: 14px;
+  color: #202124;
+  padding: 4px 0;
+  min-width: 0;
+  font-weight: 400;
+}
+
+.global-search-input::placeholder {
+  color: #6c757d;
+}
+
+.global-search-close {
   background: none;
   border: none;
-  font-size: 14px;
+  padding: 4px;
   cursor: pointer;
-  color: #444;
-  padding: 0;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  fill: #6c757d;
+  border-radius: 6px;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
 }
 
-body.dark .toast-close-btn {
-  color: #e0e0e0;
+.global-search-close:hover {
+  background: #f8f9fa;
+  fill: #495057;
+}
+
+.search-nav-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  fill: #6c757d;
+  border-radius: 6px;
+  flex-shrink: 0;
+  font-size: 12px;
+  justify-content: center;
+  transition: all 0.2s ease;
+  color: #6c757d;
+}
+
+.search-nav-btn:hover:not(:disabled) {
+  background: #f8f9fa;
+  fill: #495057;
+  color: #495057;
+  transform: scale(1.05);
+}
+
+.search-nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.search-match-count {
+  min-width: 35px;
+  text-align: center;
+  font-size: 12px;
+  flex-shrink: 0;
+  color: #6c757d;
+  font-weight: 500;
+}
+
+.search-divider {
+  width: 1px;
+  height: 28px;
+  background-color: #e1e5e9;
+  flex-shrink: 0;
+}
+
+/* Content search highlighting */
+.content-search-highlight {
+  background-color: #ffeb3b; /* solid yellow */
+  color: inherit; /* do not force color */
+  border-radius: 2px;
+  display: inline;
+  line-height: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  pointer-events: none; /* do not intercept clicks on placeholders under highlight */
+}
+
+.content-search-highlight.active {
+  background-color: #ff9800; /* Softer orange */
+}
+
+/* Overlay highlighter for placeholder textareas (used when Finder is open) */
+.ps-highlight-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1; /* Under textarea so caret stays visible */
+  overflow: hidden;
+  pointer-events: none;
+  display: none; /* only when Finder is open */
+}
+.ps-highlight-content {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font: inherit;
+  line-height: inherit;
+  padding: 8px 12px; /* match py-2 px-3 on textarea */
+  color: transparent; /* avoid double-rendered text (bold effect) */
+}
+.ps-finder-open .ps-highlight-layer { display: block; }
+.ps-finder-open .tab-pane textarea {
+  position: relative;
+  z-index: 3; /* above overlay; overlay shows through because textarea bg is transparent */
+  background-color: transparent !important;
+}
+/* Overlay highlights show text; textarea remains on top, but this guards if overlay stacks above */
+
+/* Dark mode search highlighting */
+body.dark .content-search-highlight {
+  background-color: #ffc107;
+  color: inherit;
+}
+
+body.dark .content-search-highlight.active {
+  background-color: #ff9800;
+  color: inherit;
+}
+
+/* Combined placeholder and highlight styles */
+.placeholder-marker.content-search-highlight {
+  background-color: #ffeb3b !important;
+  border-color: #ffc107 !important;
+}
+
+.placeholder-marker.content-search-highlight.active {
+  background-color: #ff9800 !important;
+  border-color: #ff7a00 !important;
+}
+
+body.dark .placeholder-marker.content-search-highlight {
+  background-color: #ffc107 !important;
+  border-color: #ffab00 !important;
+}
+
+body.dark .placeholder-marker.content-search-highlight.active {
+  background-color: #ff9800 !important;
+  border-color: #ff7a00 !important;
+}
+
+.global-search-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: #ffffff;
+  border: 1px solid #ced4da;
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  max-height: 300px;
+  overflow-y: auto;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.global-search-result-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #f8f9fa;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.global-search-result-item:hover {
+  background: #f8f9fa;
+}
+
+.global-search-result-item:last-child {
+  border-bottom: none;
+}
+
+.global-search-result-name {
+  font-weight: 500;
+  color: #202124;
+  font-size: 14px;
+}
+
+.global-search-result-tags {
+  font-size: 12px;
+  color: #6c757d;
+}
+
+.global-search-result-preview {
+  font-size: 12px;
+  color: #495057;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Dark mode styles for global search */
+body.dark .global-search-container {
+  background: #333;
+  border-color: #555;
+}
+
+body.dark .toast-content-wrapper.success::before {
+  color: #E6F4EA;
+}
+
+body.dark .toast-content-wrapper.error::before {
+  color: #FDECEA;
+}
+
+body.dark .toast-content-wrapper.warning::before {
+  color: #FFF4E5;
+}
+
+body.dark .toast-content-wrapper.info::before {
+  color: #E8F0FE;
+}
+
+body.dark .toast-content-wrapper.green::before {
+  color: #E6F4EA;
+}
+
+body.dark .toast-content-wrapper.red::before {
+  color: #FDECEA;
+}
+
+body.dark .toast-content-wrapper.gray::before {
+  color: #E8F0FE;
+}
+
+/* Feedback toast button styles */
+.ps-toast button {
+  transition: transform 0.1s ease, opacity 0.1s ease;
+}
+
+.ps-toast button:hover {
+  transform: scale(1.02);
+  opacity: 0.9;
+}
+
+/* Dark mode adjustments for feedback toast buttons */
+body.dark .ps-toast button[style*="background: rgba(255, 255, 255"] {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #e8eaed !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+body.dark .ps-toast button[style*="background: rgba(255, 255, 255"]:hover {
+  background: rgba(255, 255, 255, 0.2) !important;
+}
+
+body.dark .search-nav-btn:hover:not(:disabled) {
+  background: #444;
+  fill: #fff;
+}
+
+body.dark .search-divider {
+  background-color: #555;
+}
+
+body.dark .global-search-results {
+  background: #333;
+  border-color: #555;
+}
+
+body.dark .global-search-result-item {
+  border-bottom-color: #444;
+}
+
+body.dark .global-search-result-item:hover {
+  background: #444;
+}
+
+body.dark .global-search-result-name {
+  color: #e8eaed;
+}
+
+body.dark .global-search-result-tags {
+  color: #8a94a0;
+}
+
+body.dark .global-search-result-preview {
+  color: #ccc;
+}
+
+/* Toast close button (X) - Always visible */
+.toast-close-btn {
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  color: inherit;
+  padding: 0;
+  line-height: 1;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: -2px;
 }
 
 .toast-close-btn:hover,
 .toast-close-btn:focus {
-  color: #000;
+  opacity: 1;
 }
 
-body.dark .toast-close-btn:hover,
-body.dark .toast-close-btn:focus {
-  color: #fff;
+/* Modal content wrapper - wraps message text with proper padding */
+.modal-content-wrapper {
+  padding-left: 24px; /* Space for icon */
+  padding-right: 24px; /* Space to avoid close button */
+  flex: 1;
 }
 
-/* Toast action buttons */
-.toast-button-container {
+/* Modal close button */
+.modal-close-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: inherit;
+  padding: 4px;
+  line-height: 1;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+  width: 22px;
+  height: 22px;
   display: flex;
-  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  z-index: 10; /* Ensure it stays above message text */
 }
 
-.toast-action-btn {
-  padding: 4px 8px;
+.modal-close-btn:hover,
+.modal-close-btn:focus {
+  opacity: 1;
+}
+
+/* Button container for modal actions */
+.modal-button-container {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+/* Primary buttons (for primary actions) */
+.modal-primary-btn {
+  padding: 6px 16px;
   border: none;
   border-radius: 4px;
-  background: #bbb3; /* Semi-transparent white */
-  color: #212121;
   cursor: pointer;
   font-family: 'Roboto', sans-serif;
-  font-size: 8px;
-  text-transform: uppercase;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background-color 0.2s ease;
 }
 
-body.dark .toast-action-btn {
-  background: #ffffff1a; /* Adjusted for dark mode */
+/* Save button - context-dependent */
+/* Green save for success contexts */
+.modal-primary-btn.save {
+  background: #34A853;
+  color: #FFFFFF;
+}
+
+.modal-primary-btn.save:hover {
+  background: #2d8e47;
+}
+
+/* Amber save for warning modals (no tags and close without saving) */
+.ps-modal.warning .modal-primary-btn.save,
+.ps-modal.warning .modal-primary-btn[data-text*="close without saving"] {
+  background: #F0A202;
+  color: #FFFFFF;
+}
+
+.ps-modal.warning .modal-primary-btn.save:hover,
+.ps-modal.warning .modal-primary-btn[data-text*="close without saving"]:hover {
+  background: #d68f02;
+}
+
+/* Delete/Confirm button - red */
+.modal-primary-btn.delete,
+.modal-primary-btn.confirm {
+  background: #D93025;
+  color: #FFFFFF;
+}
+
+.modal-primary-btn.delete:hover,
+.modal-primary-btn.confirm:hover {
+  background: #b8271e;
+}
+
+/* OK button - blue */
+.modal-primary-btn.ok {
+  background: #4285F4;
+  color: #FFFFFF;
+}
+
+.modal-primary-btn.ok:hover {
+  background: #3367d6;
+}
+
+/* Secondary buttons (for cancel actions) */
+.modal-secondary-btn {
+  padding: 6px 16px;
+  border: 1px solid #DADCE0;
+  border-radius: 4px;
+  background: #F1F3F4;
+  color: #202124;
+  cursor: pointer;
+  font-family: 'Roboto', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background-color 0.2s ease;
+}
+
+.modal-secondary-btn:hover {
+  background: #E0E0E0;
+}
+
+/* Dark mode button adjustments */
+body.dark .modal-primary-btn.save {
+  background: #2d8e47;
+}
+
+body.dark .modal-primary-btn.save:hover {
+  background: #34A853;
+}
+
+/* Amber save for warning modals in dark mode */
+body.dark .ps-modal.warning .modal-primary-btn.save,
+body.dark .ps-modal.warning .modal-primary-btn[data-text*="close without saving"] {
+  background: #d68f02;
+}
+
+body.dark .ps-modal.warning .modal-primary-btn.save:hover,
+body.dark .ps-modal.warning .modal-primary-btn[data-text*="close without saving"]:hover {
+  background: #F0A202;
+}
+
+body.dark .modal-primary-btn.delete,
+body.dark .modal-primary-btn.confirm {
+  background: #b8271e;
+}
+
+body.dark .modal-primary-btn.delete:hover,
+body.dark .modal-primary-btn.confirm:hover {
+  background: #D93025;
+}
+
+body.dark .modal-primary-btn.ok {
+  background: #3367d6;
+}
+
+body.dark .modal-primary-btn.ok:hover {
+  background: #4285F4;
+}
+
+body.dark .modal-secondary-btn {
+  background: #3c4043;
   color: #e8eaed;
+  border-color: #5f6368;
 }
 
-.toast-action-btn:hover {
-  background: #bbb5;
+body.dark .modal-secondary-btn:hover {
+  background: #4b4f57;
 }
 
-body.dark .toast-action-btn:hover {
-  background: #ffffff33;
+/* Bold key action words in messages */
+.ps-toast strong,
+.ps-modal strong {
+  font-weight: 600;
 }
 
 /* Accessibility enhancements */
-.toast[role="alertdialog"] {
+.ps-toast[role="alert"] {
+  outline: none;
+}
+
+.ps-modal[role="alertdialog"] {
   outline: none;
 }
 
@@ -376,17 +1080,20 @@ body.dark .favorite-suggestion:hover, body.dark .favorite-suggestion:focus {
 }
 
 #tags-label {
+  position: absolute;
   color: #888;
   top: 50%;
-  left: 0px;
+  left: 12px; /* Adjust left padding */
   font-size: 0.9rem;
   transform: translateY(-50%);
+  z-index: 10;
+  pointer-events: none; /* Make sure it doesn't block clicks on the input */
 }
 
 #templateTags {
   border: 1px solid #dadce0;
   border-radius: 8px;
-  padding: 8px 40px 8px 56px;
+  padding: 8px 40px 8px 56px; /* Padding to make space for the label */
   font-size: 0.9rem;
   width: 100%;
   flex-shrink: 0;
@@ -405,14 +1112,45 @@ body.dark .favorite-suggestion:hover, body.dark .favorite-suggestion:focus {
   color: #888;
   border: 3px dashed #8888;
 }
-
 #promptArea {
   flex: 1;
+  position: relative;
   border: 1px solid #dadce0;
-  min-height: 50px;
-  height: calc(100vh - 320px); /* Adjust based on your layout */
-  overflow: both;
-  transition: 0.2s;
+  border-radius: 8px !important; 
+  flex-shrink: 0;
+  word-wrap: break-word;
+  word-break: break-word;
+  padding-right: 40px !important; /* Add space for clear button */
+  height: calc(100vh - 360px);
+  overflow-y: auto;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  resize: none;
+  white-space: pre-wrap;
+}
+
+/* Focus outline for promptArea - matches Bootstrap form-control */
+#promptArea:focus {
+  border-color: #86b7fe;
+  outline: 0;
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+body.dark #promptArea:focus {
+  border-color: #6ea8fe;
+  box-shadow: 0 0 0 0.25rem rgba(110, 168, 254, 0.25);
+}
+#previewArea {
+  border: 1px solid #dadce0;
+  border-radius: 8px !important;
+  word-wrap: break-word;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+/* Placeholder styling for contenteditable div */
+#promptArea:empty:before {
+  content: attr(data-placeholder);
+  color: #888;
+  pointer-events: none;
 }
 
 #promptArea::-webkit-scrollbar {
@@ -421,6 +1159,17 @@ body.dark .favorite-suggestion:hover, body.dark .favorite-suggestion:focus {
   cursor: pointer;
 }
 #promptArea::-webkit-scrollbar-thumb {
+  background-color: #8888;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#previewArea::-webkit-scrollbar {
+  background: #8882;
+  width: 5px;
+  cursor: pointer;
+}
+#previewArea::-webkit-scrollbar-thumb {
   background-color: #8888;
   border-radius: 4px;
   cursor: pointer;
@@ -467,7 +1216,7 @@ body.dark .clrbtn:hover {
 }
 
 #clearSearch {
-  margin-right: 4rem;
+  margin-right: 8.3rem;
 }
 
 #buttons {
@@ -480,9 +1229,36 @@ body.dark .clrbtn:hover {
   position: relative; /* Enable positioning for spinner */
 }
 
-#buttons .btn:disabled {
-  opacity: 0.6;
+#buttons .btn:disabled,
+#buttons .btn.disabled {
+  opacity: 0.4;
   cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Wrapper for disabled button tooltips */
+.disabled-wrapper {
+  cursor: not-allowed;
+}
+
+#buttons .btn:disabled svg,
+#buttons .btn.disabled svg {
+  fill: #999;
+}
+
+#buttons .btn:disabled + .btn-label,
+#buttons .btn.disabled + .btn-label {
+  color: #999;
+}
+
+body.dark #buttons .btn:disabled svg,
+body.dark #buttons .btn.disabled svg {
+  fill: #666;
+}
+
+body.dark #buttons .btn:disabled + .btn-label,
+body.dark #buttons .btn.disabled + .btn-label {
+  color: #666;
 }
 
 #buttons .btn-label {
@@ -520,15 +1296,372 @@ body.dark #buttons .btn svg {
   color: #e8eaed;
 }
 
-body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
+body.dark #templateName, body.dark #templateTags,body.dark #tagsDisplay,body.dark .top-controls,body.dark #promptArea {
   border-color: #333;
   background: #151515;
   color: #edede8;
 }
 
+/* top-controlls */
+.top-controls {
+  width: 100%;
+  display: flex;
+  justify-content: end;
+  background: rgba(200, 200, 200, 0.2); /* Subtle gray hint */
+  border-bottom: 1px solid #dadce0;
+  z-index: 1;
+}
 
 :root {
   --base-font-size: 16px; /* Default */
+}
+
+/* Wrapper to hold the input and the display view */
+/* Wrapper to hold the input and the display view */
+.tags-view-wrapper {
+  display: flex;
+  align-items: center;
+  padding: 0.375rem 40px 0.375rem 56px; /* Added right and left padding */
+  border: 1px solid #ced4da;
+  border-radius: 0.25rem;
+  min-height: 38px; /* Match form-control height */
+}
+
+#tags-label {
+  padding-right: 8px; /* Space between label and tags */
+  white-space: nowrap;
+}
+
+/* The view that contains the clickable links */
+.tags-display-view {
+  flex-grow: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.tags-display-view::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, and Opera */
+}
+
+/* This is the individual clickable tag "link" */
+.tag-link {
+  color: #0d6efd; /* Bootstrap's link blue */
+  text-decoration: none;
+  cursor: pointer;
+  background-color: #e9ecef;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 13px;
+  display: inline-block;
+  vertical-align: middle;
+  white-space: nowrap; /* Prevent text from wrapping inside a tag */
+}
+.tag-link:hover {
+  background-color: #0d6efd;
+  color: #fff;
+}
+
+/* Dark theme link styles */
+body.dark .tag-link {
+  background-color: #3e444a;
+  color: #adb5bd;
+}
+body.dark .tag-link:hover {
+  background-color: #58a6ff;
+  color: #000;
+}
+
+/* The edit button ('✎') positioned inside the field */
+.edit-tags-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  color: #6c757d;
+  font-size: 16px;
+}
+.cancel-tags-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  color: #6c757d;
+  font-size: 16px;
+}
+
+/* Helper class to hide/show elements */
+.hidden {
+  display: none !important;
+}
+/* Dark theme link styles */
+body.dark .tag-link {
+  background-color: #3e444a;
+  color: #0d6efd;
+}
+body.dark .tag-link:hover {
+  background-color: #fff;
+  color: #0d6efd;
+}
+/* Keep .no-results-found styling simple and consistent */
+.no-results-found {
+  font-size: 1rem;
+  padding: 1px 80px 1px 36px;
+  width: 100%;
+  box-sizing: border-box;
+  justify-content: center !important;
+}
+
+/* Tab styling for dynamic placeholder tabs */
+#editorTabs {
+  border: none;
+  margin-bottom: 0;
+}
+
+#editorTabs .nav-link {
+  border: 1px solid transparent;
+  border-bottom: none;
+  background: none;
+  color: #495057;
+  font-size: 0.9rem;
+  padding: 0.5rem 1rem;
+  transition: all 0.2s ease;
+}
+
+#editorTabs .nav-link:hover {
+  border-color: #e9ecef #e9ecef #dee2e6;
+  background-color: #f8f9fa;
+}
+
+#editorTabs .nav-link.active {
+  color: #495057;
+  background-color: #fff;
+  border-color: #dee2e6 #dee2e6 #fff;
+}
+
+body.dark #editorTabs {
+  border-bottom-color: #333;
+}
+
+body.dark #editorTabs .nav-link {
+  color: #adb5bd;
+}
+
+body.dark #editorTabs .nav-link:hover {
+  border-color: #333 #333 #333;
+  background-color: #2d3748;
+}
+
+body.dark #editorTabs .nav-link.active {
+  color: #e8eaed;
+  background-color: #151515;
+  border-color: #333 #333 #151515;
+}
+
+/* Tab content styling */
+.tab-content {
+  border-radius: 8px;
+  border-top: none;
+  background: #fff;
+  position: relative;
+  z-index: 1;
+}
+
+body.dark .tab-content {
+  border-color: #333;
+  background: #151515;
+}
+
+.tab-pane {
+  min-height: 50px;
+  border-radius: 8px;
+}
+
+.tab-pane textarea {
+  background: transparent;
+  border-radius: 8px !important;
+  height: calc(100vh - 390px);
+  min-height: calc(100vh - 390px);
+  padding: 0;
+  overflow: both;
+  transition: 0.2s;
+  resize: none;
+}
+
+body.dark .tab-pane textarea {
+  background: transparent;
+  color: #e8eaed;
+  border-color: #333;
+}
+
+/* Tab textarea scrollbar styling to match main textarea */
+.tab-pane textarea::-webkit-scrollbar {
+  background: #8882;
+  width: 5px;
+  cursor: pointer;
+}
+
+.tab-pane textarea::-webkit-scrollbar-thumb {
+  background-color: #8888;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#clearPrompt {
+  position: absolute;
+  bottom: 0px;
+  right: 8px;
+  padding: 8px 4px;
+  z-index: 10;
+  align-self: flex-end;
+}
+
+/* Ensure all textareas have consistent sizing */
+#promptArea,
+.tab-pane textarea {
+  resize: none;
+  word-wrap: break-word;
+  word-break: break-word;
+  white-space: pre-wrap;
+  padding-right: 40px !important; /* Add space for clear and preview buttons */
+}
+.tab-pane .button-container {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  z-index: 10;
+  pointer-events: none;
+  padding: 8px 4px;
+}
+
+.tab-pane .button-container .clrbtn {
+  pointer-events: auto;
+}
+
+/* Prevent scrollbar on button hover */
+.tab-pane .position-relative {
+  overflow: hidden;
+}
+/* Clear button styling for placeholder tabs */
+.tab-pane .btn-outline-secondary {
+  border-color: #6c757d;
+  color: #6c757d;
+  font-size: 0.8rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.tab-pane .btn-outline-secondary:hover {
+  background-color: #6c757d;
+  border-color: #6c757d;
+  color: #fff;
+}
+
+body.dark .tab-pane .btn-outline-secondary {
+  border-color: #adb5bd;
+  color: #adb5bd;
+}
+
+body.dark .tab-pane .btn-outline-secondary:hover {
+  background-color: #adb5bd;
+  border-color: #adb5bd;
+  color: #000;
+}
+
+/* Tab styling for dynamic placeholder tabs */
+#editorTabs .nav-link.filled {
+  background-color: transparent; /* No background color */
+  color: #3b82f6; /* A clean, soft blue for the text */
+  font-weight: 600;
+}
+
+body.dark #editorTabs .nav-link.filled {
+  color: #3b82f6; /* A soft sky blue for dark theme text */
+}
+
+/* Placeholder and its values styles */
+.placeholder-marker {
+  background-color: #f1f5f9;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  padding: 2px 4px;
+  margin: 0 2px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+  font-weight: 400;
+  color: #4b5563;
+}
+
+/* Keep placeholder styling in Preview even without click handler */
+#previewArea .placeholder-marker {
+  cursor: default;
+  /* Keep all other styles from base .placeholder-marker */
+}
+
+.placeholder-marker:hover {
+  background-color: #e2e8f0;
+}
+
+.placeholder-marker.placeholder-filled {
+  background-color: #dbeafe;
+  border-color: #60a5fa;
+}
+
+.placeholder-marker.placeholder-filled:hover {
+  background-color: #bfdbfe;
+}
+
+.placeholder-value {
+  font-weight: 500;
+  color: #1e40af;
+  cursor: pointer;
+  user-select: none;
+  padding: 2px 4px;
+  margin: 0 2px;
+}
+
+/* Dark theme support */
+.dark .placeholder-marker {
+  background-color: #374151;
+  border-color: #4b5563;
+  color: #e5e7eb;
+}
+
+.dark .form-control::placeholder {
+  color: #8a94a0; /* Lighter gray for dark mode placeholder text */
+}
+
+.dark .placeholder-marker:hover {
+  background-color: #4b5563;
+}
+
+.dark .placeholder-marker.placeholder-filled {
+  background-color: #1e3a8a;
+  border-color: #3b82f6;
+}
+
+.dark .placeholder-marker.placeholder-filled:hover {
+  background-color: #1e40af;
+}
+
+.dark .placeholder-value {
+  color: #9ca3af; /* Soft, light gray text for dark theme */
 }
 
 /* Responsive adjustments */
@@ -570,5 +1703,251 @@ body.dark #templateName, body.dark #templateTags, body.dark #promptArea {
   #buttons .btn svg {
     width: calc(8px + (16 * 100vh / 400));
     height: calc(8px + (16 * 100vh / 400));
+  }
+}
+
+/* Tab Slider Styles */
+.tabs-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  z-index: 1; 
+}
+
+.tabs-wrapper {
+  flex-grow: 1;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  cursor: grab;
+  user-select: none;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  padding: 0px; /* Add padding to the wrapper */
+}
+
+.tabs-wrapper.is-dragging {
+  cursor: grabbing;
+  scroll-behavior: auto; /* Use auto for instant feedback during drag */
+}
+
+.tabs-wrapper::-webkit-scrollbar {
+  display: none;
+}
+
+.tabs-wrapper::-webkit-scrollbar {
+    display: none; /* for Chrome, Safari, and Opera */
+}
+
+#editorTabs.nav-tabs {
+  position: relative;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  /* Padding is now on the wrapper */
+}
+
+.scroll-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: rgba(255, 255, 255, 0.8);
+  border: 1px solid #ddd;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s, background-color 0.2s;
+}
+
+.scroll-btn.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.scroll-btn.left {
+  left: 5px;
+}
+
+.scroll-btn.right {
+  right: 5px;
+}
+
+.scroll-btn:hover {
+  background-color: #fff;
+}
+
+body.dark .scroll-btn {
+  background-color: rgba(45, 45, 45, 0.8);
+  border-color: #555;
+  color: #eee;
+}
+
+body.dark .scroll-btn:hover {
+  background-color: #444;
+}
+
+/* Preview tab close button hover effect */
+#preview-close-btn {
+  transition: opacity 0.2s ease, transform 0.1s ease;
+}
+
+#preview-close-btn:hover {
+  opacity: 1 !important;
+  transform: scale(1.1);
+  font-weight: bold;
+}
+
+/* Update notification banner styles */
+.update-banner {
+  position: fixed;
+  top: 28px;
+  left: 0;
+  right: 0;
+  background: linear-gradient(90deg, #4285F4, #4285F4);
+  color: #FFFFFF;
+  padding: 10px 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  z-index: 100000;
+  animation: slideDown 0.3s ease-out;
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-app-region: no-drag; /* Prevent dragging on banner */
+  user-select: text; /* Allow text selection */
+}
+
+body.dark .update-banner {
+  background: linear-gradient(90deg, #3367d6, #3367d6);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.update-banner-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 800px;
+  margin: 0 auto;
+  gap: 16px;
+  flex-wrap: wrap;
+  -webkit-app-region: no-drag; /* Ensure content is interactive */
+  pointer-events: auto;
+}
+
+.update-banner-text {
+  flex: 1;
+  min-width: 200px;
+  font-weight: 500;
+  -webkit-app-region: no-drag;
+  user-select: text;
+}
+
+.update-banner-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+}
+
+.update-banner-link {
+  color: #FFFFFF;
+  text-decoration: underline;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 13px;
+  -webkit-app-region: no-drag; /* Ensure link is clickable */
+  pointer-events: auto;
+}
+
+.update-banner-link:hover {
+  opacity: 0.8;
+  color: #FFFFFF;
+}
+
+.update-banner-dismiss {
+  background: rgba(255, 255, 255, 0.2);
+  color: #FFFFFF;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.2s, transform 0.2s;
+  font-size: 12px;
+  -webkit-app-region: no-drag; /* Ensure button is clickable */
+  pointer-events: auto;
+}
+
+.update-banner-dismiss:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(1.05);
+}
+
+body.dark .update-banner-dismiss {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+body.dark .update-banner-dismiss:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+}
+
+.update-banner.hiding {
+  animation: slideUp 0.3s ease-out;
+}
+
+/* No body padding adjustment - banner overlays without affecting layout */
+/* Removed body.has-update-banner padding to prevent content push-down */
+
+/* Mobile responsive styles */
+@media (max-width: 400px) {
+  .update-banner {
+    padding: 8px 12px;
+  }
+  
+  .update-banner-content {
+    gap: 8px;
+  }
+  
+  .update-banner-text {
+    font-size: 12px;
+  }
+  
+  .update-banner-actions {
+    width: 100%;
+    justify-content: flex-end;
   }
 }
