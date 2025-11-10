@@ -1,7 +1,8 @@
 import jsyaml from "js-yaml";
 import defaultTemplates from "./defaultTemplates.mjs";
 
-const EXTENSION_VERSION = "1.1.0";
+// Get version from manifest instead of hardcoding
+const EXTENSION_VERSION = chrome.runtime.getManifest().version;
 
 // Prevent session snapshot writes during destructive operations (delete/import)
 let suppressSessionSave = false;
@@ -550,6 +551,9 @@ document.addEventListener("DOMContentLoaded", () => {
         "searchMatchCount",
         "searchPrevious",
         "searchNext",
+        "updateBanner",
+        "whatsNewLink",
+        "dismissBanner",
     ].forEach((id) => {
         elements[id] = document.getElementById(id);
     });
@@ -599,6 +603,14 @@ function initializeState() {
                 });
                 const storedVersion = result.extensionVersion || "0.0.0";
                 if (storedVersion !== EXTENSION_VERSION) {
+                    // Version has changed, check if we should show the update banner
+                    chrome.storage.local.get(["updateBannerDismissedVersion"], (bannerResult) => {
+                        const dismissedVersion = bannerResult.updateBannerDismissedVersion || "0.0.0";
+                        // Show banner if this version hasn't been dismissed yet
+                        if (dismissedVersion !== EXTENSION_VERSION) {
+                            showUpdateBanner();
+                        }
+                    });
                     chrome.storage.local.set({ extensionVersion: EXTENSION_VERSION });
                 }
 
@@ -830,6 +842,24 @@ function setupEventListeners() {
     elements.newBtn.addEventListener("click", () => handleNewTemplate());
     elements.editTagsBtn.addEventListener("click", () => handleEditTags());
     elements.cancelTagsEditBtn.addEventListener("click", () => handleCancelTagsEdit());
+    
+    // Update banner event listeners
+    if (elements.whatsNewLink) {
+        elements.whatsNewLink.addEventListener("click", (e) => {
+            e.preventDefault();
+            // Open Chrome Web Store page
+            chrome.tabs.create({ 
+                url: "https://chromewebstore.google.com/detail/promptstash-chatgpt-grok/fjbacajcjnfbpjladgkkkckfcemehbpa"
+            });
+            hideUpdateBanner(true);
+        });
+    }
+    
+    if (elements.dismissBanner) {
+        elements.dismissBanner.addEventListener("click", () => {
+            hideUpdateBanner(true);
+        });
+    }
 
     elements.templateName.addEventListener(
         "input",
@@ -2211,6 +2241,58 @@ function displayNextToast() {
     elements.toast.classList.add("ps-show");
 }
 
+// --- Update Banner System ---
+
+let updateBannerTimeout = null;
+const BANNER_AUTO_DISMISS_TIME = 8000; // 8 seconds, same as toast duration for consistency
+
+/**
+ * Shows the update notification banner
+ */
+function showUpdateBanner() {
+    if (!elements.updateBanner) return;
+    
+    // Show the banner with animation
+    elements.updateBanner.style.display = 'block';
+    // Removed body class manipulation to prevent layout issues
+    
+    // Auto-dismiss after timeout
+    updateBannerTimeout = setTimeout(() => {
+        hideUpdateBanner();
+    }, BANNER_AUTO_DISMISS_TIME);
+}
+
+/**
+ * Hides the update notification banner
+ * @param {boolean} wasDismissed - Whether the user explicitly dismissed the banner
+ */
+function hideUpdateBanner(wasDismissed = false) {
+    if (!elements.updateBanner) return;
+    
+    // Clear any existing timeout
+    if (updateBannerTimeout) {
+        clearTimeout(updateBannerTimeout);
+        updateBannerTimeout = null;
+    }
+    
+    // If explicitly dismissed, save the version to prevent showing again
+    if (wasDismissed) {
+        chrome.storage.local.set({ 
+            updateBannerDismissedVersion: EXTENSION_VERSION 
+        });
+    }
+    
+    // Add hiding animation class
+    elements.updateBanner.classList.add('hiding');
+    
+    // Remove banner after animation completes
+    setTimeout(() => {
+        elements.updateBanner.style.display = 'none';
+        elements.updateBanner.classList.remove('hiding');
+        // Removed body class manipulation to prevent layout issues
+    }, 300);
+}
+
 // --- Modal Notification System (Center, blocking) ---
 
 /**
@@ -2355,6 +2437,170 @@ function closeModal(onClose) {
     }, 300); // Match CSS transition duration
 }
 
+// --- Save Count and Feedback System ---
+
+/**
+ * Check if we should show feedback prompt based on custom template count
+ * Shows at specific milestones: 2, 5, 10, 20, 50
+ */
+function checkFeedbackMilestone(customTemplateCount) {
+    const milestones = [2, 5, 10, 20, 50];
+    return milestones.includes(customTemplateCount);
+}
+
+/**
+ * Get the appropriate message for the milestone
+ */
+function getMilestoneMessage(customTemplateCount) {
+    const messages = {
+        2: "You're getting the hang of it — another one saved.",
+        5: "Nice streak! Looks like templates are becoming your thing.",
+        10: "You're a template pro now — keep building your stash.",
+        20: "You've mastered this! PromptStash suits your workflow perfectly.",
+        50: "Wow! You've built quite the collection — your stash is growing strong."
+    };
+    return messages[customTemplateCount] || "";
+}
+
+/**
+ * Show feedback prompt toast
+ */
+function showFeedbackPrompt(customTemplateCount) {
+    const milestoneMessage = getMilestoneMessage(customTemplateCount);
+    const message = `${milestoneMessage}`;
+    
+    // Ensure no existing toast is showing
+    if (isToastShowing) {
+        closeToast();
+        // Wait for close animation to complete
+        setTimeout(() => showFeedbackPrompt(customTemplateCount), 350);
+        return;
+    }
+
+    isToastShowing = true;
+
+    // Clear any existing content
+    elements.toast.innerHTML = "";
+
+    // Create main container for vertical layout
+    const mainContainer = document.createElement("div");
+    mainContainer.style.cssText = "display: flex; flex-direction: column; width: 100%;";
+
+    // Create content wrapper for message with icon
+    const contentWrapper = document.createElement("div");
+    contentWrapper.className = "toast-content-wrapper success";
+    contentWrapper.style.cssText = "margin-bottom: 10px;";
+    
+    // Create message element
+    const messageEl = document.createElement("span");
+    messageEl.className = "toast-message";
+    messageEl.innerHTML = message;
+    contentWrapper.appendChild(messageEl);
+    mainContainer.appendChild(contentWrapper);
+
+    // Create button container
+    const buttonContainer = document.createElement("div");
+    buttonContainer.style.cssText = "display: flex; gap: 10px; justify-content: flex-start; padding-left: 22px;";
+    
+    // Create "Leave Feedback" button
+    const feedbackBtn = document.createElement("button");
+    feedbackBtn.textContent = "Leave Feedback";
+    feedbackBtn.style.cssText = "background: #34A853; color: white; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500; transition: background 0.2s;";
+    feedbackBtn.addEventListener("mouseenter", () => {
+        feedbackBtn.style.background = "#2d8e47";
+    });
+    feedbackBtn.addEventListener("mouseleave", () => {
+        feedbackBtn.style.background = "#34A853";
+    });
+    feedbackBtn.addEventListener("click", () => {
+        chrome.tabs.create({ 
+            url: "https://chromewebstore.google.com/detail/promptstash-chatgpt-grok/fjbacajcjnfbpjladgkkkckfcemehbpa/reviews"
+        });
+        closeToast();
+    });
+    
+    // Create "Not Now" button
+    const notNowBtn = document.createElement("button");
+    notNowBtn.textContent = "Not Now";
+    notNowBtn.style.cssText = "background: rgba(255, 255, 255, 0.9); color: #333; border: 1px solid #dadce0; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500; transition: background 0.2s;";
+    notNowBtn.addEventListener("mouseenter", () => {
+        notNowBtn.style.background = "rgba(255, 255, 255, 1)";
+        notNowBtn.style.borderColor = "#c0c0c0";
+    });
+    notNowBtn.addEventListener("mouseleave", () => {
+        notNowBtn.style.background = "rgba(255, 255, 255, 0.9)";
+        notNowBtn.style.borderColor = "#dadce0";
+    });
+    notNowBtn.addEventListener("click", () => {
+        closeToast();
+    });
+    
+    buttonContainer.appendChild(feedbackBtn);
+    buttonContainer.appendChild(notNowBtn);
+    mainContainer.appendChild(buttonContainer);
+    
+    // Append main container to toast
+    elements.toast.appendChild(mainContainer);
+
+    // Create close button
+    const closeBtn = document.createElement("button");
+    closeBtn.textContent = "×";
+    closeBtn.className = "toast-close-btn";
+    closeBtn.setAttribute("aria-label", "Close notification");
+    closeBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        closeToast();
+    });
+    elements.toast.appendChild(closeBtn);
+
+    // Auto-dismiss after 10 seconds
+    autoHideTimeout = setTimeout(() => closeToast(), 10000);
+
+    // Apply type class and show
+    elements.toast.className = "ps-toast success";
+    // Force reflow to ensure transition works
+    void elements.toast.offsetHeight;
+    elements.toast.classList.add("ps-show");
+}
+
+/**
+ * Get count of custom templates (max 50)
+ */
+function getCustomTemplateCount(templates) {
+    const customTemplates = templates.filter(t => t.type === "custom" || t.type === undefined);
+    return Math.min(customTemplates.length, 50);
+}
+
+/**
+ * Check and show feedback prompt if milestone reached
+ */
+function checkAndShowFeedback() {
+    chrome.storage.local.get(["totalCustomTemplatesSaved", "lastFeedbackMilestone"], (result) => {
+        const totalSaved = Math.min(result.totalCustomTemplatesSaved || 0, 50);
+        const lastMilestone = result.lastFeedbackMilestone || 0;
+        
+        // Check if we've hit a new milestone that we haven't shown yet
+        if (checkFeedbackMilestone(totalSaved) && totalSaved > lastMilestone) {
+            chrome.storage.local.set({ lastFeedbackMilestone: totalSaved }, () => {
+                // Wait for save toast to finish before showing feedback prompt
+                setTimeout(() => {
+                    // Close any existing toast first to prevent conflicts
+                    if (isToastShowing) {
+                        closeToast(() => {
+                            // Show feedback prompt after toast is fully closed
+                            setTimeout(() => {
+                                showFeedbackPrompt(totalSaved);
+                            }, 100);
+                        });
+                    } else {
+                        showFeedbackPrompt(totalSaved);
+                    }
+                }, 3500);
+            });
+        }
+    });
+}
+
 // --- Template and Data Management ---
 
 function saveTemplates(templates, callback, isNewTemplate) {
@@ -2378,6 +2624,17 @@ function saveTemplates(templates, callback, isNewTemplate) {
                 [],
                 "save"
             );
+            // Check for feedback milestone after save (for new templates only)
+            if (isNewTemplate) {
+                // Increment total saved count
+                chrome.storage.local.get(["totalCustomTemplatesSaved"], (result) => {
+                    const currentTotal = Math.min(result.totalCustomTemplatesSaved || 0, 50);
+                    const newTotal = Math.min(currentTotal + 1, 50);
+                    chrome.storage.local.set({ totalCustomTemplatesSaved: newTotal }, () => {
+                        checkAndShowFeedback();
+                    });
+                });
+            }
             chrome.storage.local.get(null, (items) => {
                 const totalSizeInBytes = new TextEncoder().encode(JSON.stringify(items)).length;
                 if (totalSizeInBytes > 0.9 * (10 * 1024 * 1024)) {
@@ -2606,10 +2863,11 @@ function loadTemplateFromSelection(tmpl) {
         const sessionData = result[sessionKey];
 
         if (sessionData && sessionData.timestamp) {
-            // This template has unsaved changes - restore content/tags but reset NAME to last saved
+            // This template has unsaved changes - restore ALL cached changes including name
             selectedTemplateName = sessionData.selectedTemplateName || tmpl.name;
             editingTargetName = sessionData.editingTargetName || tmpl.name;
-            elements.templateName.value = tmpl.name; // reset name to original saved
+            // ✅ Preserve cached name changes when switching templates
+            elements.templateName.value = sessionData.templateName || tmpl.name;
             const tagsArray = Array.isArray(tmpl.tags) ? tmpl.tags : [];
             elements.templateTags.value = sessionData.templateTags || tagsArray.join(", ");
             tabsState.currentTemplate = sessionData.templateContent || tmpl.content;
@@ -3334,6 +3592,12 @@ function togglePreviewTab(show) {
     tabsState.previewMode = show;
 
     if (show) {
+        // Store the currently active tab before switching to preview
+        const activeTab = document.querySelector("#editorTabs .nav-link.active");
+        if (activeTab) {
+            tabsState.previousActiveTabId = activeTab.id;
+        }
+
         // Show Preview tab and hide all placeholder tabs
         previewTabItem.style.display = "block";
 
@@ -3358,8 +3622,19 @@ function togglePreviewTab(show) {
             tab.style.display = "block";
         });
 
-        // Switch back to Template tab
-        new bootstrap.Tab(templateTab).show();
+        // Switch back to the previously active tab (or Template tab if none stored)
+        const previousTabId = tabsState.previousActiveTabId || "template-tab";
+        const previousTab = document.getElementById(previousTabId);
+        if (previousTab) {
+            new bootstrap.Tab(previousTab).show();
+        } else {
+            // Fallback to Template tab if previous tab no longer exists
+            new bootstrap.Tab(templateTab).show();
+        }
+        
+        // Clear the stored tab ID after restoring
+        tabsState.previousActiveTabId = null;
+        
         // Persist state so reopening the popup restores non-preview mode
         try {
             saveState();
@@ -3793,6 +4068,16 @@ function handleSaveTemplate() {
             return value && value.trim() !== "";
         });
         const isNewTemplate = !selectedTemplateName && !editingTargetName;
+        
+        // Check 50 template limit for new templates
+        if (isNewTemplate) {
+            const customCount = getCustomTemplateCount(templates);
+            if (customCount >= 50) {
+                showToast("You've reached the maximum of 50 custom templates. Please delete some templates to save new ones.", 5000, "warning", [], "save");
+                return;
+            }
+        }
+        
         if (!isNewTemplate) {
             const templateName = selectedTemplateName || editingTargetName;
             const template = templates.find((t) => t.name === templateName);
@@ -3923,6 +4208,13 @@ function handleSaveAsTemplate() {
             elements.promptArea.focus();
             return;
         }
+        
+        // Check 50 template limit for SaveAs (always creates new template)
+        const customCount = getCustomTemplateCount(templates);
+        if (customCount >= 50) {
+            showToast("You've reached the maximum of 50 custom templates. Please delete some templates to save new ones.", 5000, "warning", [], "saveAs");
+            return;
+        }
 
         // Detect and persist any new user placeholders
         const regex = /\{\{([^}]+)\}\}/g;
@@ -3961,6 +4253,10 @@ function handleSaveAsTemplate() {
                 lastState.actionType = "saveAs";
                 lastState.templates = deepClone(templates);
             }
+            
+            // Store the original template name before Save As
+            const originalTemplateName = selectedTemplateName || editingTargetName;
+            
             const now = Date.now();
             const newTemplate = {
                 name,
@@ -3978,6 +4274,33 @@ function handleSaveAsTemplate() {
             saveTemplates(
                 templates,
                 () => {
+                    // Clear tags from the original template's session data (if any)
+                    // while preserving content changes
+                    if (originalTemplateName) {
+                        const sessionKey = `unsaved_${originalTemplateName}`;
+                        chrome.storage.session.get([sessionKey], (result) => {
+                            const sessionData = result[sessionKey];
+                            if (sessionData) {
+                                // Get the original template from storage
+                                const originalTemplate = templates.find(t => t.name === originalTemplateName);
+                                if (originalTemplate) {
+                                    const originalTags = Array.isArray(originalTemplate.tags) 
+                                        ? originalTemplate.tags.join(", ") 
+                                        : "";
+                                    
+                                    // Update session to reset name and tags to original, but keep content changes
+                                    sessionData.templateName = originalTemplate.name;  // Reset name to original
+                                    sessionData.templateTags = originalTags;           // Reset tags to original
+                                    // Keep templateContent as-is to preserve content changes
+                                    
+                                    const payload = {};
+                                    payload[sessionKey] = sessionData;
+                                    chrome.storage.session.set(payload);
+                                }
+                            }
+                        });
+                    }
+                    
                     // Update template name/selection
                     selectedTemplateName = name;
                     editingTargetName = name;
@@ -4078,6 +4401,10 @@ function handleDeleteTemplate() {
                                 }
                                 // Update global variables to match storage
                                 recentIndices = updatedRecentIndices;
+                                
+                                // NOTE: We do NOT reset milestone tracking after deletion
+                                // Once a milestone is reached, it stays reached forever
+                                // This prevents re-showing feedback after delete + rebuild
 
                                 // Clear session data for the deleted template and suppress further session saves briefly
                                 suppressSessionSave = true;
