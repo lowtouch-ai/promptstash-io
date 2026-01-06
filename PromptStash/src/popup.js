@@ -1,12 +1,13 @@
 import jsyaml from "js-yaml";
 import defaultTemplates from "./defaultTemplates.mjs";
+import { fetchGitHubTemplates, clearTemplateCache } from "./githubTemplates.mjs";
 
 // Get version from manifest instead of hardcoding
 const EXTENSION_VERSION = chrome.runtime.getManifest().version;
 
 // Prevent session snapshot writes during destructive operations (delete/import)
 let suppressSessionSave = false;
-
+// let defaultTemplates = []
 // --- Utility Functions ---
 
 // --- Session Storage Functions ---
@@ -522,6 +523,7 @@ document.addEventListener("DOMContentLoaded", () => {
         "buttons",
         "fetchBtn",
         "fetchBtn2",
+        "syncBtn",
         "saveBtn",
         "saveAsBtn",
         "deleteBtn",
@@ -572,12 +574,12 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 });
 
-function initializeState() {
+async function initializeState() {
     // Initialize allowed placeholders from default templates
     ALLOWED_PLACEHOLDERS.push(...extractAllowedPlaceholdersFromDefaults());
 
     // First, try to load any unsaved changes from session storage
-    loadFromSession((sessionData) => {
+    loadFromSession(async (sessionData) => {
         chrome.storage.local.get(
             [
                 "popupState",
@@ -590,7 +592,7 @@ function initializeState() {
                 "placeholderValues",
                 "userPlaceholders",
             ],
-            (result) => {
+            async (result) => {
                 const userPlaceholders = Array.isArray(result.userPlaceholders) ? result.userPlaceholders : [];
                 // Merge user-defined placeholders into the allowed list (dedupe)
                 userPlaceholders.forEach((ph) => {
@@ -617,7 +619,23 @@ function initializeState() {
                 currentTheme = result.theme || "light";
                 document.body.className = currentTheme;
 
-                nextIndex = result.nextIndex || defaultTemplates.length;
+                // Fetch GitHub templates and merge with defaults
+                let allDefaultTemplates = [...defaultTemplates];
+                try {
+                    console.log("Fetching templates from GitHub repository...");
+                    const githubTemplates = await fetchGitHubTemplates();
+                    if (githubTemplates && githubTemplates.length > 0) {
+                        console.log(`Successfully fetched ${githubTemplates.length} templates from GitHub`,githubTemplates);
+                        // Merge GitHub templates with hardcoded defaults
+                        allDefaultTemplates = [...githubTemplates, ...defaultTemplates];
+                    } else {
+                        console.log("No GitHub templates found, using hardcoded defaults only");
+                    }
+                } catch (error) {
+                    console.error("Error fetching GitHub templates, using hardcoded defaults:", error);
+                }
+
+                nextIndex = result.nextIndex || allDefaultTemplates.length;
                 recentIndices = result.recentIndices || [];
                 isFullscreen = result.isFullscreen || false;
                 elements.fullscreenToggle
@@ -737,8 +755,8 @@ function initializeState() {
                 updateExportSingleBtnState();
 
                 let templates = result.templates;
-                if (!templates) {
-                    templates = defaultTemplates.map((t, i) => {
+                if (!templates || templates.length === 0) {
+                    templates = allDefaultTemplates.map((t, i) => {
                         // Check if tags are a string and convert them to an array
                         const tagsArray =
                             typeof t.tags === "string"
@@ -750,7 +768,13 @@ function initializeState() {
 
                         return { ...t, tags: tagsArray, index: i };
                     });
-                    chrome.storage.local.set({ templates });
+                    chrome.storage.local.set({ templates, nextIndex: templates.length }, () => {
+                        console.log(`Saved ${templates.length} templates to local storage`, templates);
+                        // Load templates into UI after saving
+                        setTimeout(() => loadTemplates(), 100);
+                    });
+                } else {
+                    console.log(`Using ${templates.length} existing templates from storage`);
                 }
             }
         );
@@ -835,11 +859,75 @@ function setupEventListeners() {
         saveState();
         elements.fullscreenToggle
             .querySelector("svg use")
-            .setAttribute("href", isFullscreen ? "sprite.svg#compress" : "sprite.svg#fullscreen");
+                    .setAttribute("href", isFullscreen ? "sprite.svg#compress" : "sprite.svg#fullscreen");
         chrome.runtime.sendMessage({ action: "toggleFullscreen" });
     });
     elements.closeBtn.addEventListener("click", handleCloseWithUnsavedCheck);
     elements.newBtn.addEventListener("click", () => handleNewTemplate());
+    
+    // Sync button - manually fetch and merge GitHub templates
+    elements.syncBtn.addEventListener("click", async () => {
+        try {
+            // Show loading state
+            elements.syncBtn.disabled = true;
+            showToast("Syncing templates from GitHub...", 2000, "info", [], "sync");
+            
+            // Clear cache to force fresh fetch
+            await clearTemplateCache();
+            
+            // Fetch fresh templates from GitHub
+            const githubTemplates = await fetchGitHubTemplates();
+            
+            if (githubTemplates && githubTemplates.length > 0) {
+                // Merge with hardcoded defaults
+                const allTemplates = [...githubTemplates, ...defaultTemplates];
+                
+                // Get existing user templates
+                chrome.storage.local.get(["templates"], (result) => {
+                    const existingTemplates = result.templates || [];
+                    
+                    // Filter out old default templates and keep only user-created ones
+                    const userTemplates = existingTemplates.filter(t => t.type !== "pre-built");
+                    
+                    // Convert new defaults to proper format
+                    const newDefaults = allTemplates.map((t, i) => {
+                        const tagsArray = typeof t.tags === "string"
+                            ? t.tags.split(",").map(tag => tag.trim()).filter(Boolean)
+                            : t.tags || [];
+                        return { ...t, tags: tagsArray, index: i };
+                    });
+                    
+                    // Merge user templates with new defaults
+                    const mergedTemplates = [...newDefaults, ...userTemplates];
+                    
+                    // Update storage
+                    chrome.storage.local.set({ 
+                        templates: mergedTemplates,
+                        nextIndex: mergedTemplates.length 
+                    }, () => {
+                        // Reload templates in UI
+                        loadTemplates();
+                        showToast(
+                            `Successfully synced ${githubTemplates.length} templates from GitHub!`, 
+                            3000, 
+                            "success", 
+                            [], 
+                            "syncSuccess"
+                        );
+                        elements.syncBtn.disabled = false;
+                    });
+                });
+            } else {
+                showToast("No templates found in GitHub repository", 3000, "warning", [], "syncWarning");
+                elements.syncBtn.disabled = false;
+            }
+        } catch (error) {
+            console.error("Sync error:", error);
+            showToast("Failed to sync templates from GitHub", 3000, "error", [], "syncError");
+            elements.syncBtn.disabled = false;
+        }
+    });
+    
     elements.editTagsBtn.addEventListener("click", () => handleEditTags());
     elements.cancelTagsEditBtn.addEventListener("click", () => handleCancelTagsEdit());
     
@@ -2663,8 +2751,14 @@ function loadTemplates(query = "", showDropdown = false) {
         let next = typeof result.nextIndex === "number" ? result.nextIndex : storedRaw.length;
 
         const stored = storedRaw.map(normalize);
-        const defaults = defaultTemplates.map(normalize);
+        // const defaults = defaultTemplates.map(normalize);
 
+        // Simplified: Just use stored templates directly (they already include GitHub + defaults from initialization)
+        let templates1 = stored;
+        console.log(`loadTemplates: Found ${templates1.length} templates in storage`, templates1);
+        
+        /*
+        // Old complex merging logic - commented out because we now initialize with GitHub templates
         // Build name sets
         const defaultNames = new Set(defaults.map((t) => t.name));
 
@@ -2701,6 +2795,13 @@ function loadTemplates(query = "", showDropdown = false) {
             stored.length > 0
                 ? [...kept, ...updatedPreBuilt, ...newDefaults]
                 : defaults.map((t, i) => ({ ...t, index: i }));
+        */
+        // Simplified: Just use stored templates (they already include GitHub + defaults)
+        let templates = stored;
+        console.log(`loadTemplates: Found ${templates.length} templates in storage`, templates);
+        
+        /*
+        // Old merging logic - commented out
         // Persist if we normalized tags, removed obsolete defaults, or added new defaults
         const changed =
             storedRaw.length !== merged.length ||
@@ -2713,8 +2814,9 @@ function loadTemplates(query = "", showDropdown = false) {
         if (changed) {
             chrome.storage.local.set({ templates: merged, nextIndex: next });
         }
+        */
 
-        let templates = merged;
+        // let templates = merged;
 
         // Helper for timestamps
         const ts = (t) =>
