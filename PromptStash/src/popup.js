@@ -1,13 +1,11 @@
 import jsyaml from "js-yaml";
-import defaultTemplates from "./defaultTemplates.mjs";
-import { fetchGitHubTemplates, clearTemplateCache } from "./githubTemplates.mjs";
+import { fetchGitHubTemplates } from "./githubTemplates.mjs";
 
 // Get version from manifest instead of hardcoding
 const EXTENSION_VERSION = chrome.runtime.getManifest().version;
 
 // Prevent session snapshot writes during destructive operations (delete/import)
 let suppressSessionSave = false;
-// let defaultTemplates = []
 // --- Utility Functions ---
 
 // --- Session Storage Functions ---
@@ -497,12 +495,15 @@ let searchContainers = [];
 
 const elements = {};
 const ALLOWED_PLACEHOLDERS = [];
+let baseAllowedPlaceholders = [];
+const GITHUB_TEMPLATES_LAST_REFRESH_TS_KEY = "githubTemplatesLastRefreshTs";
+const AUTO_REFRESH_INTERVAL_MS = 86400000;
 const tabsState = {
     placeholders: [],
     placeholderValues: {},
     currentTemplate: "",
-    previewMode: false,
     existingTabPlaceholders: [], // Track which placeholders already have tabs
+    previewMode: false,
 };
 
 // --- Initialization and Core Logic ---
@@ -523,7 +524,7 @@ document.addEventListener("DOMContentLoaded", () => {
         "buttons",
         "fetchBtn",
         "fetchBtn2",
-        "syncBtn",
+        "refreshBtn",
         "saveBtn",
         "saveAsBtn",
         "deleteBtn",
@@ -574,10 +575,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 });
 
-async function initializeState() {
-    // Initialize allowed placeholders from default templates
-    ALLOWED_PLACEHOLDERS.push(...extractAllowedPlaceholdersFromDefaults());
-
+ async function initializeState() {
     // First, try to load any unsaved changes from session storage
     loadFromSession(async (sessionData) => {
         chrome.storage.local.get(
@@ -591,18 +589,11 @@ async function initializeState() {
                 "isFullscreen",
                 "placeholderValues",
                 "userPlaceholders",
+                GITHUB_TEMPLATES_LAST_REFRESH_TS_KEY,
             ],
             async (result) => {
                 const userPlaceholders = Array.isArray(result.userPlaceholders) ? result.userPlaceholders : [];
-                // Merge user-defined placeholders into the allowed list (dedupe)
-                userPlaceholders.forEach((ph) => {
-                    if (typeof ph === "string") {
-                        const trimmed = ph.trim();
-                        if (trimmed && !ALLOWED_PLACEHOLDERS.includes(trimmed)) {
-                            ALLOWED_PLACEHOLDERS.push(trimmed);
-                        }
-                    }
-                });
+
                 const storedVersion = result.extensionVersion || "0.0.0";
                 if (storedVersion !== EXTENSION_VERSION) {
                     // Version has changed, check if we should show the update banner
@@ -619,28 +610,94 @@ async function initializeState() {
                 currentTheme = result.theme || "light";
                 document.body.className = currentTheme;
 
-                // Fetch GitHub templates and merge with defaults
-                let allDefaultTemplates = [...defaultTemplates];
+                const nowTs = Date.now();
+                const lastRefreshTs = typeof result[GITHUB_TEMPLATES_LAST_REFRESH_TS_KEY] === "number" ? result[GITHUB_TEMPLATES_LAST_REFRESH_TS_KEY] : 0;
+                const shouldRefreshNow = !lastRefreshTs || nowTs - lastRefreshTs >= AUTO_REFRESH_INTERVAL_MS;
+
+                // Fetch GitHub templates (source of truth for system templates)
+                let allDefaultTemplates = [];
                 try {
+                    if (shouldRefreshNow) {
+                        // Record refresh attempt up-front so the banner isn't spammed when offline.
+                        chrome.storage.local.set({ [GITHUB_TEMPLATES_LAST_REFRESH_TS_KEY]: nowTs });
+                        showToast("Refreshing templates...", 2000, "info", [], "autoRefresh");
+                    }
                     console.log("Fetching templates from GitHub repository...");
-                    const githubTemplates = await fetchGitHubTemplates();
+                    const githubTemplates = await fetchGitHubTemplates({ forceRefresh: shouldRefreshNow });
                     if (githubTemplates && githubTemplates.length > 0) {
-                        console.log(`Successfully fetched ${githubTemplates.length} templates from GitHub`,githubTemplates);
-                        // Merge GitHub templates with hardcoded defaults
-                        allDefaultTemplates = [...githubTemplates, ...defaultTemplates];
+                        console.log(`Successfully fetched ${githubTemplates.length} templates from GitHub`, githubTemplates);
+                        allDefaultTemplates = [...githubTemplates];
                     } else {
-                        console.log("No GitHub templates found, using hardcoded defaults only");
+                        console.log("No GitHub templates found");
                     }
                 } catch (error) {
-                    console.error("Error fetching GitHub templates, using hardcoded defaults:", error);
+                    console.error("Error fetching GitHub templates:", error);
                 }
+
+                // If we refreshed successfully, update stored pre-built templates while preserving user templates
+                if (allDefaultTemplates.length > 0) {
+                    try {
+                        const existingTemplates = Array.isArray(result.templates) ? result.templates : [];
+                        const existingPreBuiltCount = existingTemplates.filter((t) => t && t.type === "pre-built").length;
+                        const shouldWriteDefaults = shouldRefreshNow || existingPreBuiltCount === 0;
+                        if (shouldWriteDefaults) {
+                            const userTemplates = existingTemplates.filter((t) => t && t.type !== "pre-built");
+                            const newDefaults = allDefaultTemplates.map((t, i) => {
+                                const tagsArray =
+                                    typeof t.tags === "string"
+                                        ? t.tags
+                                              .split(",")
+                                              .map((tag) => tag.trim())
+                                              .filter(Boolean)
+                                        : t.tags || [];
+                                return { ...t, tags: tagsArray, index: i };
+                            });
+                            const mergedTemplates = [...newDefaults, ...userTemplates];
+                            const nextIndexValue =
+                                mergedTemplates.reduce(
+                                    (m, t) => (t && typeof t.index === "number" ? Math.max(m, t.index) : m),
+                                    -1
+                                ) + 1;
+                            chrome.storage.local.set(
+                                { templates: mergedTemplates, nextIndex: nextIndexValue },
+                                () => {
+                                    try {
+                                        loadTemplates();
+                                    } catch (_) {}
+                                }
+                            );
+                        }
+                    } catch (_) {}
+                }
+
+                // Initialize allowed placeholders from system templates (GitHub or cached pre-built templates)
+                const cachedPreBuiltTemplates = Array.isArray(result.templates)
+                    ? result.templates.filter((t) => t && t.type === "pre-built")
+                    : [];
+                baseAllowedPlaceholders = extractAllowedPlaceholdersFromTemplates(
+                    allDefaultTemplates.length > 0 ? allDefaultTemplates : cachedPreBuiltTemplates
+                );
+                ALLOWED_PLACEHOLDERS.length = 0;
+                baseAllowedPlaceholders.forEach((ph) => {
+                    if (ph && !ALLOWED_PLACEHOLDERS.includes(ph)) ALLOWED_PLACEHOLDERS.push(ph);
+                });
+
+                // Merge user-defined placeholders into the allowed list (dedupe)
+                userPlaceholders.forEach((ph) => {
+                    if (typeof ph === "string") {
+                        const trimmed = ph.trim();
+                        if (trimmed && !ALLOWED_PLACEHOLDERS.includes(trimmed)) {
+                            ALLOWED_PLACEHOLDERS.push(trimmed);
+                        }
+                    }
+                });
 
                 nextIndex = result.nextIndex || allDefaultTemplates.length;
                 recentIndices = result.recentIndices || [];
                 isFullscreen = result.isFullscreen || false;
                 elements.fullscreenToggle
                     .querySelector("svg use")
-                    .setAttribute("href", isFullscreen ? "sprite.svg#compress" : "sprite.svg#fullscreen");
+                                .setAttribute("href", isFullscreen ? "sprite.svg#compress" : "sprite.svg#fullscreen");
 
                 const state = result.popupState || {};
                 originalTagsBeforeEdit = state.originalTags || null;
@@ -779,7 +836,7 @@ async function initializeState() {
             }
         );
     });
-}
+ }
 
 function setupEventListeners() {
     elements.templateTags.addEventListener(
@@ -865,68 +922,64 @@ function setupEventListeners() {
     elements.closeBtn.addEventListener("click", handleCloseWithUnsavedCheck);
     elements.newBtn.addEventListener("click", () => handleNewTemplate());
     
-    // Sync button - manually fetch and merge GitHub templates
-    elements.syncBtn.addEventListener("click", async () => {
+    async function refreshSystemTemplates(trigger) {
+        const btns = [elements.refreshBtn].filter(Boolean);
         try {
-            // Show loading state
-            elements.syncBtn.disabled = true;
-            showToast("Syncing templates from GitHub...", 2000, "info", [], "sync");
-            
-            // Clear cache to force fresh fetch
-            await clearTemplateCache();
-            
-            // Fetch fresh templates from GitHub
-            const githubTemplates = await fetchGitHubTemplates();
-            
+            btns.forEach((b) => (b.disabled = true));
+            showToast("Refreshing templates...", 1200, "info", [], trigger === "manual" ? "manualRefresh" : "sync");
+            const githubTemplates = await fetchGitHubTemplates({ forceRefresh: true });
+
             if (githubTemplates && githubTemplates.length > 0) {
-                // Merge with hardcoded defaults
-                const allTemplates = [...githubTemplates, ...defaultTemplates];
-                
-                // Get existing user templates
                 chrome.storage.local.get(["templates"], (result) => {
                     const existingTemplates = result.templates || [];
-                    
-                    // Filter out old default templates and keep only user-created ones
-                    const userTemplates = existingTemplates.filter(t => t.type !== "pre-built");
-                    
-                    // Convert new defaults to proper format
-                    const newDefaults = allTemplates.map((t, i) => {
-                        const tagsArray = typeof t.tags === "string"
-                            ? t.tags.split(",").map(tag => tag.trim()).filter(Boolean)
-                            : t.tags || [];
+                    const userTemplates = existingTemplates.filter((t) => t && t.type !== "pre-built");
+
+                    const newDefaults = githubTemplates.map((t, i) => {
+                        const tagsArray =
+                            typeof t.tags === "string"
+                                ? t.tags
+                                      .split(",")
+                                      .map((tag) => tag.trim())
+                                      .filter(Boolean)
+                                : t.tags || [];
                         return { ...t, tags: tagsArray, index: i };
                     });
-                    
-                    // Merge user templates with new defaults
+
                     const mergedTemplates = [...newDefaults, ...userTemplates];
-                    
-                    // Update storage
-                    chrome.storage.local.set({ 
-                        templates: mergedTemplates,
-                        nextIndex: mergedTemplates.length 
-                    }, () => {
-                        // Reload templates in UI
-                        loadTemplates();
-                        showToast(
-                            `Successfully synced ${githubTemplates.length} templates from GitHub!`, 
-                            3000, 
-                            "success", 
-                            [], 
-                            "syncSuccess"
-                        );
-                        elements.syncBtn.disabled = false;
-                    });
+                    const nowTs = Date.now();
+
+                    const nextIndexValue =
+                        mergedTemplates.reduce(
+                            (m, t) => (t && typeof t.index === "number" ? Math.max(m, t.index) : m),
+                            -1
+                        ) + 1;
+                    chrome.storage.local.set(
+                        {
+                            templates: mergedTemplates,
+                            nextIndex: nextIndexValue,
+                            [GITHUB_TEMPLATES_LAST_REFRESH_TS_KEY]: nowTs,
+                        },
+                        () => {
+                            loadTemplates();
+                            btns.forEach((b) => (b.disabled = false));
+                        }
+                    );
                 });
             } else {
-                showToast("No templates found in GitHub repository", 3000, "warning", [], "syncWarning");
-                elements.syncBtn.disabled = false;
+                showToast("No templates found in GitHub repository", 3000, "warning", [], "refreshWarning");
+                btns.forEach((b) => (b.disabled = false));
             }
         } catch (error) {
-            console.error("Sync error:", error);
-            showToast("Failed to sync templates from GitHub", 3000, "error", [], "syncError");
-            elements.syncBtn.disabled = false;
+            console.error("Refresh error:", error);
+            showToast("Failed to refresh templates from GitHub", 3000, "error", [], "refreshError");
+            btns.forEach((b) => (b.disabled = false));
         }
-    });
+    }
+
+    // Refresh button next to search bar - manual refresh
+    if (elements.refreshBtn) {
+        elements.refreshBtn.addEventListener("click", async () => refreshSystemTemplates("manual"));
+    }
     
     elements.editTagsBtn.addEventListener("click", () => handleEditTags());
     elements.cancelTagsEditBtn.addEventListener("click", () => handleCancelTagsEdit());
@@ -1030,7 +1083,9 @@ function setupGlobalSearchListeners() {
                 // Restore focus after search if it was lost
                 if (hadFocus && document.activeElement !== elements.globalSearchInput) {
                     setTimeout(() => {
-                        elements.globalSearchInput.focus();
+                        if (elements.globalSearchInput && isGlobalSearchVisible) {
+                            elements.globalSearchInput.focus();
+                        }
                     }, 0);
                 }
             }, 100)
@@ -1577,7 +1632,7 @@ function clearHighlightsInElement(container) {
     });
     container.normalize();
     
-    // Restore focus if needed
+    // Restore focus to search input if it was focused before and search is still visible
     if (shouldRestoreFocus) {
         setTimeout(() => {
             if (elements.globalSearchInput && isGlobalSearchVisible) {
@@ -1609,7 +1664,7 @@ function applyHighlightsInElement(element, matches, activeIndex) {
         return;
     }
 
-    // Apply in reverse order so offsets remain valid (for plain text elements)
+    // Apply in reverse order to preserve offsets
     const matchesDesc = [...matches].sort((a, b) => b.start - a.start);
     matchesDesc.forEach((match, idxDesc) => {
         try {
@@ -1723,7 +1778,7 @@ function applyHighlightsInPreview(element, matches, activeIndex) {
                             range.surroundContents(wrapper);
                         }
                     } catch (_) {
-                        /* ignore errors during partial highlight */
+                        /* ignore partial highlight */
                     }
                     handledMatches.add(idx);
                 }
@@ -1874,15 +1929,28 @@ function updateExportSingleBtnState() {
     const btn = elements.exportSingleBtn;
     const hasSelectedTemplate = selectedTemplateName !== null; // Check if we have a saved template selected
 
-    if (name && hasSelectedTemplate) {
-        btn.style.display = ""; // Show the button only for saved templates
-        btn.disabled = false;
-        btn.setAttribute("aria-disabled", "false");
-    } else {
-        btn.style.display = "none"; // Hide the button for unsaved templates
+    if (!name || !hasSelectedTemplate) {
+        btn.style.display = "none";
         btn.disabled = true;
         btn.setAttribute("aria-disabled", "true");
+        return;
     }
+
+    chrome.storage.local.get(["templates"], (result) => {
+        const templates = result.templates || [];
+        const template = templates.find((t) => t && t.name === selectedTemplateName);
+        const isPreBuilt = template && template.type === "pre-built";
+
+        if (isPreBuilt) {
+            btn.style.display = "none";
+            btn.disabled = true;
+            btn.setAttribute("aria-disabled", "true");
+        } else {
+            btn.style.display = "";
+            btn.disabled = false;
+            btn.setAttribute("aria-disabled", "false");
+        }
+    });
 }
 
 function updateClearButtonState() {
@@ -2129,33 +2197,84 @@ function switchToTagsViewMode() {
         .split(",")
         .map((t) => t.trim())
         .filter(Boolean);
+
+    const applyView = (allowEdit) => {
+        elements.tagsDisplay.innerHTML = "";
+        tagsArray.forEach((tag) => {
+            const tagLink = document.createElement("span");
+            tagLink.className = "tag-link";
+            tagLink.textContent = tag;
+            tagLink.addEventListener("click", () => {
+                elements.searchBox.value = tag;
+                loadTemplates(tag.toLowerCase(), true);
+                elements.searchBox.focus();
+                elements.clearSearch.style.display = "block";
+            });
+            elements.tagsDisplay.appendChild(tagLink);
+        });
+
+        elements.tagsView.classList.remove("hidden");
+        elements.templateTags.classList.add("hidden");
+        elements.cancelTagsEditBtn.classList.add("hidden");
+        if (allowEdit && tagsArray.length > 0) {
+            elements.editTagsBtn.classList.remove("hidden");
+        } else {
+            elements.editTagsBtn.classList.add("hidden");
+        }
+        originalTagsBeforeEdit = null;
+        saveState();
+    };
+
+    if (selectedTemplateName) {
+        chrome.storage.local.get(["templates"], (result) => {
+            const templates = result.templates || [];
+            const tmpl = templates.find((t) => t && t.name === selectedTemplateName);
+            const isPreBuilt = tmpl && tmpl.type === "pre-built";
+
+            if (!isPreBuilt && tagsArray.length === 0) {
+                originalTagsBeforeEdit = null;
+                switchToTagsEditMode(false);
+                return;
+            }
+
+            // System templates are read-only: never allow tag edit.
+            applyView(!isPreBuilt);
+        });
+        return;
+    }
+
+    // Draft/custom template
     if (tagsArray.length === 0) {
         originalTagsBeforeEdit = null;
         switchToTagsEditMode(false);
         return;
     }
-    elements.tagsDisplay.innerHTML = "";
-    tagsArray.forEach((tag) => {
-        const tagLink = document.createElement("span");
-        tagLink.className = "tag-link";
-        tagLink.textContent = tag;
-        tagLink.addEventListener("click", () => {
-            elements.searchBox.value = tag;
-            loadTemplates(tag.toLowerCase(), true);
-            elements.searchBox.focus();
-            elements.clearSearch.style.display = "block";
-        });
-        elements.tagsDisplay.appendChild(tagLink);
-    });
-    elements.tagsView.classList.remove("hidden");
-    elements.editTagsBtn.classList.remove("hidden");
-    elements.templateTags.classList.add("hidden");
-    elements.cancelTagsEditBtn.classList.add("hidden");
-    originalTagsBeforeEdit = null;
-    saveState();
+    applyView(true);
 }
 
 function switchToTagsEditMode(setFocus = false) {
+    if (selectedTemplateName) {
+        chrome.storage.local.get(["templates"], (result) => {
+            const templates = result.templates || [];
+            const tmpl = templates.find((t) => t && t.name === selectedTemplateName);
+            const isPreBuilt = tmpl && tmpl.type === "pre-built";
+            if (isPreBuilt) {
+                switchToTagsViewMode();
+                return;
+            }
+
+            elements.tagsView.classList.add("hidden");
+            elements.editTagsBtn.classList.add("hidden");
+            elements.templateTags.classList.remove("hidden");
+            elements.cancelTagsEditBtn.classList.toggle("hidden", originalTagsBeforeEdit === null);
+            if (setFocus) {
+                elements.templateTags.focus();
+            }
+            saveState();
+        });
+        return;
+    }
+
     elements.tagsView.classList.add("hidden");
     elements.editTagsBtn.classList.add("hidden");
     elements.templateTags.classList.remove("hidden");
@@ -2235,11 +2354,27 @@ function showToast(message, duration = 4000, type = "error", buttons = [], opera
     // Determine undo eligibility up front from message text
     const undoEligible = message.includes("Ctrl+Z") || message.includes("Cmd+Z") || message.includes("undo");
 
+    const bypassThrottle =
+        operationId === "manualRefresh" ||
+        operationId === "autoRefresh" ||
+        operationId === "sync" ||
+        operationId === "refreshSuccess" ||
+        operationId === "refreshError" ||
+        operationId === "refreshWarning";
+
     // Throttle only non-undo toasts; allow consecutive undo-eligible toasts
-    if (!undoEligible && toastTimestamps[toastKey] && now - toastTimestamps[toastKey] < 1010) {
+    if (!bypassThrottle && !undoEligible && toastTimestamps[toastKey] && now - toastTimestamps[toastKey] < 1010) {
         return;
     }
     toastTimestamps[toastKey] = now;
+
+    // For refresh operations, always show the latest toast immediately (no queuing behind older toasts).
+    if (bypassThrottle && (operationId === "manualRefresh" || operationId === "autoRefresh" || operationId === "sync")) {
+        toastQueue = [];
+        if (isToastShowing) {
+            closeToast();
+        }
+    }
 
     // If operation changed, clear queue and close current toast
     if (operationId && operationId !== currentOperationId) {
@@ -2287,12 +2422,11 @@ function displayNextToast() {
     if (toastQueue.length === 0) return;
 
     clearTimeout(autoHideTimeout);
-    isToastShowing = true;
-
-    const { message, duration, type, isUndoEligible } = toastQueue.shift();
-
-    // Set undo availability based on toast content
+    const next = toastQueue.shift();
+    if (!next) return;
+    const { message, duration, type, isUndoEligible } = next;
     isUndoToastVisible = !!isUndoEligible;
+    isToastShowing = true;
 
     // Clear any existing content
     elements.toast.innerHTML = "";
@@ -2420,7 +2554,8 @@ function showModal(message, buttons = [], modalType = "warning") {
         event.stopPropagation();
         // Find cancel/no button callback
         const cancelBtn = buttons.find(
-            (b) => b.text.toLowerCase() === "cancel" || b.text.toLowerCase() === "no" || b.text.toLowerCase() === "discard"
+            (b) =>
+                b.text.toLowerCase() === "cancel" || b.text.toLowerCase() === "no" || b.text.toLowerCase() === "discard"
         );
         closeModal(cancelBtn?.callback);
     });
@@ -2751,7 +2886,6 @@ function loadTemplates(query = "", showDropdown = false) {
         let next = typeof result.nextIndex === "number" ? result.nextIndex : storedRaw.length;
 
         const stored = storedRaw.map(normalize);
-        // const defaults = defaultTemplates.map(normalize);
 
         // Simplified: Just use stored templates directly (they already include GitHub + defaults from initialization)
         let templates1 = stored;
@@ -3078,13 +3212,15 @@ function updateRecentIndices(index) {
     chrome.storage.local.set({ recentIndices });
 }
 
-function extractAllowedPlaceholdersFromDefaults() {
+function extractAllowedPlaceholdersFromTemplates(templates) {
     const placeholders = new Set();
     const regex = /\{\{([^}]+)\}\}/g;
-    defaultTemplates.forEach((template) => {
+    (Array.isArray(templates) ? templates : []).forEach((template) => {
+        const content = template && typeof template.content === "string" ? template.content : "";
         let match;
-        while ((match = regex.exec(template.content)) !== null) {
-            placeholders.add(match[1].trim());
+        while ((match = regex.exec(content)) !== null) {
+            const ph = match[1] ? match[1].trim() : "";
+            if (ph) placeholders.add(ph);
         }
     });
     return Array.from(placeholders);
@@ -4137,6 +4273,17 @@ function handleNewTemplate(options = {}) {
 }
 
 function handleEditTags() {
+    if (selectedTemplateName) {
+        chrome.storage.local.get(["templates"], (result) => {
+            const templates = result.templates || [];
+            const tmpl = templates.find((t) => t && t.name === selectedTemplateName);
+            const isPreBuilt = tmpl && tmpl.type === "pre-built";
+            if (isPreBuilt) return;
+            originalTagsBeforeEdit = elements.templateTags.value;
+            switchToTagsEditMode(true);
+        });
+        return;
+    }
     originalTagsBeforeEdit = elements.templateTags.value;
     switchToTagsEditMode(true);
 }
@@ -4180,6 +4327,7 @@ function handleSaveTemplate() {
             }
         }
         
+        let savingFromPreBuilt = false;
         if (!isNewTemplate) {
             const templateName = selectedTemplateName || editingTargetName;
             const template = templates.find((t) => t.name === templateName);
@@ -4199,6 +4347,16 @@ function handleSaveTemplate() {
             if (!isEdited) {
                 showToast("No changes to save.", 3000, "info", [], "save");
                 return;
+            }
+
+            if (template.type === "pre-built") {
+                // Pre-built templates are system templates; saving should create a local copy.
+                if (name === template.name) {
+                    showToast("Rename the template to save it as a local copy.", 3500, "warning", [], "save");
+                    elements.templateName.focus();
+                    return;
+                }
+                savingFromPreBuilt = true;
             }
         }
 
@@ -4227,10 +4385,23 @@ function handleSaveTemplate() {
             // Re-enable undo for Save: snapshot current UI and templates before saving
             storeLastState();
             if (lastState) {
-                lastState.actionType = isNewTemplate ? "saveNew" : "saveUpdate";
+                lastState.actionType = (isNewTemplate || savingFromPreBuilt) ? "saveNew" : "saveUpdate";
                 lastState.templates = deepClone(templates);
             }
-            if (isNewTemplate) {
+            const shouldCreateNew = isNewTemplate || savingFromPreBuilt;
+            if (shouldCreateNew) {
+                // Check 50 template limit for creating a new local template from a system template
+                const customCount = getCustomTemplateCount(templates);
+                if (customCount >= 50) {
+                    showToast(
+                        "You've reached the maximum of 50 custom templates. Please delete some templates to save new ones.",
+                        5000,
+                        "warning",
+                        [],
+                        "save"
+                    );
+                    return;
+                }
                 const now = Date.now();
                 const newTemplate = {
                     name,
@@ -4274,7 +4445,7 @@ function handleSaveTemplate() {
                     updateExportSingleBtnState();
                     updateDeleteButtonState();
                 },
-                isNewTemplate
+                shouldCreateNew
             );
         };
 
@@ -4662,6 +4833,21 @@ function handleImportFile(event) {
                 list.forEach((imp) => {
                     // Normalize shape
                     if (typeof imp !== "object" || !imp) imp = {};
+
+                    // Support new YAML schema: derive content from prompt.user/system
+                    if (!imp.content || typeof imp.content !== "string") {
+                        const prompt = imp.prompt;
+                        if (typeof prompt === "string") {
+                            imp.content = prompt;
+                        } else if (prompt && typeof prompt === "object") {
+                            if (typeof prompt.user === "string") {
+                                imp.content = prompt.user;
+                            } else if (typeof prompt.system === "string") {
+                                imp.content = prompt.system;
+                            }
+                        }
+                    }
+                    if (typeof imp.content !== "string") imp.content = "";
                     // tags may come as comma-separated string from single export; normalize to array
                     if (typeof imp.tags === "string") {
                         imp.tags = imp.tags
@@ -4880,8 +5066,10 @@ function handleExportAll() {
     chrome.storage.local.get(["templates"], (result) => {
         const templates = result.templates || [];
 
+        const exportSource = templates.filter((t) => t && t.type !== "pre-built");
+
         // Create clean template objects for export (exclude internal metadata)
-        const exportTemplates = templates.map((t) => ({
+        const exportTemplates = exportSource.map((t) => ({
             name: t.name,
             tags: Array.isArray(t.tags) ? t.tags : [],
             favorite: t.favorite || false,
@@ -4912,6 +5100,11 @@ function handleExportSingle() {
 
         if (!template) {
             showToast("<strong>Template not found.</strong>", 3000, "error", [], "exportSingle");
+            return;
+        }
+
+        if (template.type === "pre-built") {
+            showToast("System templates can't be exported individually.", 3500, "warning", [], "exportSingle");
             return;
         }
 
@@ -5290,7 +5483,7 @@ function undoLastAction() {
                     }
                     // Revert allowed placeholders to the snapshot so newly added ones are removed
                     try {
-                        const defaults = extractAllowedPlaceholdersFromDefaults();
+                        const defaults = Array.isArray(baseAllowedPlaceholders) ? [...baseAllowedPlaceholders] : [];
                         // Replace ALLOWED_PLACEHOLDERS contents with snapshot
                         ALLOWED_PLACEHOLDERS.length = 0;
                         (lastState.allowedPlaceholdersSnapshot || defaults).forEach((ph) => ALLOWED_PLACEHOLDERS.push(ph));

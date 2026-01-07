@@ -14,19 +14,24 @@ const GITHUB_CONFIG = {
  * Cache configuration
  */
 const CACHE_KEY = "github_templates_cache";
-const CACHE_DURATION = 3600000; // 1 hour in milliseconds
+const CACHE_DURATION = 86400000; // 24 hours in milliseconds
 
 /**
  * Fetch all YAML files from the GitHub repository
  * @returns {Promise<Array>} Array of template objects
  */
-export async function fetchGitHubTemplates() {
+export async function fetchGitHubTemplates(options = {}) {
     try {
-        // Check cache first
-        const cachedData = await getCachedTemplates();
-        if (cachedData) {
-            console.log("Using cached GitHub templates");
-            return cachedData;
+        const forceRefresh = !!options.forceRefresh;
+        const cachedFallback = await getCachedTemplates({ ignoreExpiry: true });
+
+        if (!forceRefresh) {
+            // Check cache first
+            const cachedData = await getCachedTemplates();
+            if (Array.isArray(cachedData) && cachedData.length > 0) {
+                console.log("Using cached GitHub templates");
+                return cachedData;
+            }
         }
 
         console.log("Fetching templates from GitHub...");
@@ -55,6 +60,13 @@ export async function fetchGitHubTemplates() {
         // Filter out any failed fetches (null values)
         const validTemplates = templates.filter(t => t !== null);
 
+        // If we couldn't parse any templates, do NOT overwrite the cache with an empty array.
+        // Fall back to the last cached templates (even if expired) to keep the UI usable.
+        if (validTemplates.length === 0) {
+            console.warn("No valid templates parsed from GitHub response; using last cached templates if available");
+            return Array.isArray(cachedFallback) ? cachedFallback : [];
+        }
+
         // Cache the results
         await cacheTemplates(validTemplates);
 
@@ -63,8 +75,9 @@ export async function fetchGitHubTemplates() {
 
     } catch (error) {
         console.error("Error fetching GitHub templates:", error);
-        // Return empty array on error to allow fallback to defaults
-        return [];
+        // On error, use last cached templates (even if expired) for offline-friendly behavior.
+        const cachedFallback = await getCachedTemplates({ ignoreExpiry: true });
+        return Array.isArray(cachedFallback) ? cachedFallback : [];
     }
 }
 
@@ -95,28 +108,16 @@ async function fetchAndParseYAML(file) {
             console.log(`YAML was array, using first item:`, parsed);
         }
 
-        // Extract folder path as tags
-        const tags = extractTagsFromPath(file.path);
-
-        // Handle tags from YAML - can be array or string
-        let yamlTags = "";
-        if (parsed.tags) {
-            if (Array.isArray(parsed.tags)) {
-                yamlTags = parsed.tags.join(", ");
-            } else if (typeof parsed.tags === "string") {
-                yamlTags = parsed.tags;
-            }
-        }
-
-        // Combine folder tags with YAML tags
-        const combinedTags = [tags, yamlTags].filter(t => t).join(", ");
+        const folderTags = extractTagsFromPath(file.path);
+        const yamlTags = parseTagsValue(parsed && parsed.tags);
+        const combinedTags = mergeAndDedupeTags(folderTags, yamlTags).join(", ");
 
         // Create template object matching the expected format
         const template = {
             name: parsed.name || extractNameFromPath(file.path),
             tags: combinedTags,
             type: "pre-built", // Always set to pre-built for GitHub templates
-            content: parsed.content || "",
+            content: getTemplateContent(parsed),
             favorite: parsed.favorite || false
         };
 
@@ -140,13 +141,53 @@ function extractTagsFromPath(path) {
     // Remove the filename (last part)
     parts.pop();
     
-    // If no folders, return empty string
+    // If no folders, return empty array
     if (parts.length === 0) {
-        return "";
+        return [];
     }
     
-    // Join folder names as tags
-    return parts.join(', ');
+    return parts.map((p) => String(p).trim()).filter(Boolean);
+}
+
+function parseTagsValue(value) {
+    if (!value) return [];
+    if (Array.isArray(value)) {
+        return value.map((t) => String(t).trim()).filter(Boolean);
+    }
+    if (typeof value === "string") {
+        return value
+            .split(/[\n,]/g)
+            .map((t) => t.trim())
+            .filter(Boolean);
+    }
+    return [];
+}
+
+function mergeAndDedupeTags(folderTags, yamlTags) {
+    const out = [];
+    const seen = new Set();
+    [...(Array.isArray(folderTags) ? folderTags : []), ...(Array.isArray(yamlTags) ? yamlTags : [])].forEach((tag) => {
+        const clean = String(tag).trim();
+        if (!clean) return;
+        const key = clean.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        out.push(clean);
+    });
+    return out;
+}
+
+function getTemplateContent(parsed) {
+    if (!parsed || typeof parsed !== "object") return "";
+    if (typeof parsed.content === "string" && parsed.content.trim()) return parsed.content;
+
+    const prompt = parsed.prompt;
+    if (typeof prompt === "string" && prompt.trim()) return prompt;
+    if (prompt && typeof prompt === "object") {
+        if (typeof prompt.user === "string" && prompt.user.trim()) return prompt.user;
+        if (typeof prompt.system === "string" && prompt.system.trim()) return prompt.system;
+    }
+    return "";
 }
 
 /**
@@ -171,14 +212,19 @@ function extractNameFromPath(path) {
  * Get cached templates if available and not expired
  * @returns {Promise<Array|null>} Cached templates or null
  */
-async function getCachedTemplates() {
+async function getCachedTemplates(options = {}) {
+    const ignoreExpiry = !!options.ignoreExpiry;
     return new Promise((resolve) => {
         if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
             chrome.storage.local.get([CACHE_KEY, `${CACHE_KEY}_timestamp`], (result) => {
                 const cached = result[CACHE_KEY];
                 const timestamp = result[`${CACHE_KEY}_timestamp`];
                 
-                if (cached && timestamp) {
+                if (Array.isArray(cached) && cached.length > 0 && timestamp) {
+                    if (ignoreExpiry) {
+                        resolve(cached);
+                        return;
+                    }
                     const age = Date.now() - timestamp;
                     if (age < CACHE_DURATION) {
                         resolve(cached);

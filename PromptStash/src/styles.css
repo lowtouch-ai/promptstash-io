@@ -872,12 +872,12 @@ body.light .title {
   color: #202124;
 }
 
-#themeToggle, #fullscreenToggle, #minimizeBtn, #closeBtn, #newBtn {
+#themeToggle, #fullscreenToggle, #minimizeBtn, #closeBtn, #newBtn, #refreshBtn {
   fill: #555;
   z-index: 1001;
 }
 
-body.dark #themeToggle, body.dark #fullscreenToggle, body.dark #minimizeBtn, body.dark #closeBtn, body.dark #newBtn {
+body.dark #themeToggle, body.dark #fullscreenToggle, body.dark #minimizeBtn, body.dark #closeBtn, body.dark #newBtn, body.dark #refreshBtn {
   fill: #aaa;
 }
 
@@ -1216,7 +1216,7 @@ body.dark .clrbtn:hover {
 }
 
 #clearSearch {
-  margin-right: 8.3rem;
+  margin-right: 11rem;
 }
 
 #buttons {
