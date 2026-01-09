@@ -4,11 +4,12 @@ import jsyaml from "js-yaml";
  * GitHub Repository Configuration
  */
 const GITHUB_CONFIG = {
-    owner: "uvaist1997",
-    repo: "PromptStashTemplates",
-    branch: "main",
-    apiUrl: "https://api.github.com/repos/uvaist1997/PromptStashTemplates/git/trees/main?recursive=1"
+  owner: "lowtouch-ai",
+  repo: "promptstash-templates",
+  branch: "main",
+  apiUrl: "https://api.github.com/repos/lowtouch-ai/promptstash-templates/git/trees/main?recursive=1"
 };
+
 
 /**
  * Cache configuration
