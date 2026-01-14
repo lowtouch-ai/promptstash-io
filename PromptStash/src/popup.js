@@ -38,6 +38,36 @@ function saveToSession() {
     });
 }
 
+function updateExportAllBtnState(templatesOverride = null) {
+    const applyState = (templates) => {
+        const list = Array.isArray(templates) ? templates : [];
+        const hasUserTemplates = list.some((t) => t && t.type !== "pre-built");
+        const tooltipText = hasUserTemplates ? "Export all user templates" : "No user templates to export";
+
+        elements.exportAllBtn.disabled = !hasUserTemplates;
+        elements.exportAllBtn.setAttribute("aria-disabled", hasUserTemplates ? "false" : "true");
+        elements.exportAllBtn.removeAttribute("title");
+        elements.exportAllBtn.setAttribute("data-bs-title", tooltipText);
+        elements.exportAllBtn.setAttribute("data-bs-original-title", tooltipText);
+
+        let tooltip = bootstrap.Tooltip.getInstance(elements.exportAllBtn);
+        if (!tooltip) {
+            tooltip = new bootstrap.Tooltip(elements.exportAllBtn, { title: tooltipText });
+        } else {
+            tooltip.setContent({ ".tooltip-inner": tooltipText });
+        }
+    };
+
+    if (Array.isArray(templatesOverride)) {
+        applyState(templatesOverride);
+        return;
+    }
+
+    chrome.storage.local.get(["templates"], (result) => {
+        applyState(result.templates || []);
+    });
+}
+
 function loadFromSession(callback) {
     // Load unsaved changes from session storage
     // First check if we closed with X button - if so, don't restore but keep the data
@@ -572,6 +602,7 @@ document.addEventListener("DOMContentLoaded", () => {
         initializeTooltips();
         loadTemplates();
         updateExportSingleBtnState();
+        updateExportAllBtnState();
     }
 });
 
@@ -1933,6 +1964,15 @@ function updateExportSingleBtnState() {
         btn.style.display = "none";
         btn.disabled = true;
         btn.setAttribute("aria-disabled", "true");
+
+        const tooltipText = "Select a user template to export";
+        btn.removeAttribute("title");
+        btn.setAttribute("data-bs-title", tooltipText);
+        btn.setAttribute("data-bs-original-title", tooltipText);
+        const tooltip = bootstrap.Tooltip.getInstance(btn);
+        if (tooltip) {
+            tooltip.setContent({ ".tooltip-inner": tooltipText });
+        }
         return;
     }
 
@@ -1945,10 +1985,28 @@ function updateExportSingleBtnState() {
             btn.style.display = "none";
             btn.disabled = true;
             btn.setAttribute("aria-disabled", "true");
+
+            const tooltipText = "System templates can't be exported";
+            btn.removeAttribute("title");
+            btn.setAttribute("data-bs-title", tooltipText);
+            btn.setAttribute("data-bs-original-title", tooltipText);
+            const tooltip = bootstrap.Tooltip.getInstance(btn);
+            if (tooltip) {
+                tooltip.setContent({ ".tooltip-inner": tooltipText });
+            }
         } else {
             btn.style.display = "";
             btn.disabled = false;
             btn.setAttribute("aria-disabled", "false");
+
+            const tooltipText = "Export this user template";
+            btn.removeAttribute("title");
+            btn.setAttribute("data-bs-title", tooltipText);
+            btn.setAttribute("data-bs-original-title", tooltipText);
+            const tooltip = bootstrap.Tooltip.getInstance(btn);
+            if (tooltip) {
+                tooltip.setContent({ ".tooltip-inner": tooltipText });
+            }
         }
     });
 }
@@ -2978,6 +3036,7 @@ function loadTemplates(query = "", showDropdown = false) {
         }
         renderDropdown(templates, showDropdown);
         renderFavoriteSuggestions(templates.filter((t) => t.favorite));
+        updateExportAllBtnState(stored);
     });
 }
 
@@ -4722,8 +4781,9 @@ function getTargetTabId(callback) {
     });
 }
 
-function processFetchedContent(fetchedPrompt) {
-    storeLastState();
+function processFetchedContent(fetchedPrompt, options = {}) {
+    const { skipStore = false } = options;
+    if (!skipStore) storeLastState();
 
     // Exit preview mode if we're currently in it
     if (tabsState.previewMode) {
@@ -4754,6 +4814,27 @@ function processFetchedContent(fetchedPrompt) {
     saveState();
 }
 
+function maybeSwitchToNewTemplateForFetch(callback) {
+    const contextName = selectedTemplateName || editingTargetName || null;
+    if (!contextName) {
+        callback(false);
+        return;
+    }
+
+    chrome.storage.local.get(["templates"], (result) => {
+        const templates = result.templates || [];
+        const template = templates.find((t) => t && t.name === contextName);
+        const isPreBuilt = template && template.type === "pre-built";
+
+        if (isPreBuilt) {
+            storeLastState();
+            handleNewTemplate({ skipStore: true, skipSaveState: true });
+        }
+
+        callback(isPreBuilt);
+    });
+}
+
 function handleFetchPrompt() {
     getTargetTabId((tabId) => {
         if (!tabId) return;
@@ -4761,13 +4842,17 @@ function handleFetchPrompt() {
             if (chrome.runtime.lastError) {
                 reInjectAndRetry(tabId, "getPrompt", (res) => {
                     if (res && res.prompt) {
-                        processFetchedContent(res.prompt);
+                        maybeSwitchToNewTemplateForFetch((didSwitch) =>
+                            processFetchedContent(res.prompt, { skipStore: didSwitch })
+                        );
                     } else {
                         showToast("No text found.", 3000, "error", [], "fetch");
                     }
                 });
             } else if (response && response.prompt) {
-                processFetchedContent(response.prompt);
+                maybeSwitchToNewTemplateForFetch((didSwitch) =>
+                    processFetchedContent(response.prompt, { skipStore: didSwitch })
+                );
             } else {
                 showToast("No text found. Please select a field that contains text.", 3000, "error", [], "fetch");
             }
@@ -5067,6 +5152,11 @@ function handleExportAll() {
         const templates = result.templates || [];
 
         const exportSource = templates.filter((t) => t && t.type !== "pre-built");
+
+        if (exportSource.length === 0) {
+            showToast("No user templates to export.", 3000, "info", [], "exportAll");
+            return;
+        }
 
         // Create clean template objects for export (exclude internal metadata)
         const exportTemplates = exportSource.map((t) => ({

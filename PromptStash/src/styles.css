@@ -1188,14 +1188,30 @@ body.dark #promptArea:focus {
   background: none;
   border: none;
   z-index: 9999;
+  cursor: pointer;
 }
 
 body.dark .topbtn {
   fill: #ccc;
 }
 
+.topbtn:disabled {
+  fill: #9aa0a6;
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+body.dark .topbtn:disabled {
+  fill: #5f6368;
+  opacity: 0.55;
+}
+
 .topbtn:hover svg {
   transform: scale(1.1);
+}
+
+.topbtn:disabled:hover svg {
+  transform: none;
 }
 
 .clrbtn {
